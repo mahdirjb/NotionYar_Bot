@@ -1,4 +1,5 @@
 from datetime import datetime, timezone, timedelta
+from typing import Any, cast
 from notion_client import Client
 from app.config import NOTION_TOKEN, NOTION_DBID_TIME_TRACKER
 
@@ -15,7 +16,7 @@ def add_time_tracker_entry(name: str, duration: int, satisfaction: str, descript
         "Name": {
             "title": [
                 {"text": {"content": name}}
-            ]پ
+            ]
         },
         "MDuration": {
             "number": duration
@@ -43,4 +44,4 @@ def add_time_tracker_entry(name: str, duration: int, satisfaction: str, descript
         parent={"database_id": NOTION_DBID_TIME_TRACKER},
         properties=properties
     )
-    return response
+    return cast(dict[str, Any], response)
