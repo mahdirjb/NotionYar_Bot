@@ -1,5 +1,5 @@
 from datetime import datetime, timezone, timedelta
-from typing import List, Dict, Any, Optional, cast
+from typing import List, Dict, Any, Optional
 from notion_client import Client
 from app.config import NOTION_TOKEN, NOTION_DBID_TIME_TRACKER
 
@@ -10,10 +10,10 @@ def get_workspace_persons() -> List[Dict[str, str]]:
     Fetches real workspace users (excluding bots) from Notion API.
     """
     try:
-        # The Notion client's type stubs incorrectly describe this call as
-        # returning an awaitable, although the synchronous Client returns a
-        # response dictionary directly.
-        response = cast(Any, notion.users.list())
+        response = notion.users.list()
+        if not isinstance(response, dict):
+            return []
+
         users = response.get("results", [])
         persons = []
         for user in users:
@@ -29,19 +29,22 @@ def get_workspace_persons() -> List[Dict[str, str]]:
 
 def add_time_tracker_entry(
     name: str,
-    start_iso: str,
-    end_iso: Optional[str],
+    start_date_str: str,
+    end_date_str: Optional[str],
     duration: int,
     satisfaction: str,
     person_id: Optional[str] = None,
     description: str = ""
-) -> Dict[str, Any]:
+) -> Any:
     """
-    Creates a new row in the Time Tracker database with start/end time and person.
+    Creates a new row in the Time Tracker database in Notion.
     """
-    date_prop = {"start": start_iso}
-    if end_iso:
-        date_prop["end"] = end_iso
+    if not NOTION_DBID_TIME_TRACKER:
+        raise ValueError("NOTION_DBID_TIME_TRACKER is not defined in environment variables.")
+
+    date_payload: Dict[str, Any] = {"start": start_date_str}
+    if end_date_str:
+        date_payload["end"] = end_date_str
 
     properties: Dict[str, Any] = {
         "Name": {
@@ -51,7 +54,7 @@ def add_time_tracker_entry(
             "number": duration
         },
         "Date": {
-            "date": date_prop
+            "date": date_payload
         },
         "Satisfaction": {
             "select": {"name": satisfaction}
@@ -72,4 +75,4 @@ def add_time_tracker_entry(
         parent={"database_id": NOTION_DBID_TIME_TRACKER},
         properties=properties
     )
-    return cast(Dict[str, Any], response)
+    return response

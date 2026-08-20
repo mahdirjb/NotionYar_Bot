@@ -1,16 +1,29 @@
 from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
 from typing import Dict, Any, List
 
+SATISFACTION_EMOJIS = {
+    "عالی": "🤩",
+    "خوب": "😊",
+    "متوسط": "😐",
+    "بد": "🙁",
+    "داغون": "😫"
+}
+
 def build_card_keyboard(data: Dict[str, Any]) -> InlineKeyboardMarkup:
-    """
-    Builds the interactive dashboard card keyboard.
-    """
     name_label = "✏️ عنوان: " + (data.get("name") or "وارد نشده ❌")
     person_label = "👤 انجام‌دهنده: " + (data.get("person_name") or "انتخاب کنید")
     date_label = "📅 تاریخ: " + (data.get("date_label") or "امروز")
-    start_label = "⏰ شروع: " + (data.get("start_time") or "تنظیم نشده")
-    end_label = "⏰ پایان: " + (data.get("end_time") or "تنظیم نشده")
-    sat_label = "⭐ رضایت: " + (data.get("satisfaction") or "خوب")
+    
+    start_label = "⏰ شروع: " + (data.get("start_time") or "—")
+    end_label = "⏰ پایان: " + (data.get("end_time") or "—")
+    
+    dur = data.get("duration", 0)
+    dur_label = f"⏱ مدت: {dur} دقیقه (دستی/محاسبه)"
+    
+    sat = data.get("satisfaction", "خوب")
+    sat_emoji = SATISFACTION_EMOJIS.get(sat, "⭐")
+    sat_label = f"{sat_emoji} رضایت: {sat}"
+    
     desc_label = "📝 توضیحات: " + ("ثبت شده ✅" if data.get("description") else "اختیاری")
 
     buttons = [
@@ -21,6 +34,7 @@ def build_card_keyboard(data: Dict[str, Any]) -> InlineKeyboardMarkup:
             InlineKeyboardButton(text=start_label, callback_data="pick_start_time"),
             InlineKeyboardButton(text=end_label, callback_data="pick_end_time")
         ],
+        [InlineKeyboardButton(text=dur_label, callback_data="edit_duration")],
         [InlineKeyboardButton(text=sat_label, callback_data="pick_satisfaction")],
         [InlineKeyboardButton(text=desc_label, callback_data="edit_description")],
         [
@@ -40,18 +54,16 @@ def get_person_keyboard(persons: List[Dict[str, str]]) -> InlineKeyboardMarkup:
 def get_date_keyboard() -> InlineKeyboardMarkup:
     buttons = [
         [
-            InlineKeyboardButton(text="امروز", callback_data="set_date:0:امروز"),
-            InlineKeyboardButton(text="دیروز", callback_data="set_date:1:دیروز"),
-            InlineKeyboardButton(text="پریروز", callback_data="set_date:2:پریروز")
+            InlineKeyboardButton(text="امروز", callback_data="set_date_preset:0:امروز"),
+            InlineKeyboardButton(text="دیروز", callback_data="set_date_preset:1:دیروز"),
+            InlineKeyboardButton(text="پریروز", callback_data="set_date_preset:2:پریروز")
         ],
+        [InlineKeyboardButton(text="✍️ ورود تاریخ دلخواه", callback_data="enter_custom_date")],
         [InlineKeyboardButton(text="🔙 بازگشت به فرم", callback_data="back_to_card")]
     ]
     return InlineKeyboardMarkup(inline_keyboard=buttons)
 
 def get_time_picker_keyboard(target: str) -> InlineKeyboardMarkup:
-    """
-    Time presets picker for start or end time.
-    """
     hours = ["08:00", "09:00", "10:00", "11:00", "12:00", "13:00",
              "14:00", "15:00", "16:00", "17:00", "18:00", "19:00",
              "20:00", "21:00", "22:00", "23:00"]
@@ -66,11 +78,17 @@ def get_time_picker_keyboard(target: str) -> InlineKeyboardMarkup:
     if current_row:
         rows.append(current_row)
         
+    rows.append([InlineKeyboardButton(text="✍️ تایپ ساعت دلخواه (مثلاً 22:27)", callback_data=f"enter_custom_time:{target}")])
     rows.append([InlineKeyboardButton(text="🔙 بازگشت به فرم", callback_data="back_to_card")])
     return InlineKeyboardMarkup(inline_keyboard=rows)
 
 def get_satisfaction_keyboard() -> InlineKeyboardMarkup:
-    options = ["عالی", "خوب", "متوسط", "بد", "داغون"]
-    buttons = [[InlineKeyboardButton(text=f"⭐ {opt}", callback_data=f"set_sat:{opt}")] for opt in options]
+    buttons = []
+    for opt, emoji in SATISFACTION_EMOJIS.items():
+        buttons.append([InlineKeyboardButton(text=f"{emoji} {opt}", callback_data=f"set_sat:{opt}")])
     buttons.append([InlineKeyboardButton(text="🔙 بازگشت به فرم", callback_data="back_to_card")])
+    return InlineKeyboardMarkup(inline_keyboard=buttons)
+
+def get_back_cancel_keyboard() -> InlineKeyboardMarkup:
+    buttons = [[InlineKeyboardButton(text="🔙 انصراف و بازگشت به فرم", callback_data="back_to_card")]]
     return InlineKeyboardMarkup(inline_keyboard=buttons)
