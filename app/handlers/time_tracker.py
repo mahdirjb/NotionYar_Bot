@@ -57,7 +57,7 @@ def calculate_duration(start_time: str | None, end_time: str | None) -> int:
     except Exception:
         return 0
 
-@router.message(F.text == "⏱ ثبت زمان جدید (تایم‌ترکر)")
+@router.message(F.text.contains("ثبت زمان"))
 async def start_card_from_menu(message: Message, state: FSMContext):
     if not is_user_allowed(message.from_user.id if message.from_user else None):
         await message.answer("⛔ شما به این بخش دسترسی ندارید.")
