@@ -96,10 +96,12 @@ async def cleanup_prompt_messages(bot: Bot, chat_id: int, state: FSMContext, use
         except Exception:
             pass
 
-async def register_error_message(state: FSMContext, error_msg: Message):
+async def register_error_message(state: FSMContext, error_msg: Message, user_msg: Message | None = None):
     data = await state.get_data()
     err_list = data.get("error_msg_ids", [])
     err_list.append(error_msg.message_id)
+    if user_msg:
+        err_list.append(user_msg.message_id)  # پیام اشتباه کاربر هم ذخیره می‌شود
     await state.update_data(error_msg_ids=err_list)
 
 async def update_main_card(bot: Bot, chat_id: int, state: FSMContext):
@@ -180,11 +182,11 @@ async def set_task_name(message: Message, state: FSMContext, bot: Bot):
     name = (message.text or "").strip()
     if not name:
         err = await message.answer("❌ عنوان نمی‌تواند خالی باشد. لطفاً متنی وارد کنید:")
-        await register_error_message(state, err)
+        await register_error_message(state, err, user_msg=message)  # 👈 اضافه شد
         return
     if len(name) > 2000:
         err = await message.answer("❌ عنوان بسیار طولانی است (باید کمتر از ۲۰۰۰ کاراکتر باشد):")
-        await register_error_message(state, err)
+        await register_error_message(state, err, user_msg=message)  # 👈 اضافه شد
         return
 
     await state.update_data(name=name)
@@ -282,7 +284,7 @@ async def process_custom_date(message: Message, state: FSMContext, bot: Bot):
             "❌ تاریخ نامعتبر است. لطفاً تاریخ شمسی مثل <code>1405/05/25</code> وارد کنید:",
             parse_mode="HTML"
         )
-        await register_error_message(state, err)
+        await register_error_message(state, err, user_msg=message)  # 👈 اضافه شد
         return
 
     g_iso, j_str = parsed
@@ -360,14 +362,14 @@ async def process_custom_time(message: Message, state: FSMContext, bot: Bot):
     match = re.search(r"^(\d{1,2})(?:[:.](\d{1,2}))?$", text)
     if not match:
         err = await message.answer("❌ فرمت نامعتبر است. لطفاً مثل <code>22:27</code> یا <code>22</code> وارد کنید:", parse_mode="HTML")
-        await register_error_message(state, err)
+        await register_error_message(state, err, user_msg=message)  # 👈 اضافه شد
         return
 
     h = int(match.group(1))
     m = int(match.group(2)) if match.group(2) is not None else 0
     if not (0 <= h <= 23 and 0 <= m <= 59):
         err = await message.answer("❌ ساعت یا دقیقه خارج از محدوده مجاز است.", parse_mode="HTML")
-        await register_error_message(state, err)
+        await register_error_message(state, err, user_msg=message)  # 👈 اضافه شد
         return
 
     formatted_time = f"{h:02d}:{m:02d}"
@@ -383,7 +385,7 @@ async def process_custom_time(message: Message, state: FSMContext, bot: Bot):
                 reply_markup=get_back_cancel_keyboard(),
                 parse_mode="HTML"
             )
-            await register_error_message(state, err)
+            await register_error_message(state, err, user_msg=message)  # 👈 اضافه شد
             return
         await state.update_data(start_time=formatted_time)
     else:
@@ -395,7 +397,7 @@ async def process_custom_time(message: Message, state: FSMContext, bot: Bot):
                 reply_markup=get_back_cancel_keyboard(),
                 parse_mode="HTML"
             )
-            await register_error_message(state, err)
+            await register_error_message(state, err, user_msg=message)  # 👈 اضافه شد
             return
         await state.update_data(end_time=formatted_time)
 
@@ -433,13 +435,13 @@ async def process_custom_duration(message: Message, state: FSMContext, bot: Bot)
     text = (message.text or "").strip()
     if not text.isdigit():
         err = await message.answer("❌ لطفاً فقط عدد وارد کنید (مثلاً <code>45</code> یا <code>0</code>):", parse_mode="HTML")
-        await register_error_message(state, err)
+        await register_error_message(state, err, user_msg=message)  # 👈 اضافه شد
         return
 
     dur_val = int(text)
     if not (0 <= dur_val <= 1440):
         err = await message.answer("❌ مدت زمان باید بین <b>۰ تا ۱۴۴۰ دقیقه</b> باشد:", parse_mode="HTML")
-        await register_error_message(state, err)
+        await register_error_message(state, err, user_msg=message)  # 👈 اضافه شد
         return
 
     await state.update_data(manual_duration=dur_val)
@@ -511,7 +513,7 @@ async def set_description_handler(message: Message, state: FSMContext, bot: Bot)
     desc = (message.text or "").strip()
     if len(desc) > 2000:
         err = await message.answer("❌ متن توضیحات بیش از حد طولانی است (باید کمتر از ۲۰۰۰ کاراکتر باشد):")
-        await register_error_message(state, err)
+        await register_error_message(state, err, user_msg=message)  # 👈 اضافه شد
         return
 
     await state.update_data(description=desc)
