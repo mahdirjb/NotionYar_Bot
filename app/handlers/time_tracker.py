@@ -1,5 +1,5 @@
 import re
-from datetime import datetime, timezone, timedelta, date
+from datetime import datetime, timezone, timedelta
 from aiogram import Router, F, Bot
 from aiogram.types import Message, CallbackQuery
 from aiogram.fsm.context import FSMContext
@@ -15,6 +15,7 @@ from app.keyboards.inline import (
     SATISFACTION_EMOJIS
 )
 from app.services.notion_service import get_workspace_persons, add_time_tracker_entry
+from app.services.date_helper import get_jalali_date_info, parse_user_date_input
 from app.config import ALLOWED_USERS
 
 router = Router()
@@ -54,7 +55,6 @@ def render_card_text(data: dict) -> str:
     )
 
 def is_time_order_valid(start_time: str | None, end_time: str | None) -> bool:
-    """Checks if start_time is strictly before end_time."""
     if not start_time or not end_time:
         return True
     fmt = "%H:%M"
@@ -113,16 +113,14 @@ async def start_card_from_menu(message: Message, state: FSMContext):
         return
 
     await state.clear()
-    tz = timezone(timedelta(hours=3, minutes=30))
-    now = datetime.now(tz)
-    today_iso = now.date().isoformat()
+    g_today, j_today = get_jalali_date_info(offset_days=0)
     
     initial_data = {
         "name": None,
         "person_id": None,
         "person_name": None,
-        "date_iso": today_iso,
-        "date_label": f"امروز ({today_iso})",
+        "date_iso": g_today,
+        "date_label": f"امروز ({j_today})",
         "start_time": None,
         "end_time": None,
         "duration": 0,
@@ -152,7 +150,7 @@ async def back_to_card_handler(callback: CallbackQuery, state: FSMContext, bot: 
         )
     await callback.answer()
 
-# --- Title Handler with Length Validation ---
+# --- Title Handler ---
 @router.callback_query(F.data == "edit_name")
 async def ask_task_name(callback: CallbackQuery, state: FSMContext):
     await state.set_state(TimeTrackerCard.typing_name)
@@ -221,7 +219,7 @@ async def clear_person_handler(callback: CallbackQuery, state: FSMContext):
         )
     await callback.answer("انجام‌دهنده پاک شد.")
 
-# --- Date Handlers ---
+# --- Date Handlers with Jalali Support ---
 @router.callback_query(F.data == "pick_date")
 async def pick_date_handler(callback: CallbackQuery):
     if isinstance(callback.message, Message):
@@ -238,11 +236,8 @@ async def set_date_preset_handler(callback: CallbackQuery, state: FSMContext):
     offset = int(parts[1])
     label_text = parts[2]
     
-    tz = timezone(timedelta(hours=3, minutes=30))
-    target_date = datetime.now(tz).date() - timedelta(days=offset)
-    iso_date = target_date.isoformat()
-    
-    await state.update_data(date_iso=iso_date, date_label=f"{label_text} ({iso_date})")
+    g_iso, j_str = get_jalali_date_info(offset_days=offset)
+    await state.update_data(date_iso=g_iso, date_label=f"{label_text} ({j_str})")
     data = await state.get_data()
     if isinstance(callback.message, Message):
         await callback.message.edit_text(
@@ -257,7 +252,7 @@ async def enter_custom_date_prompt(callback: CallbackQuery, state: FSMContext):
     await state.set_state(TimeTrackerCard.typing_custom_date)
     if isinstance(callback.message, Message):
         prompt = await callback.message.answer(
-            "📅 تاریخ مورد نظر را به فرمت <b>YYYY-MM-DD</b> (مثلاً <code>2026-08-15</code>) ارسال کنید:",
+            "📅 تاریخ مورد نظر را به صورت <b>شمسی</b> (مثلاً <code>1405/05/25</code>) یا میلادی ارسال کنید:",
             reply_markup=get_back_cancel_keyboard(),
             parse_mode="HTML"
         )
@@ -266,20 +261,22 @@ async def enter_custom_date_prompt(callback: CallbackQuery, state: FSMContext):
 
 @router.message(TimeTrackerCard.typing_custom_date)
 async def process_custom_date(message: Message, state: FSMContext, bot: Bot):
-    text = (message.text or "").strip()
-    match = re.search(r"(\d{4})[-/.](\d{1,2})[-/.](\d{1,2})", text)
-    if not match:
-        await message.answer("❌ فرمت نامعتبر است. لطفاً به صورت <code>2026-08-15</code> وارد کنید:", parse_mode="HTML")
+    text = message.text or ""
+    parsed = parse_user_date_input(text)
+    if not parsed:
+        await message.answer(
+            "❌ تاریخ نامعتبر است. لطفاً تاریخ شمسی مثل <code>1405/05/25</code> وارد کنید:",
+            parse_mode="HTML"
+        )
         return
 
-    y, m, d = match.groups()
-    iso_date = f"{int(y):04d}-{int(m):02d}-{int(d):02d}"
-    await state.update_data(date_iso=iso_date, date_label=iso_date)
+    g_iso, j_str = parsed
+    await state.update_data(date_iso=g_iso, date_label=j_str)
     await cleanup_prompt_messages(bot, message.chat.id, state, user_msg=message)
     await state.set_state(TimeTrackerCard.viewing_card)
     await update_main_card(bot, message.chat.id, state)
 
-# --- Time Handlers with Order Validation ---
+# --- Time Handlers ---
 @router.callback_query(F.data.in_(["pick_start_time", "pick_end_time"]))
 async def pick_time_handler(callback: CallbackQuery):
     target = "start" if callback.data == "pick_start_time" else "end"
@@ -298,7 +295,6 @@ async def set_time_preset_handler(callback: CallbackQuery, state: FSMContext):
     target, time_val = parts[1], parts[2]
     data = await state.get_data()
     
-    # Validation: Start must be before End
     if target == "start":
         if data.get("end_time") and not is_time_order_valid(time_val, data.get("end_time")):
             await callback.answer("⚠️ ساعت شروع باید قبل از ساعت پایان باشد!", show_alert=True)
@@ -357,7 +353,6 @@ async def process_custom_time(message: Message, state: FSMContext, bot: Bot):
     data = await state.get_data()
     target = data.get("custom_time_target", "start")
     
-    # Validation: Time Order
     if target == "start":
         if data.get("end_time") and not is_time_order_valid(formatted_time, data.get("end_time")):
             await message.answer("⚠️ ساعت شروع واردشده باید قبل از ساعت پایان باشد. لطفاً دوباره وارد کنید:")
@@ -390,7 +385,7 @@ async def clear_times_handler(callback: CallbackQuery, state: FSMContext):
         )
     await callback.answer("ساعت‌های شروع و پایان پاک شدند.")
 
-# --- Manual Duration with Range Validation (1 to 1440 mins) ---
+# --- Manual Duration ---
 @router.callback_query(F.data == "edit_duration")
 async def edit_duration_prompt(callback: CallbackQuery, state: FSMContext):
     await state.set_state(TimeTrackerCard.typing_custom_duration)
@@ -456,7 +451,7 @@ async def clear_satisfaction_handler(callback: CallbackQuery, state: FSMContext)
         )
     await callback.answer("میزان رضایت پاک شد.")
 
-# --- Description Handlers with Length Validation ---
+# --- Description Handlers ---
 @router.callback_query(F.data == "edit_description")
 async def ask_description_handler(callback: CallbackQuery, state: FSMContext):
     await state.set_state(TimeTrackerCard.typing_description)
@@ -520,7 +515,7 @@ async def submit_card_handler(callback: CallbackQuery, state: FSMContext):
         
         try:
             tz = timezone(timedelta(hours=3, minutes=30))
-            date_iso = data.get("date_iso") or date.today().isoformat()
+            date_iso = data.get("date_iso") or get_jalali_date_info(0)[0]
             
             if start_str and end_str:
                 start_dt = datetime.strptime(f"{date_iso} {start_str}", "%Y-%m-%d %H:%M").replace(tzinfo=tz)
