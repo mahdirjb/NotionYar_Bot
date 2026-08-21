@@ -56,12 +56,8 @@ def render_card_text(data: dict) -> str:
     end = data.get("end_time") or "—"
     duration = data.get("duration", 0)
     
-    # Duration display logic
     if data.get("start_time") and data.get("end_time"):
-        if not is_time_order_valid(data.get("start_time"), data.get("end_time")):
-            dur_text = "⚠️ نامعتبر (شروع بعد از پایان است)"
-        else:
-            dur_text = f"{duration} دقیقه"
+        dur_text = f"{duration} دقیقه"
     else:
         dur_text = f"{duration} دقیقه (دستی)" if duration > 0 else "—"
 
@@ -285,7 +281,7 @@ async def process_custom_date(message: Message, state: FSMContext, bot: Bot):
     await state.set_state(TimeTrackerCard.viewing_card)
     await update_main_card(bot, message.chat.id, state)
 
-# --- Time Handlers (Pure independent selection without clearing) ---
+# --- Time Handlers (Immediate Alerts for Invalids) ---
 @router.callback_query(F.data.in_(["pick_start_time", "pick_end_time"]))
 async def pick_time_handler(callback: CallbackQuery):
     target = "start" if callback.data == "pick_start_time" else "end"
@@ -302,25 +298,41 @@ async def pick_time_handler(callback: CallbackQuery):
 async def set_time_preset_handler(callback: CallbackQuery, state: FSMContext):
     parts = (callback.data or "").split(":")
     target, time_val = parts[1], parts[2]
+    data = await state.get_data()
     
+    # Immediate Alert Validation for Preset Clicks
     if target == "start":
+        existing_end = data.get("end_time")
+        if existing_end and not is_time_order_valid(time_val, existing_end):
+            await callback.answer(
+                f"⚠️ ساعت شروع ({time_val}) باید قبل از ساعت پایان ({existing_end}) باشد!",
+                show_alert=True
+            )
+            return
         await state.update_data(start_time=time_val)
     else:
+        existing_start = data.get("start_time")
+        if existing_start and not is_time_order_valid(existing_start, time_val):
+            await callback.answer(
+                f"⚠️ ساعت پایان ({time_val}) باید بعد از ساعت شروع ({existing_start}) باشد!",
+                show_alert=True
+            )
+            return
         await state.update_data(end_time=time_val)
         
-    data = await state.get_data()
-    dur = calculate_duration(data.get("start_time"), data.get("end_time"))
+    updated_data = await state.get_data()
+    dur = calculate_duration(updated_data.get("start_time"), updated_data.get("end_time"))
     if dur > 0:
         await state.update_data(duration=dur)
-        data["duration"] = dur
+        updated_data["duration"] = dur
     
     if isinstance(callback.message, Message):
         await callback.message.edit_text(
-            render_card_text(data),
-            reply_markup=build_card_keyboard(data),
+            render_card_text(updated_data),
+            reply_markup=build_card_keyboard(updated_data),
             parse_mode="HTML"
         )
-    await callback.answer()
+    await callback.answer(f"ساعت {'شروع' if target == 'start' else 'پایان'}: {time_val}")
 
 @router.callback_query(F.data.startswith("enter_custom_time:"))
 async def enter_custom_time_prompt(callback: CallbackQuery, state: FSMContext):
@@ -348,16 +360,35 @@ async def process_custom_time(message: Message, state: FSMContext, bot: Bot):
 
     h, m = int(match.group(1)), int(match.group(2))
     if not (0 <= h <= 23 and 0 <= m <= 59):
-        await message.answer("❌ ساعت یا دقیقه خارج از محدوده است.", parse_mode="HTML")
+        await message.answer("❌ ساعت یا دقیقه خارج از محدوده مجاز است.", parse_mode="HTML")
         return
 
     formatted_time = f"{h:02d}:{m:02d}"
     data = await state.get_data()
     target = data.get("custom_time_target", "start")
     
+    # Immediate Clear Feedback for Typed Times
     if target == "start":
+        existing_end = data.get("end_time")
+        if existing_end and not is_time_order_valid(formatted_time, existing_end):
+            await message.answer(
+                f"⚠️ ساعت شروع (<code>{formatted_time}</code>) نمی‌تواند بعد از ساعت پایان فعلی (<code>{existing_end}</code>) باشد.\n"
+                "لطفاً یک ساعت قبل از آن وارد کنید:",
+                reply_markup=get_back_cancel_keyboard(),
+                parse_mode="HTML"
+            )
+            return
         await state.update_data(start_time=formatted_time)
     else:
+        existing_start = data.get("start_time")
+        if existing_start and not is_time_order_valid(existing_start, formatted_time):
+            await message.answer(
+                f"⚠️ ساعت پایان (<code>{formatted_time}</code>) نمی‌تواند قبل از ساعت شروع فعلی (<code>{existing_start}</code>) باشد.\n"
+                "لطفاً یک ساعت بعد از آن وارد کنید:",
+                reply_markup=get_back_cancel_keyboard(),
+                parse_mode="HTML"
+            )
+            return
         await state.update_data(end_time=formatted_time)
 
     updated_data = await state.get_data()
@@ -501,8 +532,6 @@ async def submit_card_handler(callback: CallbackQuery, state: FSMContext):
         
     start_str = data.get("start_time")
     end_str = data.get("end_time")
-    
-    # Final check before sending to Notion
     if start_str and end_str and not is_time_order_valid(start_str, end_str):
         await callback.answer("⚠️ ساعت شروع باید قبل از ساعت پایان باشد!", show_alert=True)
         return
