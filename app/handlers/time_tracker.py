@@ -53,6 +53,18 @@ def render_card_text(data: dict) -> str:
         "👇 <i>با دکمه‌های زیر فیلدها را تنظیم کنید و در نهایت دکمه ثبت را بزنید:</i>"
     )
 
+def is_time_order_valid(start_time: str | None, end_time: str | None) -> bool:
+    """Checks if start_time is strictly before end_time."""
+    if not start_time or not end_time:
+        return True
+    fmt = "%H:%M"
+    try:
+        t1 = datetime.strptime(start_time, fmt)
+        t2 = datetime.strptime(end_time, fmt)
+        return t2 > t1
+    except Exception:
+        return False
+
 def calculate_duration(start_time: str | None, end_time: str | None) -> int:
     if not start_time or not end_time:
         return 0
@@ -105,7 +117,6 @@ async def start_card_from_menu(message: Message, state: FSMContext):
     now = datetime.now(tz)
     today_iso = now.date().isoformat()
     
-    # Satisfaction is None by default
     initial_data = {
         "name": None,
         "person_id": None,
@@ -141,13 +152,13 @@ async def back_to_card_handler(callback: CallbackQuery, state: FSMContext, bot: 
         )
     await callback.answer()
 
-# --- Title Handler ---
+# --- Title Handler with Length Validation ---
 @router.callback_query(F.data == "edit_name")
 async def ask_task_name(callback: CallbackQuery, state: FSMContext):
     await state.set_state(TimeTrackerCard.typing_name)
     if isinstance(callback.message, Message):
         prompt = await callback.message.answer(
-            "✏️ لطفاً <b>عنوان فعالیت / کار</b> را ارسال کنید:",
+            "✏️ لطفاً <b>عنوان فعالیت / کار</b> را ارسال کنید (حداکثر ۲۰۰۰ کاراکتر):",
             reply_markup=get_back_cancel_keyboard(),
             parse_mode="HTML"
         )
@@ -157,6 +168,13 @@ async def ask_task_name(callback: CallbackQuery, state: FSMContext):
 @router.message(TimeTrackerCard.typing_name)
 async def set_task_name(message: Message, state: FSMContext, bot: Bot):
     name = (message.text or "").strip()
+    if not name:
+        await message.answer("❌ عنوان نمی‌تواند خالی باشد. لطفاً متنی وارد کنید:")
+        return
+    if len(name) > 2000:
+        await message.answer("❌ عنوان بسیار طولانی است (باید کمتر از ۲۰۰۰ کاراکتر باشد):")
+        return
+
     await state.update_data(name=name)
     await cleanup_prompt_messages(bot, message.chat.id, state, user_msg=message)
     await state.set_state(TimeTrackerCard.viewing_card)
@@ -261,7 +279,7 @@ async def process_custom_date(message: Message, state: FSMContext, bot: Bot):
     await state.set_state(TimeTrackerCard.viewing_card)
     await update_main_card(bot, message.chat.id, state)
 
-# --- Time Handlers ---
+# --- Time Handlers with Order Validation ---
 @router.callback_query(F.data.in_(["pick_start_time", "pick_end_time"]))
 async def pick_time_handler(callback: CallbackQuery):
     target = "start" if callback.data == "pick_start_time" else "end"
@@ -278,22 +296,30 @@ async def pick_time_handler(callback: CallbackQuery):
 async def set_time_preset_handler(callback: CallbackQuery, state: FSMContext):
     parts = (callback.data or "").split(":")
     target, time_val = parts[1], parts[2]
+    data = await state.get_data()
     
+    # Validation: Start must be before End
     if target == "start":
+        if data.get("end_time") and not is_time_order_valid(time_val, data.get("end_time")):
+            await callback.answer("⚠️ ساعت شروع باید قبل از ساعت پایان باشد!", show_alert=True)
+            return
         await state.update_data(start_time=time_val)
     else:
+        if data.get("start_time") and not is_time_order_valid(data.get("start_time"), time_val):
+            await callback.answer("⚠️ ساعت پایان باید بعد از ساعت شروع باشد!", show_alert=True)
+            return
         await state.update_data(end_time=time_val)
         
-    data = await state.get_data()
-    dur = calculate_duration(data.get("start_time"), data.get("end_time"))
+    updated_data = await state.get_data()
+    dur = calculate_duration(updated_data.get("start_time"), updated_data.get("end_time"))
     if dur > 0:
         await state.update_data(duration=dur)
-        data["duration"] = dur
+        updated_data["duration"] = dur
     
     if isinstance(callback.message, Message):
         await callback.message.edit_text(
-            render_card_text(data),
-            reply_markup=build_card_keyboard(data),
+            render_card_text(updated_data),
+            reply_markup=build_card_keyboard(updated_data),
             parse_mode="HTML"
         )
     await callback.answer()
@@ -319,7 +345,7 @@ async def process_custom_time(message: Message, state: FSMContext, bot: Bot):
     text = (message.text or "").strip()
     match = re.search(r"^(\d{1,2})[:.](\d{1,2})$", text)
     if not match:
-        await message.answer("❌ فرمت ساعت نامعتبر است. لطفاً مثل <code>22:27</code> یا <code>08:15</code> وارد کنید:", parse_mode="HTML")
+        await message.answer("❌ فرمت نامعتبر است. لطفاً مثل <code>22:27</code> یا <code>08:15</code> وارد کنید:", parse_mode="HTML")
         return
 
     h, m = int(match.group(1)), int(match.group(2))
@@ -331,9 +357,16 @@ async def process_custom_time(message: Message, state: FSMContext, bot: Bot):
     data = await state.get_data()
     target = data.get("custom_time_target", "start")
     
+    # Validation: Time Order
     if target == "start":
+        if data.get("end_time") and not is_time_order_valid(formatted_time, data.get("end_time")):
+            await message.answer("⚠️ ساعت شروع واردشده باید قبل از ساعت پایان باشد. لطفاً دوباره وارد کنید:")
+            return
         await state.update_data(start_time=formatted_time)
     else:
+        if data.get("start_time") and not is_time_order_valid(data.get("start_time"), formatted_time):
+            await message.answer("⚠️ ساعت پایان واردشده باید بعد از ساعت شروع باشد. لطفاً دوباره وارد کنید:")
+            return
         await state.update_data(end_time=formatted_time)
 
     updated_data = await state.get_data()
@@ -357,13 +390,13 @@ async def clear_times_handler(callback: CallbackQuery, state: FSMContext):
         )
     await callback.answer("ساعت‌های شروع و پایان پاک شدند.")
 
-# --- Manual Duration Handler ---
+# --- Manual Duration with Range Validation (1 to 1440 mins) ---
 @router.callback_query(F.data == "edit_duration")
 async def edit_duration_prompt(callback: CallbackQuery, state: FSMContext):
     await state.set_state(TimeTrackerCard.typing_custom_duration)
     if isinstance(callback.message, Message):
         prompt = await callback.message.answer(
-            "⏱ لطفاً <b>مدت زمان کار را به دقیقه</b> (مثلاً <code>45</code> یا <code>120</code>) وارد کنید:",
+            "⏱ لطفاً <b>مدت زمان کار را به دقیقه</b> وارد کنید (بین ۱ تا ۱۴۴۰ دقیقه / ۲۴ ساعت):",
             reply_markup=get_back_cancel_keyboard(),
             parse_mode="HTML"
         )
@@ -373,11 +406,16 @@ async def edit_duration_prompt(callback: CallbackQuery, state: FSMContext):
 @router.message(TimeTrackerCard.typing_custom_duration)
 async def process_custom_duration(message: Message, state: FSMContext, bot: Bot):
     text = (message.text or "").strip()
-    if not text.isdigit() or int(text) < 0:
-        await message.answer("❌ لطفاً یک عدد معتبر وارد کنید:")
+    if not text.isdigit():
+        await message.answer("❌ لطفاً فقط عدد وارد کنید (مثلاً <code>45</code>):", parse_mode="HTML")
         return
 
-    await state.update_data(duration=int(text))
+    dur_val = int(text)
+    if not (1 <= dur_val <= 1440):
+        await message.answer("❌ مدت زمان باید بین <b>۱ تا ۱۴۴۰ دقیقه</b> (حداکثر ۲۴ ساعت) باشد:", parse_mode="HTML")
+        return
+
+    await state.update_data(duration=dur_val)
     await cleanup_prompt_messages(bot, message.chat.id, state, user_msg=message)
     await state.set_state(TimeTrackerCard.viewing_card)
     await update_main_card(bot, message.chat.id, state)
@@ -418,13 +456,13 @@ async def clear_satisfaction_handler(callback: CallbackQuery, state: FSMContext)
         )
     await callback.answer("میزان رضایت پاک شد.")
 
-# --- Description Handlers ---
+# --- Description Handlers with Length Validation ---
 @router.callback_query(F.data == "edit_description")
 async def ask_description_handler(callback: CallbackQuery, state: FSMContext):
     await state.set_state(TimeTrackerCard.typing_description)
     if isinstance(callback.message, Message):
         prompt = await callback.message.answer(
-            "📝 لطفاً <b>توضیحات یا یادداشت‌های تکمیلی</b> را بفرستید:",
+            "📝 لطفاً <b>توضیحات یا یادداشت‌های تکمیلی</b> را بفرستید (حداکثر ۲۰۰۰ کاراکتر):",
             reply_markup=get_description_keyboard(),
             parse_mode="HTML"
         )
@@ -434,6 +472,10 @@ async def ask_description_handler(callback: CallbackQuery, state: FSMContext):
 @router.message(TimeTrackerCard.typing_description)
 async def set_description_handler(message: Message, state: FSMContext, bot: Bot):
     desc = (message.text or "").strip()
+    if len(desc) > 2000:
+        await message.answer("❌ متن توضیحات بیش از حد طولانی است (باید کمتر از ۲۰۰۰ کاراکتر باشد):")
+        return
+
     await state.update_data(description=desc)
     await cleanup_prompt_messages(bot, message.chat.id, state, user_msg=message)
     await state.set_state(TimeTrackerCard.viewing_card)
@@ -449,7 +491,7 @@ async def clear_description_handler(callback: CallbackQuery, state: FSMContext, 
         await update_main_card(bot, callback.message.chat.id, state)
     await callback.answer("توضیحات پاک شد.")
 
-# --- Card Submission & Cancellation ---
+# --- Card Submission & Final Validation ---
 @router.callback_query(F.data == "cancel_card")
 async def cancel_card_handler(callback: CallbackQuery, state: FSMContext):
     await state.clear()
@@ -466,6 +508,12 @@ async def submit_card_handler(callback: CallbackQuery, state: FSMContext):
         await callback.answer("⚠️ لطفاً ابتدا عنوان فعالیت را وارد کنید!", show_alert=True)
         return
         
+    start_str = data.get("start_time")
+    end_str = data.get("end_time")
+    if start_str and end_str and not is_time_order_valid(start_str, end_str):
+        await callback.answer("⚠️ ساعت شروع باید قبل از ساعت پایان باشد!", show_alert=True)
+        return
+
     await state.clear()
     if isinstance(callback.message, Message):
         await callback.message.edit_text("⏳ در حال ثبت اطلاعات در نوشن...")
@@ -473,9 +521,6 @@ async def submit_card_handler(callback: CallbackQuery, state: FSMContext):
         try:
             tz = timezone(timedelta(hours=3, minutes=30))
             date_iso = data.get("date_iso") or date.today().isoformat()
-            
-            start_str = data.get("start_time")
-            end_str = data.get("end_time")
             
             if start_str and end_str:
                 start_dt = datetime.strptime(f"{date_iso} {start_str}", "%Y-%m-%d %H:%M").replace(tzinfo=tz)
