@@ -25,35 +25,6 @@ def is_user_allowed(user_id: int | None) -> bool:
         return True
     return user_id in ALLOWED_USERS if user_id else False
 
-def render_card_text(data: dict) -> str:
-    name = data.get("name") or "وارد نشده ❌"
-    person = data.get("person_name") or "تعیین نشده"
-    d_label = data.get("date_label", "امروز")
-    start = data.get("start_time") or "—"
-    end = data.get("end_time") or "—"
-    duration = data.get("duration", 0)
-    
-    sat = data.get("satisfaction")
-    if sat:
-        sat_emoji = SATISFACTION_EMOJIS.get(sat, "⭐")
-        sat_text = f"{sat_emoji} {sat}"
-    else:
-        sat_text = "تعیین نشده (اختیاری)"
-        
-    desc = data.get("description") or "—"
-
-    return (
-        "📋 <b>فرم پیش‌نویس ثبت زمان کاری</b>\n\n"
-        f"📌 <b>عنوان کار:</b> {name}\n"
-        f"👤 <b>انجام‌دهنده:</b> {person}\n"
-        f"📅 <b>تاریخ:</b> {d_label}\n"
-        f"⏰ <b>بازه زمانی:</b> از <code>{start}</code> تا <code>{end}</code>\n"
-        f"⏱ <b>مدت زمان:</b> {duration} دقیقه\n"
-        f"⭐ <b>میزان رضایت:</b> {sat_text}\n"
-        f"📝 <b>توضیحات:</b> {desc}\n\n"
-        "👇 <i>با دکمه‌های زیر فیلدها را تنظیم کنید و در نهایت دکمه ثبت را بزنید:</i>"
-    )
-
 def is_time_order_valid(start_time: str | None, end_time: str | None) -> bool:
     if not start_time or not end_time:
         return True
@@ -76,6 +47,44 @@ def calculate_duration(start_time: str | None, end_time: str | None) -> int:
         return int(diff) if diff > 0 else 0
     except Exception:
         return 0
+
+def render_card_text(data: dict) -> str:
+    name = data.get("name") or "وارد نشده ❌"
+    person = data.get("person_name") or "تعیین نشده"
+    d_label = data.get("date_label", "امروز")
+    start = data.get("start_time") or "—"
+    end = data.get("end_time") or "—"
+    duration = data.get("duration", 0)
+    
+    # Duration display logic
+    if data.get("start_time") and data.get("end_time"):
+        if not is_time_order_valid(data.get("start_time"), data.get("end_time")):
+            dur_text = "⚠️ نامعتبر (شروع بعد از پایان است)"
+        else:
+            dur_text = f"{duration} دقیقه"
+    else:
+        dur_text = f"{duration} دقیقه (دستی)" if duration > 0 else "—"
+
+    sat = data.get("satisfaction")
+    if sat:
+        sat_emoji = SATISFACTION_EMOJIS.get(sat, "⭐")
+        sat_text = f"{sat_emoji} {sat}"
+    else:
+        sat_text = "تعیین نشده (اختیاری)"
+        
+    desc = data.get("description") or "—"
+
+    return (
+        "📋 <b>فرم پیش‌نویس ثبت زمان کاری</b>\n\n"
+        f"📌 <b>عنوان کار:</b> {name}\n"
+        f"👤 <b>انجام‌دهنده:</b> {person}\n"
+        f"📅 <b>تاریخ:</b> {d_label}\n"
+        f"⏰ <b>بازه زمانی:</b> از <code>{start}</code> تا <code>{end}</code>\n"
+        f"⏱ <b>مدت زمان:</b> {dur_text}\n"
+        f"⭐ <b>میزان رضایت:</b> {sat_text}\n"
+        f"📝 <b>توضیحات:</b> {desc}\n\n"
+        "👇 <i>با دکمه‌های زیر فیلدها را تنظیم کنید و در نهایت دکمه ثبت را بزنید:</i>"
+    )
 
 async def cleanup_prompt_messages(bot: Bot, chat_id: int, state: FSMContext, user_msg: Message | None = None):
     data = await state.get_data()
@@ -276,7 +285,7 @@ async def process_custom_date(message: Message, state: FSMContext, bot: Bot):
     await state.set_state(TimeTrackerCard.viewing_card)
     await update_main_card(bot, message.chat.id, state)
 
-# --- Time Handlers (Smart Conflict Resolution) ---
+# --- Time Handlers (Pure independent selection without clearing) ---
 @router.callback_query(F.data.in_(["pick_start_time", "pick_end_time"]))
 async def pick_time_handler(callback: CallbackQuery):
     target = "start" if callback.data == "pick_start_time" else "end"
@@ -293,28 +302,22 @@ async def pick_time_handler(callback: CallbackQuery):
 async def set_time_preset_handler(callback: CallbackQuery, state: FSMContext):
     parts = (callback.data or "").split(":")
     target, time_val = parts[1], parts[2]
-    data = await state.get_data()
     
     if target == "start":
         await state.update_data(start_time=time_val)
-        # If existing end_time is now before or equal to new start_time, reset end_time
-        if data.get("end_time") and not is_time_order_valid(time_val, data.get("end_time")):
-            await state.update_data(end_time=None)
     else:
         await state.update_data(end_time=time_val)
-        # If existing start_time is now after or equal to new end_time, reset start_time
-        if data.get("start_time") and not is_time_order_valid(data.get("start_time"), time_val):
-            await state.update_data(start_time=None)
         
-    updated_data = await state.get_data()
-    dur = calculate_duration(updated_data.get("start_time"), updated_data.get("end_time"))
-    await state.update_data(duration=dur)
-    updated_data["duration"] = dur
+    data = await state.get_data()
+    dur = calculate_duration(data.get("start_time"), data.get("end_time"))
+    if dur > 0:
+        await state.update_data(duration=dur)
+        data["duration"] = dur
     
     if isinstance(callback.message, Message):
         await callback.message.edit_text(
-            render_card_text(updated_data),
-            reply_markup=build_card_keyboard(updated_data),
+            render_card_text(data),
+            reply_markup=build_card_keyboard(data),
             parse_mode="HTML"
         )
     await callback.answer()
@@ -354,16 +357,13 @@ async def process_custom_time(message: Message, state: FSMContext, bot: Bot):
     
     if target == "start":
         await state.update_data(start_time=formatted_time)
-        if data.get("end_time") and not is_time_order_valid(formatted_time, data.get("end_time")):
-            await state.update_data(end_time=None)
     else:
         await state.update_data(end_time=formatted_time)
-        if data.get("start_time") and not is_time_order_valid(data.get("start_time"), formatted_time):
-            await state.update_data(start_time=None)
 
     updated_data = await state.get_data()
     dur = calculate_duration(updated_data.get("start_time"), updated_data.get("end_time"))
-    await state.update_data(duration=dur)
+    if dur > 0:
+        await state.update_data(duration=dur)
 
     await cleanup_prompt_messages(bot, message.chat.id, state, user_msg=message)
     await state.set_state(TimeTrackerCard.viewing_card)
@@ -501,6 +501,8 @@ async def submit_card_handler(callback: CallbackQuery, state: FSMContext):
         
     start_str = data.get("start_time")
     end_str = data.get("end_time")
+    
+    # Final check before sending to Notion
     if start_str and end_str and not is_time_order_valid(start_str, end_str):
         await callback.answer("⚠️ ساعت شروع باید قبل از ساعت پایان باشد!", show_alert=True)
         return
