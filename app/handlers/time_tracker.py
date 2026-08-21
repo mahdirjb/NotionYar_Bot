@@ -219,7 +219,7 @@ async def clear_person_handler(callback: CallbackQuery, state: FSMContext):
         )
     await callback.answer("انجام‌دهنده پاک شد.")
 
-# --- Date Handlers with Jalali Support ---
+# --- Date Handlers ---
 @router.callback_query(F.data == "pick_date")
 async def pick_date_handler(callback: CallbackQuery):
     if isinstance(callback.message, Message):
@@ -276,7 +276,7 @@ async def process_custom_date(message: Message, state: FSMContext, bot: Bot):
     await state.set_state(TimeTrackerCard.viewing_card)
     await update_main_card(bot, message.chat.id, state)
 
-# --- Time Handlers ---
+# --- Time Handlers (Smart Conflict Resolution) ---
 @router.callback_query(F.data.in_(["pick_start_time", "pick_end_time"]))
 async def pick_time_handler(callback: CallbackQuery):
     target = "start" if callback.data == "pick_start_time" else "end"
@@ -296,21 +296,20 @@ async def set_time_preset_handler(callback: CallbackQuery, state: FSMContext):
     data = await state.get_data()
     
     if target == "start":
-        if data.get("end_time") and not is_time_order_valid(time_val, data.get("end_time")):
-            await callback.answer("⚠️ ساعت شروع باید قبل از ساعت پایان باشد!", show_alert=True)
-            return
         await state.update_data(start_time=time_val)
+        # If existing end_time is now before or equal to new start_time, reset end_time
+        if data.get("end_time") and not is_time_order_valid(time_val, data.get("end_time")):
+            await state.update_data(end_time=None)
     else:
-        if data.get("start_time") and not is_time_order_valid(data.get("start_time"), time_val):
-            await callback.answer("⚠️ ساعت پایان باید بعد از ساعت شروع باشد!", show_alert=True)
-            return
         await state.update_data(end_time=time_val)
+        # If existing start_time is now after or equal to new end_time, reset start_time
+        if data.get("start_time") and not is_time_order_valid(data.get("start_time"), time_val):
+            await state.update_data(start_time=None)
         
     updated_data = await state.get_data()
     dur = calculate_duration(updated_data.get("start_time"), updated_data.get("end_time"))
-    if dur > 0:
-        await state.update_data(duration=dur)
-        updated_data["duration"] = dur
+    await state.update_data(duration=dur)
+    updated_data["duration"] = dur
     
     if isinstance(callback.message, Message):
         await callback.message.edit_text(
@@ -354,20 +353,17 @@ async def process_custom_time(message: Message, state: FSMContext, bot: Bot):
     target = data.get("custom_time_target", "start")
     
     if target == "start":
-        if data.get("end_time") and not is_time_order_valid(formatted_time, data.get("end_time")):
-            await message.answer("⚠️ ساعت شروع واردشده باید قبل از ساعت پایان باشد. لطفاً دوباره وارد کنید:")
-            return
         await state.update_data(start_time=formatted_time)
+        if data.get("end_time") and not is_time_order_valid(formatted_time, data.get("end_time")):
+            await state.update_data(end_time=None)
     else:
-        if data.get("start_time") and not is_time_order_valid(data.get("start_time"), formatted_time):
-            await message.answer("⚠️ ساعت پایان واردشده باید بعد از ساعت شروع باشد. لطفاً دوباره وارد کنید:")
-            return
         await state.update_data(end_time=formatted_time)
+        if data.get("start_time") and not is_time_order_valid(data.get("start_time"), formatted_time):
+            await state.update_data(start_time=None)
 
     updated_data = await state.get_data()
     dur = calculate_duration(updated_data.get("start_time"), updated_data.get("end_time"))
-    if dur > 0:
-        await state.update_data(duration=dur)
+    await state.update_data(duration=dur)
 
     await cleanup_prompt_messages(bot, message.chat.id, state, user_msg=message)
     await state.set_state(TimeTrackerCard.viewing_card)
@@ -375,7 +371,7 @@ async def process_custom_time(message: Message, state: FSMContext, bot: Bot):
 
 @router.callback_query(F.data == "clear_times")
 async def clear_times_handler(callback: CallbackQuery, state: FSMContext):
-    await state.update_data(start_time=None, end_time=None)
+    await state.update_data(start_time=None, end_time=None, duration=0)
     data = await state.get_data()
     if isinstance(callback.message, Message):
         await callback.message.edit_text(
