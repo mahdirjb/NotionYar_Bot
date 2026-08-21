@@ -45,28 +45,18 @@ def is_time_order_valid(start_time: str | None, end_time: str | None) -> bool:
         return t2 > t1
     return True
 
-def calculate_duration(start_time: str | None, end_time: str | None) -> int:
-    if not start_time or not end_time:
-        return 0
-    t1 = parse_time_str(start_time)
-    t2 = parse_time_str(end_time)
-    if t1 and t2:
-        diff = (t2 - t1).total_seconds() / 60
-        return int(diff) if diff > 0 else 0
-    return 0
-
 def render_card_text(data: dict) -> str:
     name = data.get("name") or "وارد نشده ❌"
     person = data.get("person_name") or "تعیین نشده"
     d_label = data.get("date_label", "امروز")
     start = data.get("start_time") or "—"
     end = data.get("end_time") or "—"
-    duration = data.get("duration", 0)
     
-    if data.get("start_time") and data.get("end_time"):
-        dur_text = f"{duration} دقیقه"
+    manual_dur = data.get("manual_duration")
+    if manual_dur is not None:
+        dur_text = f"{manual_dur} دقیقه (دستی)"
     else:
-        dur_text = f"{duration} دقیقه (دستی)" if duration > 0 else "—"
+        dur_text = "تعیین نشده (خودکار از ساعت)" if (data.get("start_time") and data.get("end_time")) else "—"
 
     sat = data.get("satisfaction")
     if sat:
@@ -83,25 +73,47 @@ def render_card_text(data: dict) -> str:
         f"👤 <b>انجام‌دهنده:</b> {person}\n"
         f"📅 <b>تاریخ:</b> {d_label}\n"
         f"⏰ <b>بازه زمانی:</b> از <code>{start}</code> تا <code>{end}</code>\n"
-        f"⏱ <b>مدت زمان:</b> {dur_text}\n"
+        f"⏱ <b>مدت زمان دستی (MDuration):</b> {dur_text}\n"
         f"⭐ <b>میزان رضایت:</b> {sat_text}\n"
         f"📝 <b>توضیحات:</b> {desc}\n\n"
         "👇 <i>با دکمه‌های زیر فیلدها را تنظیم کنید و در نهایت دکمه ثبت را بزنید:</i>"
     )
 
 async def cleanup_prompt_messages(bot: Bot, chat_id: int, state: FSMContext, user_msg: Message | None = None):
+    """
+    Deletes prompt message, all intermediate error messages, and user's inputs.
+    """
     data = await state.get_data()
+    
+    # 1. Delete initial prompt
     prompt_id = data.get("last_prompt_id")
     if prompt_id:
         try:
             await bot.delete_message(chat_id=chat_id, message_id=prompt_id)
         except Exception:
             pass
+
+    # 2. Delete all intermediate error messages
+    error_ids = data.get("error_msg_ids", [])
+    for em_id in error_ids:
+        try:
+            await bot.delete_message(chat_id=chat_id, message_id=em_id)
+        except Exception:
+            pass
+    await state.update_data(error_msg_ids=[])
+
+    # 3. Delete user message
     if user_msg:
         try:
             await user_msg.delete()
         except Exception:
             pass
+
+async def register_error_message(state: FSMContext, error_msg: Message):
+    data = await state.get_data()
+    err_list = data.get("error_msg_ids", [])
+    err_list.append(error_msg.message_id)
+    await state.update_data(error_msg_ids=err_list)
 
 async def update_main_card(bot: Bot, chat_id: int, state: FSMContext):
     data = await state.get_data()
@@ -135,9 +147,10 @@ async def start_card_from_menu(message: Message, state: FSMContext):
         "date_label": f"امروز ({j_today})",
         "start_time": None,
         "end_time": None,
-        "duration": 0,
+        "manual_duration": None,
         "satisfaction": None,
-        "description": ""
+        "description": "",
+        "error_msg_ids": []
     }
     
     card_msg = await message.answer(
@@ -179,10 +192,12 @@ async def ask_task_name(callback: CallbackQuery, state: FSMContext):
 async def set_task_name(message: Message, state: FSMContext, bot: Bot):
     name = (message.text or "").strip()
     if not name:
-        await message.answer("❌ عنوان نمی‌تواند خالی باشد. لطفاً متنی وارد کنید:")
+        err = await message.answer("❌ عنوان نمی‌تواند خالی باشد. لطفاً متنی وارد کنید:")
+        await register_error_message(state, err)
         return
     if len(name) > 2000:
-        await message.answer("❌ عنوان بسیار طولانی است (باید کمتر از ۲۰۰۰ کاراکتر باشد):")
+        err = await message.answer("❌ عنوان بسیار طولانی است (باید کمتر از ۲۰۰۰ کاراکتر باشد):")
+        await register_error_message(state, err)
         return
 
     await state.update_data(name=name)
@@ -276,10 +291,11 @@ async def process_custom_date(message: Message, state: FSMContext, bot: Bot):
     text = message.text or ""
     parsed = parse_user_date_input(text)
     if not parsed:
-        await message.answer(
+        err = await message.answer(
             "❌ تاریخ نامعتبر است. لطفاً تاریخ شمسی مثل <code>1405/05/25</code> وارد کنید:",
             parse_mode="HTML"
         )
+        await register_error_message(state, err)
         return
 
     g_iso, j_str = parsed
@@ -288,7 +304,7 @@ async def process_custom_date(message: Message, state: FSMContext, bot: Bot):
     await state.set_state(TimeTrackerCard.viewing_card)
     await update_main_card(bot, message.chat.id, state)
 
-# --- Time Handlers (Fixed Maxsplit & Robust Parsing) ---
+# --- Time Handlers ---
 @router.callback_query(F.data.in_(["pick_start_time", "pick_end_time"]))
 async def pick_time_handler(callback: CallbackQuery):
     target = "start" if callback.data == "pick_start_time" else "end"
@@ -303,7 +319,6 @@ async def pick_time_handler(callback: CallbackQuery):
 
 @router.callback_query(F.data.startswith("set_time:"))
 async def set_time_preset_handler(callback: CallbackQuery, state: FSMContext):
-    # Use maxsplit=2 to keep HH:MM intact!
     parts = (callback.data or "").split(":", 2)
     target, time_val = parts[1], parts[2]
     data = await state.get_data()
@@ -328,11 +343,6 @@ async def set_time_preset_handler(callback: CallbackQuery, state: FSMContext):
         await state.update_data(end_time=time_val)
         
     updated_data = await state.get_data()
-    dur = calculate_duration(updated_data.get("start_time"), updated_data.get("end_time"))
-    if dur > 0:
-        await state.update_data(duration=dur)
-        updated_data["duration"] = dur
-    
     if isinstance(callback.message, Message):
         await callback.message.edit_text(
             render_card_text(updated_data),
@@ -360,16 +370,17 @@ async def enter_custom_time_prompt(callback: CallbackQuery, state: FSMContext):
 @router.message(TimeTrackerCard.typing_custom_time)
 async def process_custom_time(message: Message, state: FSMContext, bot: Bot):
     text = (message.text or "").strip()
-    # Supports both "22:30" and single number "22"
     match = re.search(r"^(\d{1,2})(?:[:.](\d{1,2}))?$", text)
     if not match:
-        await message.answer("❌ فرمت نامعتبر است. لطفاً مثل <code>22:27</code> یا <code>22</code> وارد کنید:", parse_mode="HTML")
+        err = await message.answer("❌ فرمت نامعتبر است. لطفاً مثل <code>22:27</code> یا <code>22</code> وارد کنید:", parse_mode="HTML")
+        await register_error_message(state, err)
         return
 
     h = int(match.group(1))
     m = int(match.group(2)) if match.group(2) is not None else 0
     if not (0 <= h <= 23 and 0 <= m <= 59):
-        await message.answer("❌ ساعت یا دقیقه خارج از محدوده مجاز است.", parse_mode="HTML")
+        err = await message.answer("❌ ساعت یا دقیقه خارج از محدوده مجاز است.", parse_mode="HTML")
+        await register_error_message(state, err)
         return
 
     formatted_time = f"{h:02d}:{m:02d}"
@@ -379,30 +390,27 @@ async def process_custom_time(message: Message, state: FSMContext, bot: Bot):
     if target == "start":
         existing_end = data.get("end_time")
         if existing_end and not is_time_order_valid(formatted_time, existing_end):
-            await message.answer(
+            err = await message.answer(
                 f"⚠️ ساعت شروع (<code>{formatted_time}</code>) نمی‌تواند بعد از ساعت پایان فعلی (<code>{existing_end}</code>) باشد.\n"
                 "لطفاً یک ساعت قبل از آن وارد کنید:",
                 reply_markup=get_back_cancel_keyboard(),
                 parse_mode="HTML"
             )
+            await register_error_message(state, err)
             return
         await state.update_data(start_time=formatted_time)
     else:
         existing_start = data.get("start_time")
         if existing_start and not is_time_order_valid(existing_start, formatted_time):
-            await message.answer(
+            err = await message.answer(
                 f"⚠️ ساعت پایان (<code>{formatted_time}</code>) نمی‌تواند قبل از ساعت شروع فعلی (<code>{existing_start}</code>) باشد.\n"
                 "لطفاً یک ساعت بعد از آن وارد کنید:",
                 reply_markup=get_back_cancel_keyboard(),
                 parse_mode="HTML"
             )
+            await register_error_message(state, err)
             return
         await state.update_data(end_time=formatted_time)
-
-    updated_data = await state.get_data()
-    dur = calculate_duration(updated_data.get("start_time"), updated_data.get("end_time"))
-    if dur > 0:
-        await state.update_data(duration=dur)
 
     await cleanup_prompt_messages(bot, message.chat.id, state, user_msg=message)
     await state.set_state(TimeTrackerCard.viewing_card)
@@ -410,7 +418,7 @@ async def process_custom_time(message: Message, state: FSMContext, bot: Bot):
 
 @router.callback_query(F.data == "clear_times")
 async def clear_times_handler(callback: CallbackQuery, state: FSMContext):
-    await state.update_data(start_time=None, end_time=None, duration=0)
+    await state.update_data(start_time=None, end_time=None)
     data = await state.get_data()
     if isinstance(callback.message, Message):
         await callback.message.edit_text(
@@ -420,13 +428,13 @@ async def clear_times_handler(callback: CallbackQuery, state: FSMContext):
         )
     await callback.answer("ساعت‌های شروع و پایان پاک شدند.")
 
-# --- Manual Duration ---
+# --- Manual Duration Handler (Supports 0 and Cleans Errors) ---
 @router.callback_query(F.data == "edit_duration")
 async def edit_duration_prompt(callback: CallbackQuery, state: FSMContext):
     await state.set_state(TimeTrackerCard.typing_custom_duration)
     if isinstance(callback.message, Message):
         prompt = await callback.message.answer(
-            "⏱ لطفاً <b>مدت زمان کار را به دقیقه</b> وارد کنید (بین ۱ تا ۱۴۴۰ دقیقه / ۲۴ ساعت):",
+            "⏱ لطفاً <b>مدت زمان کار را به دقیقه</b> وارد کنید (بین ۰ تا ۱۴۴۰ دقیقه):",
             reply_markup=get_back_cancel_keyboard(),
             parse_mode="HTML"
         )
@@ -437,15 +445,18 @@ async def edit_duration_prompt(callback: CallbackQuery, state: FSMContext):
 async def process_custom_duration(message: Message, state: FSMContext, bot: Bot):
     text = (message.text or "").strip()
     if not text.isdigit():
-        await message.answer("❌ لطفاً فقط عدد وارد کنید (مثلاً <code>45</code>):", parse_mode="HTML")
+        err = await message.answer("❌ لطفاً فقط عدد وارد کنید (مثلاً <code>45</code> یا <code>0</code>):", parse_mode="HTML")
+        await register_error_message(state, err)
         return
 
     dur_val = int(text)
-    if not (1 <= dur_val <= 1440):
-        await message.answer("❌ مدت زمان باید بین <b>۱ تا ۱۴۴۰ دقیقه</b> (حداکثر ۲۴ ساعت) باشد:", parse_mode="HTML")
+    # Allows 0 minutes!
+    if not (0 <= dur_val <= 1440):
+        err = await message.answer("❌ مدت زمان باید بین <b>۰ تا ۱۴۴۰ دقیقه</b> باشد:", parse_mode="HTML")
+        await register_error_message(state, err)
         return
 
-    await state.update_data(duration=dur_val)
+    await state.update_data(manual_duration=dur_val)
     await cleanup_prompt_messages(bot, message.chat.id, state, user_msg=message)
     await state.set_state(TimeTrackerCard.viewing_card)
     await update_main_card(bot, message.chat.id, state)
@@ -503,7 +514,8 @@ async def ask_description_handler(callback: CallbackQuery, state: FSMContext):
 async def set_description_handler(message: Message, state: FSMContext, bot: Bot):
     desc = (message.text or "").strip()
     if len(desc) > 2000:
-        await message.answer("❌ متن توضیحات بیش از حد طولانی است (باید کمتر از ۲۰۰۰ کاراکتر باشد):")
+        err = await message.answer("❌ متن توضیحات بیش از حد طولانی است (باید کمتر از ۲۰۰۰ کاراکتر باشد):")
+        await register_error_message(state, err)
         return
 
     await state.update_data(description=desc)
@@ -521,7 +533,7 @@ async def clear_description_handler(callback: CallbackQuery, state: FSMContext, 
         await update_main_card(bot, callback.message.chat.id, state)
     await callback.answer("توضیحات پاک شد.")
 
-# --- Card Submission & Final Validation ---
+# --- Card Submission ---
 @router.callback_query(F.data == "cancel_card")
 async def cancel_card_handler(callback: CallbackQuery, state: FSMContext):
     await state.clear()
@@ -566,11 +578,13 @@ async def submit_card_handler(callback: CallbackQuery, state: FSMContext):
                 end_payload = None
             
             sat = data.get("satisfaction")
+            manual_dur = data.get("manual_duration")
+            
             res = add_time_tracker_entry(
                 name=name,
                 start_date_str=start_payload,
                 end_date_str=end_payload,
-                duration=data.get("duration", 0),
+                duration=manual_dur,
                 satisfaction=sat,
                 person_id=data.get("person_id"),
                 description=data.get("description", "")
@@ -578,13 +592,14 @@ async def submit_card_handler(callback: CallbackQuery, state: FSMContext):
             
             page_url = res.get("url", "#") if isinstance(res, dict) else "#"
             sat_text = f"{SATISFACTION_EMOJIS.get(sat, '⭐')} {sat}" if sat else "تعیین نشده"
+            dur_display = f"{manual_dur} دقیقه" if manual_dur is not None else "محاسبه خودکار در نوشن"
             
             success_text = (
                 "✅ <b>زمان کاری با موفقیت در نوشن ثبت شد!</b>\n\n"
                 f"📌 <b>عنوان:</b> {name}\n"
                 f"👤 <b>انجام‌دهنده:</b> {data.get('person_name', 'تعیین نشده')}\n"
                 f"📅 <b>تاریخ:</b> {data.get('date_label')}\n"
-                f"⏱ <b>مدت زمان:</b> {data.get('duration', 0)} دقیقه\n"
+                f"⏱ <b>مدت زمان دستی:</b> {dur_display}\n"
                 f"⭐ <b>میزان رضایت:</b> {sat_text}\n\n"
                 f'<a href="{page_url}">🔗 مشاهده در نوشن</a>'
             )
