@@ -17,8 +17,11 @@ def build_card_keyboard(data: Dict[str, Any]) -> InlineKeyboardMarkup:
     start_label = "⏰ شروع: " + (data.get("start_time") or "—")
     end_label = "⏰ پایان: " + (data.get("end_time") or "—")
     
-    dur = data.get("duration", 0)
-    dur_label = f"⏱ مدت: {dur} دقیقه"
+    manual_dur = data.get("manual_duration")
+    if manual_dur is not None:
+        dur_label = f"⏱ مدت: {manual_dur} دقیقه"
+    else:
+        dur_label = "⏱ مدت: تعیین نشده"
     
     sat = data.get("satisfaction")
     if sat:
@@ -27,7 +30,7 @@ def build_card_keyboard(data: Dict[str, Any]) -> InlineKeyboardMarkup:
     else:
         sat_label = "⭐ رضایت: تعیین نشده"
         
-    desc_label = "📝 توضیحات: " + ("ثبت شده ✅" if data.get("description") else "اختیاری")
+    desc_label = "📝 توضیحات: " + ("ثبت شده ✅" if data.get("description") else "—")
 
     buttons = [
         [InlineKeyboardButton(text=name_label, callback_data="edit_name")],
@@ -93,6 +96,13 @@ def get_satisfaction_keyboard() -> InlineKeyboardMarkup:
         buttons.append([InlineKeyboardButton(text=f"{emoji} {opt}", callback_data=f"set_sat:{opt}")])
     buttons.append([InlineKeyboardButton(text="🗑 بدون انتخاب (حذف رضایت)", callback_data="clear_sat")])
     buttons.append([InlineKeyboardButton(text="🔙 بازگشت به فرم", callback_data="back_to_card")])
+    return InlineKeyboardMarkup(inline_keyboard=buttons)
+
+def get_duration_keyboard() -> InlineKeyboardMarkup:
+    buttons = [
+        [InlineKeyboardButton(text="🗑 پاک کردن مدت زمان", callback_data="clear_duration")],
+        [InlineKeyboardButton(text="🔙 انصراف و بازگشت", callback_data="back_to_card")]
+    ]
     return InlineKeyboardMarkup(inline_keyboard=buttons)
 
 def get_description_keyboard() -> InlineKeyboardMarkup:
