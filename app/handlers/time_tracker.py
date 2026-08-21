@@ -25,28 +25,35 @@ def is_user_allowed(user_id: int | None) -> bool:
         return True
     return user_id in ALLOWED_USERS if user_id else False
 
+def parse_time_str(time_str: str | None) -> datetime | None:
+    if not time_str:
+        return None
+    time_str = time_str.strip()
+    for fmt in ("%H:%M", "%H"):
+        try:
+            return datetime.strptime(time_str, fmt)
+        except ValueError:
+            pass
+    return None
+
 def is_time_order_valid(start_time: str | None, end_time: str | None) -> bool:
     if not start_time or not end_time:
         return True
-    fmt = "%H:%M"
-    try:
-        t1 = datetime.strptime(start_time, fmt)
-        t2 = datetime.strptime(end_time, fmt)
+    t1 = parse_time_str(start_time)
+    t2 = parse_time_str(end_time)
+    if t1 and t2:
         return t2 > t1
-    except Exception:
-        return False
+    return True
 
 def calculate_duration(start_time: str | None, end_time: str | None) -> int:
     if not start_time or not end_time:
         return 0
-    try:
-        fmt = "%H:%M"
-        t1 = datetime.strptime(start_time, fmt)
-        t2 = datetime.strptime(end_time, fmt)
+    t1 = parse_time_str(start_time)
+    t2 = parse_time_str(end_time)
+    if t1 and t2:
         diff = (t2 - t1).total_seconds() / 60
         return int(diff) if diff > 0 else 0
-    except Exception:
-        return 0
+    return 0
 
 def render_card_text(data: dict) -> str:
     name = data.get("name") or "وارد نشده ❌"
@@ -281,7 +288,7 @@ async def process_custom_date(message: Message, state: FSMContext, bot: Bot):
     await state.set_state(TimeTrackerCard.viewing_card)
     await update_main_card(bot, message.chat.id, state)
 
-# --- Time Handlers (Immediate Alerts for Invalids) ---
+# --- Time Handlers (Fixed Maxsplit & Robust Parsing) ---
 @router.callback_query(F.data.in_(["pick_start_time", "pick_end_time"]))
 async def pick_time_handler(callback: CallbackQuery):
     target = "start" if callback.data == "pick_start_time" else "end"
@@ -296,11 +303,11 @@ async def pick_time_handler(callback: CallbackQuery):
 
 @router.callback_query(F.data.startswith("set_time:"))
 async def set_time_preset_handler(callback: CallbackQuery, state: FSMContext):
-    parts = (callback.data or "").split(":")
+    # Use maxsplit=2 to keep HH:MM intact!
+    parts = (callback.data or "").split(":", 2)
     target, time_val = parts[1], parts[2]
     data = await state.get_data()
     
-    # Immediate Alert Validation for Preset Clicks
     if target == "start":
         existing_end = data.get("end_time")
         if existing_end and not is_time_order_valid(time_val, existing_end):
@@ -343,7 +350,7 @@ async def enter_custom_time_prompt(callback: CallbackQuery, state: FSMContext):
     target_name = "شروع" if target == "start" else "پایان"
     if isinstance(callback.message, Message):
         prompt = await callback.message.answer(
-            f"⏰ ساعت <b>{target_name}</b> را به صورت <code>HH:MM</code> (مثلاً <code>22:27</code>) ارسال کنید:",
+            f"⏰ ساعت <b>{target_name}</b> را ارسال کنید (مثلاً <code>22:27</code> یا <code>22</code>):",
             reply_markup=get_back_cancel_keyboard(),
             parse_mode="HTML"
         )
@@ -353,12 +360,14 @@ async def enter_custom_time_prompt(callback: CallbackQuery, state: FSMContext):
 @router.message(TimeTrackerCard.typing_custom_time)
 async def process_custom_time(message: Message, state: FSMContext, bot: Bot):
     text = (message.text or "").strip()
-    match = re.search(r"^(\d{1,2})[:.](\d{1,2})$", text)
+    # Supports both "22:30" and single number "22"
+    match = re.search(r"^(\d{1,2})(?:[:.](\d{1,2}))?$", text)
     if not match:
-        await message.answer("❌ فرمت نامعتبر است. لطفاً مثل <code>22:27</code> یا <code>08:15</code> وارد کنید:", parse_mode="HTML")
+        await message.answer("❌ فرمت نامعتبر است. لطفاً مثل <code>22:27</code> یا <code>22</code> وارد کنید:", parse_mode="HTML")
         return
 
-    h, m = int(match.group(1)), int(match.group(2))
+    h = int(match.group(1))
+    m = int(match.group(2)) if match.group(2) is not None else 0
     if not (0 <= h <= 23 and 0 <= m <= 59):
         await message.answer("❌ ساعت یا دقیقه خارج از محدوده مجاز است.", parse_mode="HTML")
         return
@@ -367,7 +376,6 @@ async def process_custom_time(message: Message, state: FSMContext, bot: Bot):
     data = await state.get_data()
     target = data.get("custom_time_target", "start")
     
-    # Immediate Clear Feedback for Typed Times
     if target == "start":
         existing_end = data.get("end_time")
         if existing_end and not is_time_order_valid(formatted_time, existing_end):
