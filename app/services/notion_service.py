@@ -1,5 +1,5 @@
 from datetime import datetime, timezone, timedelta
-from typing import List, Dict, Any, Optional
+from typing import List, Dict, Any, Optional, cast
 from notion_client import Client
 from app.config import NOTION_TOKEN, NOTION_DBID_TIME_TRACKER
 
@@ -7,13 +7,10 @@ notion = Client(auth=NOTION_TOKEN)
 
 def get_workspace_persons() -> List[Dict[str, str]]:
     """
-    Dynamically fetches all persons:
-    1. Workspace members via users.list()
-    2. Guests / assignees from database rows via data_sources.query()
+    Dynamically fetches all persons: workspace members and database assignees.
     """
     found_people: Dict[str, str] = {}
 
-    # 1. Fetch workspace members
     try:
         user_res = notion.users.list()
         if isinstance(user_res, dict):
@@ -23,9 +20,14 @@ def get_workspace_persons() -> List[Dict[str, str]]:
     except Exception as e:
         print(f"Error fetching workspace members: {e}")
 
-    # 2. Fetch database guests / assigned persons from recent rows
     try:
-        db_info = notion.databases.retrieve(database_id=NOTION_DBID_TIME_TRACKER)
+        if not NOTION_DBID_TIME_TRACKER:
+            raise ValueError("NOTION_DBID_TIME_TRACKER is not defined in environment variables.")
+
+        db_info = cast(
+            Dict[str, Any],
+            notion.databases.retrieve(database_id=NOTION_DBID_TIME_TRACKER),
+        )
         data_sources = db_info.get("data_sources", [])
         if data_sources:
             ds_id = data_sources[0]["id"]
@@ -43,7 +45,6 @@ def get_workspace_persons() -> List[Dict[str, str]]:
     except Exception as e:
         print(f"Error inspecting database people: {e}")
 
-    # Fallback seed to guarantee known users always exist
     known_seeds = {
         "e01a514e-a27b-4090-aadc-1f64cb85a0d7": "Mahdi Rajabzadeh",
         "3bcd872b-594c-8169-b346-00022faeece8": "Melika Bishbahar"
@@ -57,14 +58,15 @@ def get_workspace_persons() -> List[Dict[str, str]]:
 def add_time_tracker_entry(
     name: str,
     start_date_str: str,
-    end_date_str: Optional[str],
-    duration: int,
-    satisfaction: str,
+    end_date_str: Optional[str] = None,
+    duration: int = 0,
+    satisfaction: Optional[str] = None,
     person_id: Optional[str] = None,
     description: str = ""
 ) -> Any:
     """
     Creates a new row in the Time Tracker database in Notion.
+    Only provided optional fields are inserted.
     """
     if not NOTION_DBID_TIME_TRACKER:
         raise ValueError("NOTION_DBID_TIME_TRACKER is not defined in environment variables.")
@@ -82,17 +84,22 @@ def add_time_tracker_entry(
         },
         "Date": {
             "date": date_payload
-        },
-        "Satisfaction": {
-            "select": {"name": satisfaction}
         }
     }
 
+    # Add optional satisfaction only if selected
+    if satisfaction:
+        properties["Satisfaction"] = {
+            "select": {"name": satisfaction}
+        }
+
+    # Add optional person only if selected
     if person_id:
         properties["Person"] = {
             "people": [{"id": person_id}]
         }
 
+    # Add optional description only if entered
     if description:
         properties["Description"] = {
             "rich_text": [{"text": {"content": description}}]

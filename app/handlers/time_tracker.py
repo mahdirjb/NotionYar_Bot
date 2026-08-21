@@ -10,6 +10,7 @@ from app.keyboards.inline import (
     get_date_keyboard,
     get_time_picker_keyboard,
     get_satisfaction_keyboard,
+    get_description_keyboard,
     get_back_cancel_keyboard,
     SATISFACTION_EMOJIS
 )
@@ -25,13 +26,19 @@ def is_user_allowed(user_id: int | None) -> bool:
 
 def render_card_text(data: dict) -> str:
     name = data.get("name") or "وارد نشده ❌"
-    person = data.get("person_name") or "انتخاب نشده"
+    person = data.get("person_name") or "تعیین نشده"
     d_label = data.get("date_label", "امروز")
     start = data.get("start_time") or "—"
     end = data.get("end_time") or "—"
     duration = data.get("duration", 0)
-    sat = data.get("satisfaction", "خوب")
-    sat_emoji = SATISFACTION_EMOJIS.get(sat, "⭐")
+    
+    sat = data.get("satisfaction")
+    if sat:
+        sat_emoji = SATISFACTION_EMOJIS.get(sat, "⭐")
+        sat_text = f"{sat_emoji} {sat}"
+    else:
+        sat_text = "تعیین نشده (اختیاری)"
+        
     desc = data.get("description") or "—"
 
     return (
@@ -41,7 +48,7 @@ def render_card_text(data: dict) -> str:
         f"📅 <b>تاریخ:</b> {d_label}\n"
         f"⏰ <b>بازه زمانی:</b> از <code>{start}</code> تا <code>{end}</code>\n"
         f"⏱ <b>مدت زمان:</b> {duration} دقیقه\n"
-        f"⭐ <b>میزان رضایت:</b> {sat_emoji} {sat}\n"
+        f"⭐ <b>میزان رضایت:</b> {sat_text}\n"
         f"📝 <b>توضیحات:</b> {desc}\n\n"
         "👇 <i>با دکمه‌های زیر فیلدها را تنظیم کنید و در نهایت دکمه ثبت را بزنید:</i>"
     )
@@ -98,6 +105,7 @@ async def start_card_from_menu(message: Message, state: FSMContext):
     now = datetime.now(tz)
     today_iso = now.date().isoformat()
     
+    # Satisfaction is None by default
     initial_data = {
         "name": None,
         "person_id": None,
@@ -106,8 +114,8 @@ async def start_card_from_menu(message: Message, state: FSMContext):
         "date_label": f"امروز ({today_iso})",
         "start_time": None,
         "end_time": None,
-        "duration": 60,
-        "satisfaction": "خوب",
+        "duration": 0,
+        "satisfaction": None,
         "description": ""
     }
     
@@ -182,6 +190,18 @@ async def set_person_handler(callback: CallbackQuery, state: FSMContext):
             parse_mode="HTML"
         )
     await callback.answer(f"انجام‌دهنده: {person_name}")
+
+@router.callback_query(F.data == "clear_person")
+async def clear_person_handler(callback: CallbackQuery, state: FSMContext):
+    await state.update_data(person_id=None, person_name=None)
+    data = await state.get_data()
+    if isinstance(callback.message, Message):
+        await callback.message.edit_text(
+            render_card_text(data),
+            reply_markup=build_card_keyboard(data),
+            parse_mode="HTML"
+        )
+    await callback.answer("انجام‌دهنده پاک شد.")
 
 # --- Date Handlers ---
 @router.callback_query(F.data == "pick_date")
@@ -325,6 +345,18 @@ async def process_custom_time(message: Message, state: FSMContext, bot: Bot):
     await state.set_state(TimeTrackerCard.viewing_card)
     await update_main_card(bot, message.chat.id, state)
 
+@router.callback_query(F.data == "clear_times")
+async def clear_times_handler(callback: CallbackQuery, state: FSMContext):
+    await state.update_data(start_time=None, end_time=None)
+    data = await state.get_data()
+    if isinstance(callback.message, Message):
+        await callback.message.edit_text(
+            render_card_text(data),
+            reply_markup=build_card_keyboard(data),
+            parse_mode="HTML"
+        )
+    await callback.answer("ساعت‌های شروع و پایان پاک شدند.")
+
 # --- Manual Duration Handler ---
 @router.callback_query(F.data == "edit_duration")
 async def edit_duration_prompt(callback: CallbackQuery, state: FSMContext):
@@ -341,8 +373,8 @@ async def edit_duration_prompt(callback: CallbackQuery, state: FSMContext):
 @router.message(TimeTrackerCard.typing_custom_duration)
 async def process_custom_duration(message: Message, state: FSMContext, bot: Bot):
     text = (message.text or "").strip()
-    if not text.isdigit() or int(text) <= 0:
-        await message.answer("❌ لطفاً یک عدد معتبر بزرگتر از صفر وارد کنید:")
+    if not text.isdigit() or int(text) < 0:
+        await message.answer("❌ لطفاً یک عدد معتبر وارد کنید:")
         return
 
     await state.update_data(duration=int(text))
@@ -374,6 +406,18 @@ async def set_sat_handler(callback: CallbackQuery, state: FSMContext):
         )
     await callback.answer()
 
+@router.callback_query(F.data == "clear_sat")
+async def clear_satisfaction_handler(callback: CallbackQuery, state: FSMContext):
+    await state.update_data(satisfaction=None)
+    data = await state.get_data()
+    if isinstance(callback.message, Message):
+        await callback.message.edit_text(
+            render_card_text(data),
+            reply_markup=build_card_keyboard(data),
+            parse_mode="HTML"
+        )
+    await callback.answer("میزان رضایت پاک شد.")
+
 # --- Description Handlers ---
 @router.callback_query(F.data == "edit_description")
 async def ask_description_handler(callback: CallbackQuery, state: FSMContext):
@@ -381,7 +425,7 @@ async def ask_description_handler(callback: CallbackQuery, state: FSMContext):
     if isinstance(callback.message, Message):
         prompt = await callback.message.answer(
             "📝 لطفاً <b>توضیحات یا یادداشت‌های تکمیلی</b> را بفرستید:",
-            reply_markup=get_back_cancel_keyboard(),
+            reply_markup=get_description_keyboard(),
             parse_mode="HTML"
         )
         await state.update_data(last_prompt_id=prompt.message_id)
@@ -394,6 +438,16 @@ async def set_description_handler(message: Message, state: FSMContext, bot: Bot)
     await cleanup_prompt_messages(bot, message.chat.id, state, user_msg=message)
     await state.set_state(TimeTrackerCard.viewing_card)
     await update_main_card(bot, message.chat.id, state)
+
+@router.callback_query(F.data == "clear_description")
+async def clear_description_handler(callback: CallbackQuery, state: FSMContext, bot: Bot):
+    await state.update_data(description="")
+    if isinstance(callback.message, Message):
+        await cleanup_prompt_messages(bot, callback.message.chat.id, state)
+        data = await state.get_data()
+        await state.set_state(TimeTrackerCard.viewing_card)
+        await update_main_card(bot, callback.message.chat.id, state)
+    await callback.answer("توضیحات پاک شد.")
 
 # --- Card Submission & Cancellation ---
 @router.callback_query(F.data == "cancel_card")
@@ -436,19 +490,19 @@ async def submit_card_handler(callback: CallbackQuery, state: FSMContext):
                 start_payload = date_iso
                 end_payload = None
             
+            sat = data.get("satisfaction")
             res = add_time_tracker_entry(
                 name=name,
                 start_date_str=start_payload,
                 end_date_str=end_payload,
                 duration=data.get("duration", 0),
-                satisfaction=data.get("satisfaction", "خوب"),
+                satisfaction=sat,
                 person_id=data.get("person_id"),
                 description=data.get("description", "")
             )
             
             page_url = res.get("url", "#") if isinstance(res, dict) else "#"
-            sat = data.get("satisfaction", "خوب")
-            sat_emoji = SATISFACTION_EMOJIS.get(sat, "⭐")
+            sat_text = f"{SATISFACTION_EMOJIS.get(sat, '⭐')} {sat}" if sat else "تعیین نشده"
             
             success_text = (
                 "✅ <b>زمان کاری با موفقیت در نوشن ثبت شد!</b>\n\n"
@@ -456,7 +510,7 @@ async def submit_card_handler(callback: CallbackQuery, state: FSMContext):
                 f"👤 <b>انجام‌دهنده:</b> {data.get('person_name', 'تعیین نشده')}\n"
                 f"📅 <b>تاریخ:</b> {data.get('date_label')}\n"
                 f"⏱ <b>مدت زمان:</b> {data.get('duration', 0)} دقیقه\n"
-                f"⭐ <b>میزان رضایت:</b> {sat_emoji} {sat}\n\n"
+                f"⭐ <b>میزان رضایت:</b> {sat_text}\n\n"
                 f'<a href="{page_url}">🔗 مشاهده در نوشن</a>'
             )
             await callback.message.edit_text(

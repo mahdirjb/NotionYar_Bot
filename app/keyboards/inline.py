@@ -11,19 +11,22 @@ SATISFACTION_EMOJIS = {
 
 def build_card_keyboard(data: Dict[str, Any]) -> InlineKeyboardMarkup:
     name_label = "✏️ عنوان: " + (data.get("name") or "وارد نشده ❌")
-    person_label = "👤 انجام‌دهنده: " + (data.get("person_name") or "انتخاب کنید")
+    person_label = "👤 انجام‌دهنده: " + (data.get("person_name") or "تعیین نشده")
     date_label = "📅 تاریخ: " + (data.get("date_label") or "امروز")
     
     start_label = "⏰ شروع: " + (data.get("start_time") or "—")
     end_label = "⏰ پایان: " + (data.get("end_time") or "—")
     
     dur = data.get("duration", 0)
-    dur_label = f"⏱ مدت: {dur} دقیقه (دستی/محاسبه)"
+    dur_label = f"⏱ مدت: {dur} دقیقه"
     
-    sat = data.get("satisfaction", "خوب")
-    sat_emoji = SATISFACTION_EMOJIS.get(sat, "⭐")
-    sat_label = f"{sat_emoji} رضایت: {sat}"
-    
+    sat = data.get("satisfaction")
+    if sat:
+        sat_emoji = SATISFACTION_EMOJIS.get(sat, "⭐")
+        sat_label = f"{sat_emoji} رضایت: {sat}"
+    else:
+        sat_label = "⭐ رضایت: تعیین نشده"
+        
     desc_label = "📝 توضیحات: " + ("ثبت شده ✅" if data.get("description") else "اختیاری")
 
     buttons = [
@@ -48,6 +51,7 @@ def get_person_keyboard(persons: List[Dict[str, str]]) -> InlineKeyboardMarkup:
     buttons = []
     for p in persons:
         buttons.append([InlineKeyboardButton(text=f"👤 {p['name']}", callback_data=f"set_person:{p['id']}:{p['name']}")])
+    buttons.append([InlineKeyboardButton(text="🗑 پاک کردن انجام‌دهنده", callback_data="clear_person")])
     buttons.append([InlineKeyboardButton(text="🔙 بازگشت به فرم", callback_data="back_to_card")])
     return InlineKeyboardMarkup(inline_keyboard=buttons)
 
@@ -79,6 +83,7 @@ def get_time_picker_keyboard(target: str) -> InlineKeyboardMarkup:
         rows.append(current_row)
         
     rows.append([InlineKeyboardButton(text="✍️ تایپ ساعت دلخواه (مثلاً 22:27)", callback_data=f"enter_custom_time:{target}")])
+    rows.append([InlineKeyboardButton(text="🗑 پاک کردن بازه زمانی", callback_data="clear_times")])
     rows.append([InlineKeyboardButton(text="🔙 بازگشت به فرم", callback_data="back_to_card")])
     return InlineKeyboardMarkup(inline_keyboard=rows)
 
@@ -86,7 +91,15 @@ def get_satisfaction_keyboard() -> InlineKeyboardMarkup:
     buttons = []
     for opt, emoji in SATISFACTION_EMOJIS.items():
         buttons.append([InlineKeyboardButton(text=f"{emoji} {opt}", callback_data=f"set_sat:{opt}")])
+    buttons.append([InlineKeyboardButton(text="🗑 بدون انتخاب (حذف رضایت)", callback_data="clear_sat")])
     buttons.append([InlineKeyboardButton(text="🔙 بازگشت به فرم", callback_data="back_to_card")])
+    return InlineKeyboardMarkup(inline_keyboard=buttons)
+
+def get_description_keyboard() -> InlineKeyboardMarkup:
+    buttons = [
+        [InlineKeyboardButton(text="🗑 پاک کردن توضیحات", callback_data="clear_description")],
+        [InlineKeyboardButton(text="🔙 انصراف و بازگشت", callback_data="back_to_card")]
+    ]
     return InlineKeyboardMarkup(inline_keyboard=buttons)
 
 def get_back_cancel_keyboard() -> InlineKeyboardMarkup:
