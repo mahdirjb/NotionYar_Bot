@@ -135,7 +135,7 @@ def build_report_keyboard(data: dict) -> InlineKeyboardMarkup:
 
 def get_report_date_range_keyboard() -> InlineKeyboardMarkup:
     """
-    Presets keyboard for report date filters.
+    Presets keyboard for report date filters including custom range.
     """
     keyboard = [
         [
@@ -147,11 +147,13 @@ def get_report_date_range_keyboard() -> InlineKeyboardMarkup:
             InlineKeyboardButton(text="🌙 ماه جاری شمسی", callback_data="rep_set_date:this_month")
         ],
         [
+            InlineKeyboardButton(text="✍️ بازه دلخواه شمسی (تایپ دستی)", callback_data="rep_custom_date")
+        ],
+        [
             InlineKeyboardButton(text="🔙 بازگشت به گزارش", callback_data="rep_back_to_report")
         ]
     ]
     return InlineKeyboardMarkup(inline_keyboard=keyboard)
-
 
 def get_report_person_keyboard(persons: list) -> InlineKeyboardMarkup:
     """

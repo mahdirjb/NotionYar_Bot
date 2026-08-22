@@ -7,12 +7,14 @@ from app.keyboards.inline import (
     build_report_keyboard,
     get_report_date_range_keyboard,
     get_report_person_keyboard,
+    get_back_cancel_keyboard,
     SATISFACTION_EMOJIS
 )
 from app.services.notion_service import get_workspace_persons, query_time_tracker_entries
 from app.services.date_helper import (
     get_preset_date_range,
     format_minutes_to_hours_str,
+    parse_custom_date_range,
     parse_notion_time_display
 )
 from app.config import ALLOWED_USERS
@@ -235,3 +237,68 @@ async def rep_close_handler(callback: CallbackQuery, state: FSMContext):
     if isinstance(callback.message, Message):
         await callback.message.edit_text("📊 گزارش بسته شد.")
     await callback.answer()
+    
+# --- Custom Date Range Handlers ---
+@router.callback_query(F.data == "rep_custom_date")
+async def rep_custom_date_prompt(callback: CallbackQuery, state: FSMContext):
+    await state.set_state(ReportState.typing_custom_date_range)
+    if isinstance(callback.message, Message):
+        prompt = await callback.message.answer(
+            "📅 لطفاً بازه تاریخ دلخواه شمسی را ارسال کنید:\n\n"
+            "▫️ <b>نمونه بازه:</b> <code>1405/05/01 تا 1405/05/15</code>\n"
+            "▫️ <b>نمونه یک روز:</b> <code>1405/05/01</code>",
+            reply_markup=get_back_cancel_keyboard(),
+            parse_mode="HTML"
+        )
+        await state.update_data(last_prompt_id=prompt.message_id)
+    await callback.answer()
+
+
+@router.message(ReportState.typing_custom_date_range)
+async def rep_process_custom_date(message: Message, state: FSMContext, bot: Bot):
+    text = (message.text or "").strip()
+    parsed = parse_custom_date_range(text)
+    
+    data = await state.get_data()
+    prompt_id = data.get("last_prompt_id")
+
+    if not parsed:
+        err = await message.answer(
+            "❌ فرمت بازه تاریخ نامعتبر است.\n"
+            "لطفاً مانند <code>1405/05/01 تا 1405/05/15</code> یا <code>1405/05/01</code> وارد کنید:",
+            parse_mode="HTML"
+        )
+        # Store error message id for cleanup
+        err_list = data.get("error_msg_ids", [])
+        err_list.extend([err.message_id, message.message_id])
+        await state.update_data(error_msg_ids=err_list)
+        return
+
+    # Cleanup prompts and error messages
+    if prompt_id:
+        try:
+            await bot.delete_message(chat_id=message.chat.id, message_id=prompt_id)
+        except Exception:
+            pass
+
+    for em_id in data.get("error_msg_ids", []):
+        try:
+            await bot.delete_message(chat_id=message.chat.id, message_id=em_id)
+        except Exception:
+            pass
+
+    try:
+        await message.delete()
+    except Exception:
+        pass
+
+    s_iso, e_iso, d_label = parsed
+    await state.update_data(
+        start_iso=s_iso,
+        end_iso=e_iso,
+        date_preset="custom",
+        date_label=d_label,
+        error_msg_ids=[]
+    )
+    await state.set_state(ReportState.viewing_report)
+    await fetch_and_render_report(message, state)

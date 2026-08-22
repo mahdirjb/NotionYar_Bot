@@ -136,3 +136,42 @@ def parse_notion_time_display(start_iso: str | None, end_iso: str | None, m_dura
         return f"⏱ {format_minutes_to_hours_str(m_duration)}"
 
     return "—"
+
+def parse_custom_date_range(input_text: str) -> tuple[str, str, str] | None:
+    """
+    Parses user custom date range input supporting formats:
+    - '1405/05/01 تا 1405/05/15'
+    - '1405/05/01 - 1405/05/15'
+    - '1405/05/01' (single day)
+    Returns (start_iso, end_iso, label) or None if invalid.
+    """
+    cleaned = normalize_digits(input_text.strip())
+    
+    # Split by 'تا', 'to', or '-' (excluding date hyphens)
+    parts = re.split(r"\s+(?:تا|to)\s+|\s+-\s+", cleaned, flags=re.IGNORECASE)
+    
+    if len(parts) == 1:
+        # Single date entered
+        parsed = parse_user_date_input(parts[0])
+        if not parsed:
+            return None
+        g_iso, j_str = parsed
+        return g_iso, g_iso, f"{j_str}"
+        
+    elif len(parts) == 2:
+        # Range entered
+        parsed_start = parse_user_date_input(parts[0])
+        parsed_end = parse_user_date_input(parts[1])
+        if not parsed_start or not parsed_end:
+            return None
+            
+        g_start_iso, j_start_str = parsed_start
+        g_end_iso, j_end_str = parsed_end
+        
+        # Validate start is before or equal to end
+        if g_start_iso > g_end_iso:
+            return None
+            
+        return g_start_iso, g_end_iso, f"{j_start_str} تا {j_end_str}"
+        
+    return None
