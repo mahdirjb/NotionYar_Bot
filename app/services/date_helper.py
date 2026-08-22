@@ -117,8 +117,8 @@ def parse_notion_time_display(start_iso: str | None, end_iso: str | None, m_dura
     """
     Constructs a readable time string from Notion start/end ISO strings and MDuration.
     Examples:
-    - '⏰ 14:00 تا 16:30 (۲ ساعت و ۳۰ دقیقه)'
-    - '⏱ ۴۵ دقیقه'
+    - '14:00 تا 16:30 (۲ ساعت و ۳۰ دقیقه)'
+    - '۴۵ دقیقه'
     """
     # Case 1: Start and End have specific times (e.g. contains 'T')
     if start_iso and "T" in start_iso:
