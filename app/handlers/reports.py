@@ -49,7 +49,7 @@ def calculate_total_minutes(entries: list) -> int:
 
 
 def render_report_text(entries: list, data: dict) -> str:
-    """Renders the comprehensive HTML report summary."""
+    """Renders the comprehensive HTML report summary with clean line-by-line entry formatting."""
     date_label = data.get("date_label", "امروز")
     person_name = data.get("person_name", "همه افراد")
 
@@ -64,7 +64,7 @@ def render_report_text(entries: list, data: dict) -> str:
     total_time_str = format_minutes_to_hours_str(total_mins)
     total_count = len(entries)
 
-    # Satisfaction counts
+    # Satisfaction summary counts
     sat_counts: dict[str, int] = {}
     for e in entries:
         sat = e.get("satisfaction")
@@ -77,21 +77,36 @@ def render_report_text(entries: list, data: dict) -> str:
         sat_parts.append(f"{s_count} {s_name} {emoji}")
     sat_summary = " | ".join(sat_parts) if sat_parts else "ثبت نشده"
 
-    # Build items list
+    # Build formatted line-by-line items list
     items_text = []
     for idx, e in enumerate(entries, 1):
         name = e.get("name", "بدون عنوان")
-        time_info = parse_notion_time_display(e.get("start_iso"), e.get("end_iso"), e.get("duration"))
-        sat = e.get("satisfaction")
-        sat_badge = f" | {SATISFACTION_EMOJIS.get(sat, '⭐')} {sat}" if sat else ""
-        person_badge = f" | 👤 {e['person_name']}" if (data.get("person_id") is None and e.get("person_name")) else ""
         url = e.get("url", "")
         url_link = f' <a href="{url}">🔗</a>' if url else ""
 
-        item_str = f"<b>{idx}. {name}</b>{url_link}\n   {time_info}{sat_badge}{person_badge}"
-        if e.get("description"):
-            item_str += f"\n   📝 <i>{e['description']}</i>"
-        items_text.append(item_str)
+        lines = [f"<b>{idx}. {name}</b>{url_link}"]
+
+        # Time line
+        time_info = parse_notion_time_display(e.get("start_iso"), e.get("end_iso"), e.get("duration"))
+        if time_info != "—":
+            lines.append(f"   ⏱ <b>زمان:</b> {time_info}")
+
+        # Person line (show if available)
+        if e.get("person_name"):
+            lines.append(f"   👤 <b>انجام‌دهنده:</b> {e['person_name']}")
+
+        # Satisfaction line
+        sat = e.get("satisfaction")
+        if sat:
+            sat_emoji = SATISFACTION_EMOJIS.get(sat, "⭐")
+            lines.append(f"   ⭐ <b>میزان رضایت:</b> {sat} {sat_emoji}")
+
+        # Description line
+        desc = e.get("description")
+        if desc:
+            lines.append(f"   📝 <b>توضیحات:</b> <i>{desc}</i>")
+
+        items_text.append("\n".join(lines))
 
     items_block = "\n\n".join(items_text)
 
@@ -105,7 +120,6 @@ def render_report_text(entries: list, data: dict) -> str:
         f"{items_block}\n"
         "─────────────────"
     )
-
 
 async def fetch_and_render_report(message_or_query: Message | CallbackQuery, state: FSMContext):
     data = await state.get_data()
