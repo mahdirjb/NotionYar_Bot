@@ -110,3 +110,98 @@ def add_time_tracker_entry(
         properties=properties
     )
     return response
+
+def query_time_tracker_entries(
+    start_date_iso: str,
+    end_date_iso: Optional[str] = None,
+    person_id: Optional[str] = None
+) -> List[Dict[str, Any]]:
+    """
+    Queries time tracker entries from Notion within a date range and optional person filter.
+    Returns a clean list of parsed dictionaries sorted by Date descending.
+    """
+    if not NOTION_DBID_TIME_TRACKER:
+        raise ValueError("NOTION_DBID_TIME_TRACKER is not defined in environment variables.")
+
+    # Build filters
+    and_filters: List[Dict[str, Any]] = []
+
+    # Date filter
+    if end_date_iso and end_date_iso != start_date_iso:
+        and_filters.append({
+            "property": "Date",
+            "date": {"on_or_after": start_date_iso}
+        })
+        and_filters.append({
+            "property": "Date",
+            "date": {"on_or_before": end_date_iso}
+        })
+    else:
+        and_filters.append({
+            "property": "Date",
+            "date": {"equals": start_date_iso}
+        })
+
+    # Person filter (optional)
+    if person_id:
+        and_filters.append({
+            "property": "Person",
+            "people": {"contains": person_id}
+        })
+
+    filter_payload = {"and": and_filters} if len(and_filters) > 1 else and_filters[0]
+
+    # Query Notion
+    query_res = notion.databases.query(
+        database_id=NOTION_DBID_TIME_TRACKER,
+        filter=filter_payload,
+        sorts=[{"property": "Date", "direction": "descending"}]
+    )
+
+    parsed_entries: List[Dict[str, Any]] = []
+    results = query_res.get("results", []) if isinstance(query_res, dict) else []
+
+    for page in results:
+        props = page.get("properties", {})
+
+        # 1. Title (Name)
+        title_list = props.get("Name", {}).get("title", [])
+        name = title_list[0].get("plain_text", "بدون عنوان") if title_list else "بدون عنوان"
+
+        # 2. Date & Times
+        date_prop = props.get("Date", {}).get("date") or {}
+        raw_start = date_prop.get("start")
+        raw_end = date_prop.get("end")
+
+        # 3. MDuration (Minutes)
+        m_duration = props.get("MDuration", {}).get("number")
+
+        # 4. Satisfaction
+        satisfaction = (props.get("Satisfaction", {}).get("select") or {}).get("name")
+
+        # 5. Person
+        people = props.get("Person", {}).get("people", [])
+        person_name = people[0].get("name", "نامشخص") if people else None
+        page_person_id = people[0].get("id") if people else None
+
+        # 6. Description
+        desc_list = props.get("Description", {}).get("rich_text", [])
+        description = desc_list[0].get("plain_text", "") if desc_list else ""
+
+        # 7. URL
+        url = page.get("url", "")
+
+        parsed_entries.append({
+            "id": page.get("id"),
+            "name": name,
+            "start_iso": raw_start,
+            "end_iso": raw_end,
+            "duration": m_duration,
+            "satisfaction": satisfaction,
+            "person_name": person_name,
+            "person_id": page_person_id,
+            "description": description,
+            "url": url
+        })
+
+    return parsed_entries
