@@ -115,3 +115,55 @@ def get_description_keyboard() -> InlineKeyboardMarkup:
 def get_back_cancel_keyboard() -> InlineKeyboardMarkup:
     buttons = [[InlineKeyboardButton(text="🔙 انصراف و بازگشت به فرم", callback_data="back_to_card")]]
     return InlineKeyboardMarkup(inline_keyboard=buttons)
+
+def build_report_keyboard(data: dict) -> InlineKeyboardMarkup:
+    """
+    Main interactive controls for the report message.
+    """
+    keyboard = [
+        [
+            InlineKeyboardButton(text="📅 تغییر بازه زمانی", callback_data="rep_pick_date"),
+            InlineKeyboardButton(text="👤 تغییر شخص", callback_data="rep_pick_person")
+        ],
+        [
+            InlineKeyboardButton(text="🔄 بروزرسانی", callback_data="rep_refresh"),
+            InlineKeyboardButton(text="❌ بستن گزارش", callback_data="rep_close")
+        ]
+    ]
+    return InlineKeyboardMarkup(inline_keyboard=keyboard)
+
+
+def get_report_date_range_keyboard() -> InlineKeyboardMarkup:
+    """
+    Presets keyboard for report date filters.
+    """
+    keyboard = [
+        [
+            InlineKeyboardButton(text="📍 امروز", callback_data="rep_set_date:today"),
+            InlineKeyboardButton(text="⏮ دیروز", callback_data="rep_set_date:yesterday")
+        ],
+        [
+            InlineKeyboardButton(text="🗓 ۷ روز اخیر", callback_data="rep_set_date:last_7_days"),
+            InlineKeyboardButton(text="🌙 ماه جاری شمسی", callback_data="rep_set_date:this_month")
+        ],
+        [
+            InlineKeyboardButton(text="🔙 بازگشت به گزارش", callback_data="rep_back_to_report")
+        ]
+    ]
+    return InlineKeyboardMarkup(inline_keyboard=keyboard)
+
+
+def get_report_person_keyboard(persons: list) -> InlineKeyboardMarkup:
+    """
+    Person selection keyboard for filtering reports.
+    """
+    keyboard = [
+        [InlineKeyboardButton(text="👥 همه افراد (بدون فیلتر)", callback_data="rep_set_person:all:همه افراد")]
+    ]
+    for p in persons:
+        btn_text = f"👤 {p['name']}"
+        callback_data = f"rep_set_person:{p['id']}:{p['name']}"
+        keyboard.append([InlineKeyboardButton(text=btn_text, callback_data=callback_data)])
+
+    keyboard.append([InlineKeyboardButton(text="🔙 بازگشت به گزارش", callback_data="rep_back_to_report")])
+    return InlineKeyboardMarkup(inline_keyboard=keyboard)
