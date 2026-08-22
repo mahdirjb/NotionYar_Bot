@@ -156,13 +156,15 @@ def get_report_date_range_keyboard() -> InlineKeyboardMarkup:
 def get_report_person_keyboard(persons: list) -> InlineKeyboardMarkup:
     """
     Person selection keyboard for filtering reports.
+    Keeps callback_data under Telegram's 64-byte limit.
     """
     keyboard = [
-        [InlineKeyboardButton(text="👥 همه افراد (بدون فیلتر)", callback_data="rep_set_person:all:همه افراد")]
+        [InlineKeyboardButton(text="👥 همه افراد (بدون فیلتر)", callback_data="rep_set_person:all")]
     ]
     for p in persons:
         btn_text = f"👤 {p['name']}"
-        callback_data = f"rep_set_person:{p['id']}:{p['name']}"
+        # Only pass person ID to keep under 64 bytes limit
+        callback_data = f"rep_set_person:{p['id']}"
         keyboard.append([InlineKeyboardButton(text=btn_text, callback_data=callback_data)])
 
     keyboard.append([InlineKeyboardButton(text="🔙 بازگشت به گزارش", callback_data="rep_back_to_report")])

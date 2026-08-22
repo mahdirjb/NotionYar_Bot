@@ -189,18 +189,19 @@ async def rep_pick_person_handler(callback: CallbackQuery):
 
 @router.callback_query(F.data.startswith("rep_set_person:"))
 async def rep_set_person_handler(callback: CallbackQuery, state: FSMContext):
-    parts = (callback.data or "").split(":", 2)
+    parts = (callback.data or "").split(":", 1)
     person_id = parts[1]
-    person_name = parts[2]
 
     if person_id == "all":
-        await state.update_data(person_id=None, person_name="همه افراد")
+        person_name = "همه افراد"
+        await state.update_data(person_id=None, person_name=person_name)
     else:
+        persons = get_workspace_persons()
+        person_name = next((p["name"] for p in persons if p["id"] == person_id), "کاربر")
         await state.update_data(person_id=person_id, person_name=person_name)
 
     await fetch_and_render_report(callback, state)
     await callback.answer(f"فیلتر شخص: {person_name}")
-
 
 @router.callback_query(F.data == "rep_refresh")
 async def rep_refresh_handler(callback: CallbackQuery, state: FSMContext):
