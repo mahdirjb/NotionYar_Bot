@@ -116,19 +116,30 @@ def get_back_cancel_keyboard() -> InlineKeyboardMarkup:
     buttons = [[InlineKeyboardButton(text="🔙 انصراف و بازگشت به فرم", callback_data="back_to_card")]]
     return InlineKeyboardMarkup(inline_keyboard=buttons)
 
-def build_report_keyboard(data: dict, has_entries: bool = True) -> InlineKeyboardMarkup:
+from app.services.auth_service import (
+    has_permission,
+    PERM_VIEW_ALL_USERS,
+    PERM_EDIT_RECORDS,
+    PERM_DELETE_RECORDS
+)
+
+def build_report_keyboard(data: dict, has_entries: bool = True, user_id: int | None = None) -> InlineKeyboardMarkup:
     """
-    Main interactive controls for the report message.
+    Main interactive controls for the report message with granular permissions.
     """
-    keyboard = [
-        [
-            InlineKeyboardButton(text="📅 تغییر بازه زمانی", callback_data="rep_pick_date"),
-            InlineKeyboardButton(text="👤 تغییر شخص", callback_data="rep_pick_person")
-        ]
-    ]
-    if has_entries:
+    row_1 = [InlineKeyboardButton(text="📅 تغییر بازه زمانی", callback_data="rep_pick_date")]
+    
+    # Only show person filter if user has view_all_users permission
+    if has_permission(user_id, PERM_VIEW_ALL_USERS):
+        row_1.append(InlineKeyboardButton(text="👤 تغییر شخص", callback_data="rep_pick_person"))
+        
+    keyboard = [row_1]
+
+    # Only show manage/edit/delete button if user has permission and entries exist
+    can_manage = has_permission(user_id, PERM_EDIT_RECORDS) or has_permission(user_id, PERM_DELETE_RECORDS)
+    if has_entries and can_manage:
         keyboard.append([
-            InlineKeyboardButton(text="🔍 مدیریت و حذف رکوردها", callback_data="rep_manage_entries")
+            InlineKeyboardButton(text="🔍 مدیریت و ویرایش رکوردها", callback_data="rep_manage_entries")
         ])
         
     keyboard.append([
@@ -136,7 +147,6 @@ def build_report_keyboard(data: dict, has_entries: bool = True) -> InlineKeyboar
         InlineKeyboardButton(text="❌ بستن گزارش", callback_data="rep_close")
     ])
     return InlineKeyboardMarkup(inline_keyboard=keyboard)
-
 
 def get_report_date_range_keyboard() -> InlineKeyboardMarkup:
     """
@@ -194,18 +204,23 @@ def get_entries_selector_keyboard(entries: list) -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(inline_keyboard=keyboard)
 
 
-def get_entry_detail_keyboard(page_id: str, page_url: str) -> InlineKeyboardMarkup:
+def get_entry_detail_keyboard(page_id: str, page_url: str, user_id: int | None = None) -> InlineKeyboardMarkup:
     """
-    Action buttons for a single entry detail view including Edit.
+    Action buttons for a single entry detail view with granular permissions.
     """
-    keyboard = [
-        [
-            InlineKeyboardButton(text="✏️ ویرایش این رکورد", callback_data=f"rep_edit:{page_id}"),
-            InlineKeyboardButton(text="🗑 حذف این رکورد", callback_data=f"rep_confirm_del:{page_id}")
-        ]
-    ]
+    action_row = []
+    if has_permission(user_id, PERM_EDIT_RECORDS):
+        action_row.append(InlineKeyboardButton(text="✏️ ویرایش این رکورد", callback_data=f"rep_edit:{page_id}"))
+    if has_permission(user_id, PERM_DELETE_RECORDS):
+        action_row.append(InlineKeyboardButton(text="🗑 حذف این رکورد", callback_data=f"rep_confirm_del:{page_id}"))
+        
+    keyboard = []
+    if action_row:
+        keyboard.append(action_row)
+        
     if page_url:
         keyboard.append([InlineKeyboardButton(text="🔗 مشاهده در نوشن", url=page_url)])
+        
     keyboard.append([InlineKeyboardButton(text="🔙 بازگشت به لیست رکوردها", callback_data="rep_manage_entries")])
     return InlineKeyboardMarkup(inline_keyboard=keyboard)
 

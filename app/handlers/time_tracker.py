@@ -17,14 +17,9 @@ from app.keyboards.inline import (
 )
 from app.services.notion_service import get_workspace_persons, add_time_tracker_entry
 from app.services.date_helper import get_jalali_date_info, parse_user_date_input
-from app.config import ALLOWED_USERS
+from app.services.auth_service import has_permission, PERM_ADD_TIME
 
 router = Router()
-
-def is_user_allowed(user_id: int | None) -> bool:
-    if not ALLOWED_USERS:
-        return True
-    return user_id in ALLOWED_USERS if user_id else False
 
 def parse_time_str(time_str: str | None) -> datetime | None:
     if not time_str:
@@ -121,8 +116,9 @@ async def update_main_card(bot: Bot, chat_id: int, state: FSMContext):
 
 @router.message(F.text.contains("ثبت زمان"))
 async def start_card_from_menu(message: Message, state: FSMContext):
-    if not is_user_allowed(message.from_user.id if message.from_user else None):
-        await message.answer("⛔ شما به این بخش دسترسی ندارید.")
+    user_id = message.from_user.id if message.from_user else None
+    if not has_permission(user_id, PERM_ADD_TIME):
+        await message.answer("⛔ شما دسترسی به بخش ثبت زمان کاری را ندارید.")
         return
 
     await state.clear()
@@ -150,7 +146,7 @@ async def start_card_from_menu(message: Message, state: FSMContext):
     initial_data["card_message_id"] = card_msg.message_id
     await state.update_data(**initial_data)
     await state.set_state(TimeTrackerCard.viewing_card)
-
+    
 @router.callback_query(F.data == "back_to_card")
 async def back_to_card_handler(callback: CallbackQuery, state: FSMContext, bot: Bot):
     if isinstance(callback.message, Message):
