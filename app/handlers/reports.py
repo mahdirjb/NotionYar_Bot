@@ -7,15 +7,22 @@ from app.keyboards.inline import (
     build_report_keyboard,
     get_report_date_range_keyboard,
     get_report_person_keyboard,
+    get_entries_selector_keyboard,
+    get_entry_detail_keyboard,
+    get_delete_confirm_keyboard,
     get_back_cancel_keyboard,
     SATISFACTION_EMOJIS
 )
-from app.services.notion_service import get_workspace_persons, query_time_tracker_entries
+from app.services.notion_service import (
+    get_workspace_persons,
+    query_time_tracker_entries,
+    archive_notion_page
+)
 from app.services.date_helper import (
     get_preset_date_range,
     format_minutes_to_hours_str,
-    parse_custom_date_range,
-    parse_notion_time_display
+    parse_notion_time_display,
+    parse_custom_date_range
 )
 from app.config import ALLOWED_USERS
 
@@ -302,3 +309,94 @@ async def rep_process_custom_date(message: Message, state: FSMContext, bot: Bot)
     )
     await state.set_state(ReportState.viewing_report)
     await fetch_and_render_report(message, state)
+    
+# --- Record Management & Delete Handlers ---
+@router.callback_query(F.data == "rep_manage_entries")
+async def rep_manage_entries_handler(callback: CallbackQuery, state: FSMContext):
+    data = await state.get_data()
+    entries = query_time_tracker_entries(
+        start_date_iso=data.get("start_iso"),
+        end_date_iso=data.get("end_iso"),
+        person_id=data.get("person_id")
+    )
+    if not entries:
+        await callback.answer("⚠️ رکوردی برای نمایش یا حذف وجود ندارد.", show_alert=True)
+        return
+
+    # Cache entries in state for instant detail access
+    await state.update_data(cached_entries=entries)
+
+    if isinstance(callback.message, Message):
+        await callback.message.edit_text(
+            "📋 <b>یکی از رکوردهای زیر را برای مشاهده جزئیات یا حذف انتخاب کنید:</b>",
+            reply_markup=get_entries_selector_keyboard(entries),
+            parse_mode="HTML"
+        )
+    await callback.answer()
+
+
+@router.callback_query(F.data.startswith("rep_det:"))
+async def rep_entry_detail_handler(callback: CallbackQuery, state: FSMContext):
+    page_id = (callback.data or "").split(":", 1)[1]
+    data = await state.get_data()
+    entries = data.get("cached_entries") or query_time_tracker_entries(
+        start_date_iso=data.get("start_iso"),
+        end_date_iso=data.get("end_iso"),
+        person_id=data.get("person_id")
+    )
+    
+    entry = next((e for e in entries if e["id"] == page_id), None)
+    if not entry:
+        await callback.answer("⚠️ این رکورد یافت نشد.", show_alert=True)
+        return
+
+    time_info = parse_notion_time_display(entry.get("start_iso"), entry.get("end_iso"), entry.get("duration"))
+    person = entry.get("person_name") or "تعیین نشده"
+    sat = entry.get("satisfaction")
+    sat_text = f"{SATISFACTION_EMOJIS.get(sat, '⭐')} {sat}" if sat else "تعیین نشده"
+    desc = entry.get("description") or "ندارد"
+
+    detail_text = (
+        "📄 <b>جزئیات کامل رکورد:</b>\n\n"
+        f"📌 <b>عنوان:</b> {entry.get('name')}\n"
+        f"⏱ <b>زمان / بازه:</b> {time_info}\n"
+        f"👤 <b>انجام‌دهنده:</b> {person}\n"
+        f"⭐ <b>میزان رضایت:</b> {sat_text}\n"
+        f"📝 <b>توضیحات:</b> {desc}"
+    )
+
+    if isinstance(callback.message, Message):
+        await callback.message.edit_text(
+            detail_text,
+            reply_markup=get_entry_detail_keyboard(page_id, entry.get("url", "")),
+            parse_mode="HTML",
+            disable_web_page_preview=True
+        )
+    await callback.answer()
+
+
+@router.callback_query(F.data.startswith("rep_confirm_del:"))
+async def rep_confirm_delete_handler(callback: CallbackQuery):
+    page_id = (callback.data or "").split(":", 1)[1]
+    if isinstance(callback.message, Message):
+        await callback.message.edit_text(
+            "⚠️ <b>آیا از حذف این رکورد از دیتابیس نوشن اطمینان دارید؟</b>\n\n"
+            "<i>این عملیات رکورد را در نوشن آرشیو می‌کند.</i>",
+            reply_markup=get_delete_confirm_keyboard(page_id),
+            parse_mode="HTML"
+        )
+    await callback.answer()
+
+
+@router.callback_query(F.data.startswith("rep_do_del:"))
+async def rep_do_delete_handler(callback: CallbackQuery, state: FSMContext):
+    page_id = (callback.data or "").split(":", 1)[1]
+    success = archive_notion_page(page_id)
+
+    if success:
+        await callback.answer("✅ رکورد با موفقیت از نوشن حذف شد!", show_alert=True)
+    else:
+        await callback.answer("❌ خطا در حذف رکورد از نوشن.", show_alert=True)
+
+    # Re-fetch report and return to dashboard
+    await fetch_and_render_report(callback, state)

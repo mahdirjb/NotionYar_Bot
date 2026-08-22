@@ -116,7 +116,7 @@ def get_back_cancel_keyboard() -> InlineKeyboardMarkup:
     buttons = [[InlineKeyboardButton(text="🔙 انصراف و بازگشت به فرم", callback_data="back_to_card")]]
     return InlineKeyboardMarkup(inline_keyboard=buttons)
 
-def build_report_keyboard(data: dict) -> InlineKeyboardMarkup:
+def build_report_keyboard(data: dict, has_entries: bool = True) -> InlineKeyboardMarkup:
     """
     Main interactive controls for the report message.
     """
@@ -124,12 +124,17 @@ def build_report_keyboard(data: dict) -> InlineKeyboardMarkup:
         [
             InlineKeyboardButton(text="📅 تغییر بازه زمانی", callback_data="rep_pick_date"),
             InlineKeyboardButton(text="👤 تغییر شخص", callback_data="rep_pick_person")
-        ],
-        [
-            InlineKeyboardButton(text="🔄 بروزرسانی", callback_data="rep_refresh"),
-            InlineKeyboardButton(text="❌ بستن گزارش", callback_data="rep_close")
         ]
     ]
+    if has_entries:
+        keyboard.append([
+            InlineKeyboardButton(text="🔍 مدیریت و حذف رکوردها", callback_data="rep_manage_entries")
+        ])
+        
+    keyboard.append([
+        InlineKeyboardButton(text="🔄 بروزرسانی", callback_data="rep_refresh"),
+        InlineKeyboardButton(text="❌ بستن گزارش", callback_data="rep_close")
+    ])
     return InlineKeyboardMarkup(inline_keyboard=keyboard)
 
 
@@ -170,4 +175,45 @@ def get_report_person_keyboard(persons: list) -> InlineKeyboardMarkup:
         keyboard.append([InlineKeyboardButton(text=btn_text, callback_data=callback_data)])
 
     keyboard.append([InlineKeyboardButton(text="🔙 بازگشت به گزارش", callback_data="rep_back_to_report")])
+    return InlineKeyboardMarkup(inline_keyboard=keyboard)
+
+def get_entries_selector_keyboard(entries: list) -> InlineKeyboardMarkup:
+    """
+    Builds a list of buttons for each record in the report to inspect or delete.
+    Keeps callback_data under 64 bytes by only using page_id.
+    """
+    keyboard = []
+    for idx, e in enumerate(entries, 1):
+        name = e.get("name", "بدون عنوان")
+        # Shorten name for button if too long
+        display_name = (name[:25] + "...") if len(name) > 25 else name
+        btn_text = f"{idx}. {display_name}"
+        keyboard.append([InlineKeyboardButton(text=btn_text, callback_data=f"rep_det:{e['id']}")])
+
+    keyboard.append([InlineKeyboardButton(text="🔙 بازگشت به گزارش", callback_data="rep_back_to_report")])
+    return InlineKeyboardMarkup(inline_keyboard=keyboard)
+
+
+def get_entry_detail_keyboard(page_id: str, page_url: str) -> InlineKeyboardMarkup:
+    """
+    Action buttons for a single entry detail view.
+    """
+    keyboard = []
+    if page_url:
+        keyboard.append([InlineKeyboardButton(text="🔗 مشاهده در نوشن", url=page_url)])
+    keyboard.append([InlineKeyboardButton(text="🗑 حذف این رکورد", callback_data=f"rep_confirm_del:{page_id}")])
+    keyboard.append([InlineKeyboardButton(text="🔙 بازگشت به لیست رکوردها", callback_data="rep_manage_entries")])
+    return InlineKeyboardMarkup(inline_keyboard=keyboard)
+
+
+def get_delete_confirm_keyboard(page_id: str) -> InlineKeyboardMarkup:
+    """
+    Two-step confirmation buttons for deleting a record.
+    """
+    keyboard = [
+        [
+            InlineKeyboardButton(text="⚠️ بله، حذف شود", callback_data=f"rep_do_del:{page_id}"),
+            InlineKeyboardButton(text="❌ انصراف", callback_data=f"rep_det:{page_id}")
+        ]
+    ]
     return InlineKeyboardMarkup(inline_keyboard=keyboard)

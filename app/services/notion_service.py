@@ -235,3 +235,14 @@ def query_time_tracker_entries(
         })
 
     return parsed_entries
+
+def archive_notion_page(page_id: str) -> bool:
+    """
+    Archives (deletes) a page from Notion database.
+    """
+    try:
+        notion.pages.update(page_id=page_id, archived=True)
+        return True
+    except Exception as e:
+        print(f"Error archiving Notion page {page_id}: {e}")
+        return False
