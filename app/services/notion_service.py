@@ -111,6 +111,29 @@ def add_time_tracker_entry(
     )
     return response
 
+_cached_data_source_id: Optional[str] = None
+
+def get_time_tracker_data_source_id() -> str:
+    """Retrieves and caches the data_source_id of the Time Tracker database."""
+    global _cached_data_source_id
+    if _cached_data_source_id:
+        return _cached_data_source_id
+
+    if not NOTION_DBID_TIME_TRACKER:
+        raise ValueError("NOTION_DBID_TIME_TRACKER is not defined in environment variables.")
+
+    db_info = cast(
+        Dict[str, Any],
+        notion.databases.retrieve(database_id=NOTION_DBID_TIME_TRACKER),
+    )
+    data_sources = db_info.get("data_sources", [])
+    if data_sources:
+        _cached_data_source_id = data_sources[0]["id"]
+        return _cached_data_source_id
+
+    return NOTION_DBID_TIME_TRACKER
+
+
 def query_time_tracker_entries(
     start_date_iso: str,
     end_date_iso: Optional[str] = None,
@@ -118,10 +141,9 @@ def query_time_tracker_entries(
 ) -> List[Dict[str, Any]]:
     """
     Queries time tracker entries from Notion within a date range and optional person filter.
-    Returns a clean list of parsed dictionaries sorted by Date descending.
+    Uses data_sources.query for compatibility with notion-client v3.x.
     """
-    if not NOTION_DBID_TIME_TRACKER:
-        raise ValueError("NOTION_DBID_TIME_TRACKER is not defined in environment variables.")
+    ds_id = get_time_tracker_data_source_id()
 
     # Build filters
     and_filters: List[Dict[str, Any]] = []
@@ -151,12 +173,20 @@ def query_time_tracker_entries(
 
     filter_payload = {"and": and_filters} if len(and_filters) > 1 else and_filters[0]
 
-    # Query Notion
-    query_res = notion.databases.query(
-        database_id=NOTION_DBID_TIME_TRACKER,
-        filter=filter_payload,
-        sorts=[{"property": "Date", "direction": "descending"}]
-    )
+    # Query Notion via data_sources
+    if hasattr(notion, "data_sources") and hasattr(notion.data_sources, "query"):
+        query_res = notion.data_sources.query(
+            data_source_id=ds_id,
+            filter=filter_payload,
+            sorts=[{"property": "Date", "direction": "descending"}]
+        )
+    else:
+        # Fallback for legacy database queries
+        query_res = notion.databases.query( # type: ignore
+            database_id=NOTION_DBID_TIME_TRACKER,
+            filter=filter_payload,
+            sorts=[{"property": "Date", "direction": "descending"}]
+        )
 
     parsed_entries: List[Dict[str, Any]] = []
     results = query_res.get("results", []) if isinstance(query_res, dict) else []
