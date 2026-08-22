@@ -98,7 +98,7 @@ def render_report_text(entries: list, data: dict) -> str:
         # Time line
         time_info = parse_notion_time_display(e.get("start_iso"), e.get("end_iso"), e.get("duration"))
         if time_info != "—":
-            lines.append(f"   ⏱ <b>زمان:</b> {time_info}")
+            lines.append(f"   ⏰ <b>زمان:</b> {time_info}")
 
         # Person line (show if available)
         if e.get("person_name"):
