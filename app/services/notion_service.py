@@ -246,3 +246,14 @@ def archive_notion_page(page_id: str) -> bool:
     except Exception as e:
         print(f"Error archiving Notion page {page_id}: {e}")
         return False
+    
+def update_notion_page_properties(page_id: str, properties: Dict[str, Any]) -> bool:
+    """
+    Updates specific properties of an existing page in Notion.
+    """
+    try:
+        notion.pages.update(page_id=page_id, properties=properties)
+        return True
+    except Exception as e:
+        print(f"Error updating Notion page {page_id}: {e}")
+        return False

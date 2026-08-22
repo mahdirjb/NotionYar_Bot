@@ -11,12 +11,16 @@ from app.keyboards.inline import (
     get_entry_detail_keyboard,
     get_delete_confirm_keyboard,
     get_back_cancel_keyboard,
+    get_edit_fields_keyboard,
+    get_edit_satisfaction_keyboard,
+    get_edit_person_keyboard,
     SATISFACTION_EMOJIS
 )
 from app.services.notion_service import (
     get_workspace_persons,
     query_time_tracker_entries,
-    archive_notion_page
+    archive_notion_page,
+    update_notion_page_properties
 )
 from app.services.date_helper import (
     get_preset_date_range,
@@ -399,4 +403,203 @@ async def rep_do_delete_handler(callback: CallbackQuery, state: FSMContext):
         await callback.answer("❌ خطا در حذف رکورد از نوشن.", show_alert=True)
 
     # Re-fetch report and return to dashboard
+    await fetch_and_render_report(callback, state)
+    
+# --- Record Edit Handlers ---
+@router.callback_query(F.data.startswith("rep_edit:"))
+async def rep_edit_menu_handler(callback: CallbackQuery, state: FSMContext):
+    page_id = (callback.data or "").split(":", 1)[1]
+    await state.update_data(editing_page_id=page_id)
+    if isinstance(callback.message, Message):
+        await callback.message.edit_text(
+            "✏️ <b>کدام بخش از این رکورد را می‌خواهید ویرایش کنید؟</b>",
+            reply_markup=get_edit_fields_keyboard(page_id),
+            parse_mode="HTML"
+        )
+    await callback.answer()
+
+
+# 1. Edit Name
+@router.callback_query(F.data.startswith("rep_ed_name:"))
+async def rep_edit_name_prompt(callback: CallbackQuery, state: FSMContext):
+    page_id = (callback.data or "").split(":", 1)[1]
+    await state.update_data(editing_page_id=page_id)
+    await state.set_state(ReportState.editing_name)
+    if isinstance(callback.message, Message):
+        prompt = await callback.message.answer(
+            "✏️ لطفاً <b>عنوان جدید فعالیت</b> را ارسال کنید:",
+            reply_markup=get_back_cancel_keyboard(),
+            parse_mode="HTML"
+        )
+        await state.update_data(last_prompt_id=prompt.message_id)
+    await callback.answer()
+
+
+@router.message(ReportState.editing_name)
+async def rep_process_edit_name(message: Message, state: FSMContext, bot: Bot):
+    new_name = (message.text or "").strip()
+    data = await state.get_data()
+    page_id = data.get("editing_page_id")
+
+    if not new_name:
+        err = await message.answer("❌ عنوان نمی‌تواند خالی باشد. متنی وارد کنید:")
+        await state.update_data(error_msg_ids=[err.message_id, message.message_id])
+        return
+
+    # Update Notion
+    update_notion_page_properties(page_id, {"Name": {"title": [{"text": {"content": new_name}}]}})
+
+    # Cleanup messages
+    prompt_id = data.get("last_prompt_id")
+    if prompt_id:
+        try:
+            await bot.delete_message(chat_id=message.chat.id, message_id=prompt_id)
+        except Exception:
+            pass
+    try:
+        await message.delete()
+    except Exception:
+        pass
+
+    await state.set_state(ReportState.viewing_report)
+    await message.answer("✅ عنوان فعالیت در نوشن با موفقیت ویرایش شد!")
+    await fetch_and_render_report(message, state)
+
+
+# 2. Edit Description
+@router.callback_query(F.data.startswith("rep_ed_desc:"))
+async def rep_edit_desc_prompt(callback: CallbackQuery, state: FSMContext):
+    page_id = (callback.data or "").split(":", 1)[1]
+    await state.update_data(editing_page_id=page_id)
+    await state.set_state(ReportState.editing_description)
+    if isinstance(callback.message, Message):
+        prompt = await callback.message.answer(
+            "📝 لطفاً <b>متن جدید توضیحات</b> را ارسال کنید (برای خالی کردن بنویسید <code>خالی</code>):",
+            reply_markup=get_back_cancel_keyboard(),
+            parse_mode="HTML"
+        )
+        await state.update_data(last_prompt_id=prompt.message_id)
+    await callback.answer()
+
+
+@router.message(ReportState.editing_description)
+async def rep_process_edit_desc(message: Message, state: FSMContext, bot: Bot):
+    new_desc = (message.text or "").strip()
+    data = await state.get_data()
+    page_id = data.get("editing_page_id")
+
+    content = "" if new_desc == "خالی" else new_desc
+    rich_text = [{"text": {"content": content}}] if content else []
+    update_notion_page_properties(page_id, {"Description": {"rich_text": rich_text}})
+
+    prompt_id = data.get("last_prompt_id")
+    if prompt_id:
+        try:
+            await bot.delete_message(chat_id=message.chat.id, message_id=prompt_id)
+        except Exception:
+            pass
+    try:
+        await message.delete()
+    except Exception:
+        pass
+
+    await state.set_state(ReportState.viewing_report)
+    await message.answer("✅ توضیحات در نوشن با موفقیت ویرایش شد!")
+    await fetch_and_render_report(message, state)
+
+
+# 3. Edit Duration
+@router.callback_query(F.data.startswith("rep_ed_dur:"))
+async def rep_edit_dur_prompt(callback: CallbackQuery, state: FSMContext):
+    page_id = (callback.data or "").split(":", 1)[1]
+    await state.update_data(editing_page_id=page_id)
+    await state.set_state(ReportState.editing_duration)
+    if isinstance(callback.message, Message):
+        prompt = await callback.message.answer(
+            "⏱ لطفاً <b>مدت زمان جدید را به دقیقه</b> وارد کنید (مثلاً <code>45</code>):",
+            reply_markup=get_back_cancel_keyboard(),
+            parse_mode="HTML"
+        )
+        await state.update_data(last_prompt_id=prompt.message_id)
+    await callback.answer()
+
+
+@router.message(ReportState.editing_duration)
+async def rep_process_edit_dur(message: Message, state: FSMContext, bot: Bot):
+    text = (message.text or "").strip()
+    data = await state.get_data()
+    page_id = data.get("editing_page_id")
+
+    if not text.isdigit() or not (0 <= int(text) <= 1440):
+        err = await message.answer("❌ لطفاً عددی بین ۰ تا ۱۴۴۰ دقیقه وارد کنید:")
+        await state.update_data(error_msg_ids=[err.message_id, message.message_id])
+        return
+
+    dur_val = int(text)
+    update_notion_page_properties(page_id, {"MDuration": {"number": dur_val}})
+
+    prompt_id = data.get("last_prompt_id")
+    if prompt_id:
+        try:
+            await bot.delete_message(chat_id=message.chat.id, message_id=prompt_id)
+        except Exception:
+            pass
+    try:
+        await message.delete()
+    except Exception:
+        pass
+
+    await state.set_state(ReportState.viewing_report)
+    await message.answer("✅ مدت زمان در نوشن با موفقیت ویرایش شد!")
+    await fetch_and_render_report(message, state)
+
+
+# 4. Edit Satisfaction
+@router.callback_query(F.data.startswith("rep_ed_sat:"))
+async def rep_edit_sat_menu(callback: CallbackQuery, state: FSMContext):
+    page_id = (callback.data or "").split(":", 1)[1]
+    await state.update_data(editing_page_id=page_id)
+    if isinstance(callback.message, Message):
+        await callback.message.edit_text(
+            "⭐ <b>میزان رضایت جدید را انتخاب کنید:</b>",
+            reply_markup=get_edit_satisfaction_keyboard(page_id),
+            parse_mode="HTML"
+        )
+    await callback.answer()
+
+
+@router.callback_query(F.data.startswith("rep_set_ed_sat:"))
+async def rep_set_edit_sat_handler(callback: CallbackQuery, state: FSMContext):
+    sat_val = (callback.data or "").split(":", 1)[1]
+    data = await state.get_data()
+    page_id = data.get("editing_page_id")
+
+    update_notion_page_properties(page_id, {"Satisfaction": {"select": {"name": sat_val}}})
+    await callback.answer(f"✅ میزان رضایت به '{sat_val}' تغییر یافت.", show_alert=True)
+    await fetch_and_render_report(callback, state)
+
+
+# 5. Edit Person
+@router.callback_query(F.data.startswith("rep_ed_per:"))
+async def rep_edit_person_menu(callback: CallbackQuery, state: FSMContext):
+    page_id = (callback.data or "").split(":", 1)[1]
+    await state.update_data(editing_page_id=page_id)
+    persons = get_workspace_persons()
+    if isinstance(callback.message, Message):
+        await callback.message.edit_text(
+            "👤 <b>انجام‌دهنده جدید را انتخاب کنید:</b>",
+            reply_markup=get_edit_person_keyboard(page_id, persons),
+            parse_mode="HTML"
+        )
+    await callback.answer()
+
+
+@router.callback_query(F.data.startswith("rep_set_ed_per:"))
+async def rep_set_edit_person_handler(callback: CallbackQuery, state: FSMContext):
+    new_person_id = (callback.data or "").split(":", 1)[1]
+    data = await state.get_data()
+    page_id = data.get("editing_page_id")
+
+    update_notion_page_properties(page_id, {"Person": {"people": [{"id": new_person_id}]}})
+    await callback.answer("✅ انجام‌دهنده با موفقیت تغییر کرد.", show_alert=True)
     await fetch_and_render_report(callback, state)

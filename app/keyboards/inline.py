@@ -196,15 +196,18 @@ def get_entries_selector_keyboard(entries: list) -> InlineKeyboardMarkup:
 
 def get_entry_detail_keyboard(page_id: str, page_url: str) -> InlineKeyboardMarkup:
     """
-    Action buttons for a single entry detail view.
+    Action buttons for a single entry detail view including Edit.
     """
-    keyboard = []
+    keyboard = [
+        [
+            InlineKeyboardButton(text="✏️ ویرایش این رکورد", callback_data=f"rep_edit:{page_id}"),
+            InlineKeyboardButton(text="🗑 حذف این رکورد", callback_data=f"rep_confirm_del:{page_id}")
+        ]
+    ]
     if page_url:
         keyboard.append([InlineKeyboardButton(text="🔗 مشاهده در نوشن", url=page_url)])
-    keyboard.append([InlineKeyboardButton(text="🗑 حذف این رکورد", callback_data=f"rep_confirm_del:{page_id}")])
     keyboard.append([InlineKeyboardButton(text="🔙 بازگشت به لیست رکوردها", callback_data="rep_manage_entries")])
     return InlineKeyboardMarkup(inline_keyboard=keyboard)
-
 
 def get_delete_confirm_keyboard(page_id: str) -> InlineKeyboardMarkup:
     """
@@ -216,4 +219,50 @@ def get_delete_confirm_keyboard(page_id: str) -> InlineKeyboardMarkup:
             InlineKeyboardButton(text="❌ انصراف", callback_data=f"rep_det:{page_id}")
         ]
     ]
+    return InlineKeyboardMarkup(inline_keyboard=keyboard)
+
+def get_edit_fields_keyboard(page_id: str) -> InlineKeyboardMarkup:
+    """
+    Submenu to pick which field of the record to edit.
+    """
+    keyboard = [
+        [
+            InlineKeyboardButton(text="📌 ویرایش عنوان", callback_data=f"rep_ed_name:{page_id}"),
+            InlineKeyboardButton(text="👤 تغییر شخص", callback_data=f"rep_ed_per:{page_id}")
+        ],
+        [
+            InlineKeyboardButton(text="⭐ تغییر رضایت", callback_data=f"rep_ed_sat:{page_id}"),
+            InlineKeyboardButton(text="⏱ ویرایش مدت زمان", callback_data=f"rep_ed_dur:{page_id}")
+        ],
+        [
+            InlineKeyboardButton(text="📝 ویرایش توضیحات", callback_data=f"rep_ed_desc:{page_id}")
+        ],
+        [
+            InlineKeyboardButton(text="🔙 بازگشت به جزئیات رکورد", callback_data=f"rep_det:{page_id}")
+        ]
+    ]
+    return InlineKeyboardMarkup(inline_keyboard=keyboard)
+
+
+def get_edit_satisfaction_keyboard(page_id: str) -> InlineKeyboardMarkup:
+    """
+    Satisfaction picker for editing.
+    """
+    options = ["عالی", "خوب", "متوسط", "بد", "داغون"]
+    keyboard = []
+    for opt in options:
+        emoji = SATISFACTION_EMOJIS.get(opt, "⭐")
+        keyboard.append([InlineKeyboardButton(text=f"{emoji} {opt}", callback_data=f"rep_set_ed_sat:{opt}")])
+    keyboard.append([InlineKeyboardButton(text="🔙 انصراف", callback_data=f"rep_edit:{page_id}")])
+    return InlineKeyboardMarkup(inline_keyboard=keyboard)
+
+
+def get_edit_person_keyboard(page_id: str, persons: list) -> InlineKeyboardMarkup:
+    """
+    Person picker for editing.
+    """
+    keyboard = []
+    for p in persons:
+        keyboard.append([InlineKeyboardButton(text=f"👤 {p['name']}", callback_data=f"rep_set_ed_per:{p['id']}")])
+    keyboard.append([InlineKeyboardButton(text="🔙 انصراف", callback_data=f"rep_edit:{page_id}")])
     return InlineKeyboardMarkup(inline_keyboard=keyboard)
