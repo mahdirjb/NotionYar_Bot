@@ -133,7 +133,7 @@ def parse_notion_time_display(start_iso: str | None, end_iso: str | None, m_dura
 
     # Case 2: Only MDuration exists
     if m_duration is not None and m_duration > 0:
-        return f"⏱ {format_minutes_to_hours_str(m_duration)}"
+        return f"{format_minutes_to_hours_str(m_duration)}"
 
     return "—"
 
