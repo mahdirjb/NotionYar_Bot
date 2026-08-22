@@ -39,33 +39,40 @@ ROLE_PERMISSIONS: Dict[str, Set[str]] = {
     }
 }
 
-# Runtime memory user roles cache
-_user_roles: Dict[int, str] = {}
+# Runtime memory structure: {user_id: {"name": "...", "role": "..."}}
+_user_data: Dict[int, Dict[str, str]] = {}
 
 
 def _load_users() -> None:
-    """Loads users from users_db.json and merges with environment seed users."""
-    global _user_roles
-    _user_roles.clear()
+    """Loads users from persistent JSON and merges with environment seed users."""
+    global _user_data
+    _user_data.clear()
 
-    # 1. Load from environment seeds
+    # 1. Load from environment seeds (default names)
     for uid in GUEST_USERS:
-        _user_roles[uid] = "guest"
+        _user_data[uid] = {"name": f"کاربر {uid}", "role": "guest"}
     for uid in MEMBER_USERS:
-        _user_roles[uid] = "member"
+        _user_data[uid] = {"name": f"کاربر {uid}", "role": "member"}
     for uid in MANAGER_USERS:
-        _user_roles[uid] = "manager"
+        _user_data[uid] = {"name": f"کاربر {uid}", "role": "manager"}
     for uid in ADMIN_USERS:
-        _user_roles[uid] = "admin"
+        _user_data[uid] = {"name": f"ادمین {uid}", "role": "admin"}
 
     # 2. Merge with persistent JSON file if exists
     if os.path.exists(USER_DB_FILE):
         try:
             with open(USER_DB_FILE, "r", encoding="utf-8") as f:
-                saved_users = json.load(f)
-                for uid_str, role in saved_users.items():
-                    if uid_str.isdigit() and role in ROLE_PERMISSIONS:
-                        _user_roles[int(uid_str)] = role
+                saved = json.load(f)
+                for uid_str, u_info in saved.items():
+                    if uid_str.isdigit():
+                        uid = int(uid_str)
+                        if isinstance(u_info, dict):
+                            _user_data[uid] = {
+                                "name": u_info.get("name", f"کاربر {uid}"),
+                                "role": u_info.get("role", "member")
+                            }
+                        elif isinstance(u_info, str) and u_info in ROLE_PERMISSIONS:
+                            _user_data[uid] = {"name": f"کاربر {uid}", "role": u_info}
         except Exception as e:
             print(f"Error reading {USER_DB_FILE}: {e}")
 
@@ -73,9 +80,9 @@ def _load_users() -> None:
 def _save_users() -> None:
     """Saves current runtime users to users_db.json."""
     try:
-        data_to_save = {str(uid): role for uid, role in _user_roles.items()}
+        data_to_save = {str(uid): info for uid, info in _user_data.items()}
         with open(USER_DB_FILE, "w", encoding="utf-8") as f:
-            json.dump(data_to_save, f, indent=2)
+            json.dump(data_to_save, f, indent=2, ensure_ascii=False)
     except Exception as e:
         print(f"Error saving to {USER_DB_FILE}: {e}")
 
@@ -84,41 +91,68 @@ def _save_users() -> None:
 _load_users()
 
 
-def get_all_users() -> Dict[int, str]:
-    """Returns a dictionary of all registered user_ids and their roles."""
-    return dict(_user_roles)
+def get_all_users() -> Dict[int, Dict[str, str]]:
+    """Returns all registered users with their names and roles."""
+    return dict(_user_data)
 
 
 def get_user_role(user_id: Optional[int]) -> Optional[str]:
-    """Returns the role name of a user, or None if unauthorized."""
+    """Returns the role of a user, or None if unauthorized."""
     if not user_id:
         return None
-    return _user_roles.get(user_id)
+    info = _user_data.get(user_id)
+    return info["role"] if info else None
+
+
+def get_user_name(user_id: Optional[int]) -> str:
+    """Returns the custom display name of a user."""
+    if not user_id:
+        return "ناشناس"
+    info = _user_data.get(user_id)
+    return info["name"] if info else f"کاربر {user_id}"
 
 
 def set_user_role(user_id: int, role: str) -> bool:
-    """Adds or updates a user role dynamically and persists to disk."""
+    """Updates only the role of a user."""
     if role not in ROLE_PERMISSIONS:
         return False
-    _user_roles[user_id] = role
+    if user_id in _user_data:
+        _user_data[user_id]["role"] = role
+    else:
+        _user_data[user_id] = {"name": f"کاربر {user_id}", "role": role}
+    _save_users()
+    return True
+
+
+def set_user_name(user_id: int, name: str) -> bool:
+    """Updates only the display name of a user."""
+    if user_id in _user_data:
+        _user_data[user_id]["name"] = name
+        _save_users()
+        return True
+    return False
+
+
+def add_or_update_user(user_id: int, name: str, role: str) -> bool:
+    """Adds or updates both name and role for a user."""
+    if role not in ROLE_PERMISSIONS:
+        return False
+    _user_data[user_id] = {"name": name.strip(), "role": role}
     _save_users()
     return True
 
 
 def remove_user(user_id: int) -> bool:
-    """Removes a user and their access completely."""
-    if user_id in _user_roles:
-        del _user_roles[user_id]
+    """Removes a user completely."""
+    if user_id in _user_data:
+        del _user_data[user_id]
         _save_users()
         return True
     return False
 
 
 def has_permission(user_id: Optional[int], permission: str) -> bool:
-    """
-    Checks if a user has a specific permission.
-    Admins always have all permissions.
-    """
+    """Checks if a user has a specific permission."""
     if not user_id:
         return False
     
@@ -131,5 +165,5 @@ def has_permission(user_id: Optional[int], permission: str) -> bool:
 
 
 def is_user_registered(user_id: Optional[int]) -> bool:
-    """Checks if the user has any role in the system."""
+    """Checks if user has any role in the system."""
     return get_user_role(user_id) is not None

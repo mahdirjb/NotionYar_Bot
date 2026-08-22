@@ -307,11 +307,13 @@ def build_admin_dashboard_keyboard() -> InlineKeyboardMarkup:
 
 
 def get_admin_users_list_keyboard(users: dict) -> InlineKeyboardMarkup:
-    """Keyboard listing all registered users for role editing or removal."""
+    """Keyboard listing all registered users with custom names."""
     keyboard = []
-    for uid, role in users.items():
+    for uid, info in users.items():
+        role = info.get("role", "member")
+        name = info.get("name", f"کاربر {uid}")
         badge = ROLE_BADGES.get(role, "👤")
-        btn_text = f"{badge} | ID: {uid}"
+        btn_text = f"{badge} {name}"
         keyboard.append([InlineKeyboardButton(text=btn_text, callback_data=f"adm_manage_user:{uid}")])
 
     keyboard.append([
@@ -322,8 +324,10 @@ def get_admin_users_list_keyboard(users: dict) -> InlineKeyboardMarkup:
 
 
 def get_admin_user_manage_keyboard(target_user_id: int, current_role: str) -> InlineKeyboardMarkup:
-    """Action keyboard for a specific user: Switch role or delete access."""
-    keyboard = []
+    """Action keyboard for a specific user: Edit name, switch role or delete access."""
+    keyboard = [
+        [InlineKeyboardButton(text="✏️ ویرایش نام کاربر", callback_data=f"adm_edit_name:{target_user_id}")]
+    ]
     
     # Available role switch buttons
     roles = [
