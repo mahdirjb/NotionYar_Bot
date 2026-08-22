@@ -1,12 +1,25 @@
 from aiogram.types import ReplyKeyboardMarkup, KeyboardButton
+from app.services.auth_service import has_permission, PERM_ADD_TIME, PERM_VIEW_REPORTS
 
 BTN_ADD_TIME = "⏱ ثبت زمان جدید"
 BTN_REPORTS = "📊 گزارش و کارکردها"
 BTN_HELP = "ℹ️ راهنما"
 
-def get_main_reply_keyboard() -> ReplyKeyboardMarkup:
-    keyboard = [
-        [KeyboardButton(text=BTN_ADD_TIME)],
-        [KeyboardButton(text=BTN_REPORTS), KeyboardButton(text=BTN_HELP)]
-    ]
+def get_main_reply_keyboard(user_id: int | None = None) -> ReplyKeyboardMarkup:
+    """
+    Dynamically generates the reply keyboard based on user permissions.
+    """
+    keyboard = []
+
+    # Row 1: Add time button (only if user has add_time permission)
+    if has_permission(user_id, PERM_ADD_TIME):
+        keyboard.append([KeyboardButton(text=BTN_ADD_TIME)])
+
+    # Row 2: Reports button (if permitted) + Help button
+    row_2 = []
+    if has_permission(user_id, PERM_VIEW_REPORTS):
+        row_2.append(KeyboardButton(text=BTN_REPORTS))
+    row_2.append(KeyboardButton(text=BTN_HELP))
+    keyboard.append(row_2)
+
     return ReplyKeyboardMarkup(keyboard=keyboard, resize_keyboard=True)
