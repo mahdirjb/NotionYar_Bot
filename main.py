@@ -2,7 +2,7 @@ import asyncio
 import logging
 from aiogram import Bot, Dispatcher
 from app.config import BOT_TOKEN
-from app.handlers import common, time_tracker
+from app.handlers import common, time_tracker, reports
 
 logging.basicConfig(level=logging.INFO)
 
@@ -16,6 +16,7 @@ async def main():
     # Register handlers
     dp.include_router(common.router)
     dp.include_router(time_tracker.router)
+    dp.include_router(reports.router)
 
     print("Bot is starting polling...")
     await dp.start_polling(bot)
