@@ -19,6 +19,7 @@ from app.keyboards.inline import (
 from app.services.notion_service import (
     get_workspace_persons,
     query_time_tracker_entries,
+    get_time_tracker_entry,
     archive_notion_page,
     update_notion_page_properties
 )
@@ -314,7 +315,71 @@ async def rep_process_custom_date(message: Message, state: FSMContext, bot: Bot)
     await state.set_state(ReportState.viewing_report)
     await fetch_and_render_report(message, state)
     
-# --- Record Management & Delete Handlers ---
+# --- Record Management, Detail & Edit Handlers ---
+
+def render_entry_detail_text(entry: dict) -> str:
+    """Formats a single record detail text."""
+    time_info = parse_notion_time_display(entry.get("start_iso"), entry.get("end_iso"), entry.get("duration"))
+    person = entry.get("person_name") or "تعیین نشده"
+    sat = entry.get("satisfaction")
+    sat_text = f"{SATISFACTION_EMOJIS.get(sat, '⭐')} {sat}" if sat else "تعیین نشده"
+    desc = entry.get("description") or "ندارد"
+
+    return (
+        "📄 <b>جزئیات کامل رکورد:</b>\n\n"
+        f"📌 <b>عنوان:</b> {entry.get('name')}\n"
+        f"⏱ <b>زمان / بازه:</b> {time_info}\n"
+        f"👤 <b>انجام‌دهنده:</b> {person}\n"
+        f"⭐ <b>میزان رضایت:</b> {sat_text}\n"
+        f"📝 <b>توضیحات:</b> {desc}"
+    )
+
+
+async def show_entry_detail_card(
+    event: Message | CallbackQuery,
+    page_id: str,
+    bot: Bot,
+    state: FSMContext,
+    alert_text: str | None = None
+):
+    """Renders and shows the updated detail card of a specific entry."""
+    entry = get_time_tracker_entry(page_id)
+    if not entry:
+        if isinstance(event, CallbackQuery):
+            await event.answer("⚠️ این رکورد یافت نشد.", show_alert=True)
+        return
+
+    text = render_entry_detail_text(entry)
+    markup = get_entry_detail_keyboard(page_id, entry.get("url", ""))
+
+    data = await state.get_data()
+    detail_msg_id = data.get("detail_message_id")
+
+    if isinstance(event, CallbackQuery) and isinstance(event.message, Message):
+        await event.message.edit_text(text, reply_markup=markup, parse_mode="HTML", disable_web_page_preview=True)
+        if alert_text:
+            await event.answer(alert_text, show_alert=False)
+        else:
+            await event.answer()
+    elif isinstance(event, Message):
+        chat_id = event.chat.id
+        if detail_msg_id:
+            try:
+                await bot.edit_message_text(
+                    chat_id=chat_id,
+                    message_id=detail_msg_id,
+                    text=text,
+                    reply_markup=markup,
+                    parse_mode="HTML",
+                    disable_web_page_preview=True
+                )
+                return
+            except Exception:
+                pass
+        msg = await event.answer(text, reply_markup=markup, parse_mode="HTML", disable_web_page_preview=True)
+        await state.update_data(detail_message_id=msg.message_id)
+
+
 @router.callback_query(F.data == "rep_manage_entries")
 async def rep_manage_entries_handler(callback: CallbackQuery, state: FSMContext):
     data = await state.get_data()
@@ -324,15 +389,12 @@ async def rep_manage_entries_handler(callback: CallbackQuery, state: FSMContext)
         person_id=data.get("person_id")
     )
     if not entries:
-        await callback.answer("⚠️ رکوردی برای نمایش یا حذف وجود ندارد.", show_alert=True)
+        await callback.answer("⚠️ رکوردی برای نمایش یا ویرایش وجود ندارد.", show_alert=True)
         return
-
-    # Cache entries in state for instant detail access
-    await state.update_data(cached_entries=entries)
 
     if isinstance(callback.message, Message):
         await callback.message.edit_text(
-            "📋 <b>یکی از رکوردهای زیر را برای مشاهده جزئیات یا حذف انتخاب کنید:</b>",
+            "📋 <b>یکی از رکوردهای زیر را برای مشاهده جزئیات، ویرایش یا حذف انتخاب کنید:</b>",
             reply_markup=get_entries_selector_keyboard(entries),
             parse_mode="HTML"
         )
@@ -340,43 +402,12 @@ async def rep_manage_entries_handler(callback: CallbackQuery, state: FSMContext)
 
 
 @router.callback_query(F.data.startswith("rep_det:"))
-async def rep_entry_detail_handler(callback: CallbackQuery, state: FSMContext):
+async def rep_entry_detail_handler(callback: CallbackQuery, state: FSMContext, bot: Bot):
     page_id = (callback.data or "").split(":", 1)[1]
-    data = await state.get_data()
-    entries = data.get("cached_entries") or query_time_tracker_entries(
-        start_date_iso=data.get("start_iso"),
-        end_date_iso=data.get("end_iso"),
-        person_id=data.get("person_id")
-    )
-    
-    entry = next((e for e in entries if e["id"] == page_id), None)
-    if not entry:
-        await callback.answer("⚠️ این رکورد یافت نشد.", show_alert=True)
-        return
-
-    time_info = parse_notion_time_display(entry.get("start_iso"), entry.get("end_iso"), entry.get("duration"))
-    person = entry.get("person_name") or "تعیین نشده"
-    sat = entry.get("satisfaction")
-    sat_text = f"{SATISFACTION_EMOJIS.get(sat, '⭐')} {sat}" if sat else "تعیین نشده"
-    desc = entry.get("description") or "ندارد"
-
-    detail_text = (
-        "📄 <b>جزئیات کامل رکورد:</b>\n\n"
-        f"📌 <b>عنوان:</b> {entry.get('name')}\n"
-        f"⏱ <b>زمان / بازه:</b> {time_info}\n"
-        f"👤 <b>انجام‌دهنده:</b> {person}\n"
-        f"⭐ <b>میزان رضایت:</b> {sat_text}\n"
-        f"📝 <b>توضیحات:</b> {desc}"
-    )
-
+    await state.update_data(editing_page_id=page_id)
     if isinstance(callback.message, Message):
-        await callback.message.edit_text(
-            detail_text,
-            reply_markup=get_entry_detail_keyboard(page_id, entry.get("url", "")),
-            parse_mode="HTML",
-            disable_web_page_preview=True
-        )
-    await callback.answer()
+        await state.update_data(detail_message_id=callback.message.message_id)
+    await show_entry_detail_card(callback, page_id, bot, state)
 
 
 @router.callback_query(F.data.startswith("rep_confirm_del:"))
@@ -402,10 +433,11 @@ async def rep_do_delete_handler(callback: CallbackQuery, state: FSMContext):
     else:
         await callback.answer("❌ خطا در حذف رکورد از نوشن.", show_alert=True)
 
-    # Re-fetch report and return to dashboard
     await fetch_and_render_report(callback, state)
-    
-# --- Record Edit Handlers ---
+
+
+# --- Submenu & Field Editors (Stay in Record View) ---
+
 @router.callback_query(F.data.startswith("rep_edit:"))
 async def rep_edit_menu_handler(callback: CallbackQuery, state: FSMContext):
     page_id = (callback.data or "").split(":", 1)[1]
@@ -446,10 +478,9 @@ async def rep_process_edit_name(message: Message, state: FSMContext, bot: Bot):
         await state.update_data(error_msg_ids=[err.message_id, message.message_id])
         return
 
-    # Update Notion
     update_notion_page_properties(page_id, {"Name": {"title": [{"text": {"content": new_name}}]}})
 
-    # Cleanup messages
+    # Chat hygiene
     prompt_id = data.get("last_prompt_id")
     if prompt_id:
         try:
@@ -462,8 +493,8 @@ async def rep_process_edit_name(message: Message, state: FSMContext, bot: Bot):
         pass
 
     await state.set_state(ReportState.viewing_report)
-    await message.answer("✅ عنوان فعالیت در نوشن با موفقیت ویرایش شد!")
-    await fetch_and_render_report(message, state)
+    # Remain inside the entry detail card
+    await show_entry_detail_card(message, page_id, bot, state)
 
 
 # 2. Edit Description
@@ -504,8 +535,7 @@ async def rep_process_edit_desc(message: Message, state: FSMContext, bot: Bot):
         pass
 
     await state.set_state(ReportState.viewing_report)
-    await message.answer("✅ توضیحات در نوشن با موفقیت ویرایش شد!")
-    await fetch_and_render_report(message, state)
+    await show_entry_detail_card(message, page_id, bot, state)
 
 
 # 3. Edit Duration
@@ -550,8 +580,7 @@ async def rep_process_edit_dur(message: Message, state: FSMContext, bot: Bot):
         pass
 
     await state.set_state(ReportState.viewing_report)
-    await message.answer("✅ مدت زمان در نوشن با موفقیت ویرایش شد!")
-    await fetch_and_render_report(message, state)
+    await show_entry_detail_card(message, page_id, bot, state)
 
 
 # 4. Edit Satisfaction
@@ -569,14 +598,13 @@ async def rep_edit_sat_menu(callback: CallbackQuery, state: FSMContext):
 
 
 @router.callback_query(F.data.startswith("rep_set_ed_sat:"))
-async def rep_set_edit_sat_handler(callback: CallbackQuery, state: FSMContext):
+async def rep_set_edit_sat_handler(callback: CallbackQuery, state: FSMContext, bot: Bot):
     sat_val = (callback.data or "").split(":", 1)[1]
     data = await state.get_data()
     page_id = data.get("editing_page_id")
 
     update_notion_page_properties(page_id, {"Satisfaction": {"select": {"name": sat_val}}})
-    await callback.answer(f"✅ میزان رضایت به '{sat_val}' تغییر یافت.", show_alert=True)
-    await fetch_and_render_report(callback, state)
+    await show_entry_detail_card(callback, page_id, bot, state, alert_text=f"✅ رضایت به '{sat_val}' تغییر یافت.")
 
 
 # 5. Edit Person
@@ -595,11 +623,10 @@ async def rep_edit_person_menu(callback: CallbackQuery, state: FSMContext):
 
 
 @router.callback_query(F.data.startswith("rep_set_ed_per:"))
-async def rep_set_edit_person_handler(callback: CallbackQuery, state: FSMContext):
+async def rep_set_edit_person_handler(callback: CallbackQuery, state: FSMContext, bot: Bot):
     new_person_id = (callback.data or "").split(":", 1)[1]
     data = await state.get_data()
     page_id = data.get("editing_page_id")
 
     update_notion_page_properties(page_id, {"Person": {"people": [{"id": new_person_id}]}})
-    await callback.answer("✅ انجام‌دهنده با موفقیت تغییر کرد.", show_alert=True)
-    await fetch_and_render_report(callback, state)
+    await show_entry_detail_card(callback, page_id, bot, state, alert_text="✅ انجام‌دهنده با موفقیت تغییر کرد.")

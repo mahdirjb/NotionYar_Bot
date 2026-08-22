@@ -257,3 +257,54 @@ def update_notion_page_properties(page_id: str, properties: Dict[str, Any]) -> b
     except Exception as e:
         print(f"Error updating Notion page {page_id}: {e}")
         return False
+    
+def get_time_tracker_entry(page_id: str) -> Optional[Dict[str, Any]]:
+    """
+    Retrieves and parses a single time tracker page by page_id.
+    """
+    try:
+        page = notion.pages.retrieve(page_id=page_id)
+        if not isinstance(page, dict):
+            return None
+
+        props = page.get("properties", {})
+
+        # Title
+        title_list = props.get("Name", {}).get("title", [])
+        name = title_list[0].get("plain_text", "بدون عنوان") if title_list else "بدون عنوان"
+
+        # Date & Times
+        date_prop = props.get("Date", {}).get("date") or {}
+        raw_start = date_prop.get("start")
+        raw_end = date_prop.get("end")
+
+        # MDuration
+        m_duration = props.get("MDuration", {}).get("number")
+
+        # Satisfaction
+        satisfaction = (props.get("Satisfaction", {}).get("select") or {}).get("name")
+
+        # Person
+        people = props.get("Person", {}).get("people", [])
+        person_name = people[0].get("name", "نامشخص") if people else None
+        page_person_id = people[0].get("id") if people else None
+
+        # Description
+        desc_list = props.get("Description", {}).get("rich_text", [])
+        description = desc_list[0].get("plain_text", "") if desc_list else ""
+
+        return {
+            "id": page.get("id"),
+            "name": name,
+            "start_iso": raw_start,
+            "end_iso": raw_end,
+            "duration": m_duration,
+            "satisfaction": satisfaction,
+            "person_name": person_name,
+            "person_id": page_person_id,
+            "description": description,
+            "url": page.get("url", "")
+        }
+    except Exception as e:
+        print(f"Error retrieving entry {page_id}: {e}")
+        return None
