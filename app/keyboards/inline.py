@@ -238,11 +238,11 @@ def get_edit_fields_keyboard(page_id: str) -> InlineKeyboardMarkup:
             InlineKeyboardButton(text="📝 ویرایش توضیحات", callback_data=f"rep_ed_desc:{page_id}")
         ],
         [
-            InlineKeyboardButton(text="🔙 بازگشت به جزئیات رکورد", callback_data=f"rep_det:{page_id}")
+            InlineKeyboardButton(text="📄 مشاهده کارت رکورد", callback_data=f"rep_det:{page_id}"),
+            InlineKeyboardButton(text="📋 لیست رکوردها", callback_data="rep_manage_entries")
         ]
     ]
     return InlineKeyboardMarkup(inline_keyboard=keyboard)
-
 
 def get_edit_satisfaction_keyboard(page_id: str) -> InlineKeyboardMarkup:
     """

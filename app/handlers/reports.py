@@ -436,19 +436,62 @@ async def rep_do_delete_handler(callback: CallbackQuery, state: FSMContext):
     await fetch_and_render_report(callback, state)
 
 
-# --- Submenu & Field Editors (Stay in Record View) ---
+# --- Submenu & Field Editors (Directly Return to Edit Menu) ---
+
+async def show_edit_menu(
+    event: Message | CallbackQuery,
+    page_id: str,
+    bot: Bot,
+    state: FSMContext,
+    alert_text: str | None = None
+):
+    """Renders the updated record summary directly inside the edit submenu."""
+    entry = get_time_tracker_entry(page_id)
+    if not entry:
+        if isinstance(event, CallbackQuery):
+            await event.answer("⚠️ این رکورد یافت نشد.", show_alert=True)
+        return
+
+    detail_summary = render_entry_detail_text(entry)
+    text = (
+        f"{detail_summary}\n\n"
+        "👇 <b>برای ویرایش هر بخش، دکمه مربوطه را انتخاب کنید:</b>"
+    )
+    markup = get_edit_fields_keyboard(page_id)
+
+    data = await state.get_data()
+    detail_msg_id = data.get("detail_message_id")
+
+    if isinstance(event, CallbackQuery) and isinstance(event.message, Message):
+        await event.message.edit_text(text, reply_markup=markup, parse_mode="HTML", disable_web_page_preview=True)
+        if alert_text:
+            await event.answer(alert_text, show_alert=False)
+        else:
+            await event.answer()
+    elif isinstance(event, Message):
+        chat_id = event.chat.id
+        if detail_msg_id:
+            try:
+                await bot.edit_message_text(
+                    chat_id=chat_id,
+                    message_id=detail_msg_id,
+                    text=text,
+                    reply_markup=markup,
+                    parse_mode="HTML",
+                    disable_web_page_preview=True
+                )
+                return
+            except Exception:
+                pass
+        msg = await event.answer(text, reply_markup=markup, parse_mode="HTML", disable_web_page_preview=True)
+        await state.update_data(detail_message_id=msg.message_id)
+
 
 @router.callback_query(F.data.startswith("rep_edit:"))
-async def rep_edit_menu_handler(callback: CallbackQuery, state: FSMContext):
+async def rep_edit_menu_handler(callback: CallbackQuery, state: FSMContext, bot: Bot):
     page_id = (callback.data or "").split(":", 1)[1]
     await state.update_data(editing_page_id=page_id)
-    if isinstance(callback.message, Message):
-        await callback.message.edit_text(
-            "✏️ <b>کدام بخش از این رکورد را می‌خواهید ویرایش کنید؟</b>",
-            reply_markup=get_edit_fields_keyboard(page_id),
-            parse_mode="HTML"
-        )
-    await callback.answer()
+    await show_edit_menu(callback, page_id, bot, state)
 
 
 # 1. Edit Name
@@ -480,7 +523,6 @@ async def rep_process_edit_name(message: Message, state: FSMContext, bot: Bot):
 
     update_notion_page_properties(page_id, {"Name": {"title": [{"text": {"content": new_name}}]}})
 
-    # Chat hygiene
     prompt_id = data.get("last_prompt_id")
     if prompt_id:
         try:
@@ -493,8 +535,7 @@ async def rep_process_edit_name(message: Message, state: FSMContext, bot: Bot):
         pass
 
     await state.set_state(ReportState.viewing_report)
-    # Remain inside the entry detail card
-    await show_entry_detail_card(message, page_id, bot, state)
+    await show_edit_menu(message, page_id, bot, state)
 
 
 # 2. Edit Description
@@ -535,7 +576,7 @@ async def rep_process_edit_desc(message: Message, state: FSMContext, bot: Bot):
         pass
 
     await state.set_state(ReportState.viewing_report)
-    await show_entry_detail_card(message, page_id, bot, state)
+    await show_edit_menu(message, page_id, bot, state)
 
 
 # 3. Edit Duration
@@ -580,7 +621,7 @@ async def rep_process_edit_dur(message: Message, state: FSMContext, bot: Bot):
         pass
 
     await state.set_state(ReportState.viewing_report)
-    await show_entry_detail_card(message, page_id, bot, state)
+    await show_edit_menu(message, page_id, bot, state)
 
 
 # 4. Edit Satisfaction
@@ -604,7 +645,7 @@ async def rep_set_edit_sat_handler(callback: CallbackQuery, state: FSMContext, b
     page_id = data.get("editing_page_id")
 
     update_notion_page_properties(page_id, {"Satisfaction": {"select": {"name": sat_val}}})
-    await show_entry_detail_card(callback, page_id, bot, state, alert_text=f"✅ رضایت به '{sat_val}' تغییر یافت.")
+    await show_edit_menu(callback, page_id, bot, state, alert_text=f"✅ رضایت به '{sat_val}' تغییر یافت.")
 
 
 # 5. Edit Person
@@ -629,4 +670,4 @@ async def rep_set_edit_person_handler(callback: CallbackQuery, state: FSMContext
     page_id = data.get("editing_page_id")
 
     update_notion_page_properties(page_id, {"Person": {"people": [{"id": new_person_id}]}})
-    await show_entry_detail_card(callback, page_id, bot, state, alert_text="✅ انجام‌دهنده با موفقیت تغییر کرد.")
+    await show_edit_menu(callback, page_id, bot, state, alert_text="✅ انجام‌دهنده تغییر کرد.")
