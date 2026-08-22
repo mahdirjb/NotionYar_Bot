@@ -281,3 +281,90 @@ def get_edit_person_keyboard(page_id: str, persons: list) -> InlineKeyboardMarku
         keyboard.append([InlineKeyboardButton(text=f"👤 {p['name']}", callback_data=f"rep_set_ed_per:{p['id']}")])
     keyboard.append([InlineKeyboardButton(text="🔙 انصراف", callback_data=f"rep_edit:{page_id}")])
     return InlineKeyboardMarkup(inline_keyboard=keyboard)
+
+# --- Admin Panel Keyboards ---
+
+ROLE_BADGES = {
+    "admin": "👑 مدیر کل",
+    "manager": "💼 مدیر تیم",
+    "member": "👤 عضو تیم",
+    "guest": "🌿 مهمان"
+}
+
+def build_admin_dashboard_keyboard() -> InlineKeyboardMarkup:
+    """Main dashboard keyboard for Admin Panel."""
+    keyboard = [
+        [
+            InlineKeyboardButton(text="👥 مدیریت و لیست کاربران", callback_data="adm_list_users"),
+            InlineKeyboardButton(text="➕ افزودن کاربر جدید", callback_data="adm_add_user")
+        ],
+        [
+            InlineKeyboardButton(text="🔄 بروزرسانی", callback_data="adm_refresh"),
+            InlineKeyboardButton(text="❌ بستن پنل", callback_data="adm_close")
+        ]
+    ]
+    return InlineKeyboardMarkup(inline_keyboard=keyboard)
+
+
+def get_admin_users_list_keyboard(users: dict) -> InlineKeyboardMarkup:
+    """Keyboard listing all registered users for role editing or removal."""
+    keyboard = []
+    for uid, role in users.items():
+        badge = ROLE_BADGES.get(role, "👤")
+        btn_text = f"{badge} | ID: {uid}"
+        keyboard.append([InlineKeyboardButton(text=btn_text, callback_data=f"adm_manage_user:{uid}")])
+
+    keyboard.append([
+        InlineKeyboardButton(text="➕ افزودن کاربر جدید", callback_data="adm_add_user"),
+        InlineKeyboardButton(text="🔙 بازگشت به پنل", callback_data="adm_back_to_dashboard")
+    ])
+    return InlineKeyboardMarkup(inline_keyboard=keyboard)
+
+
+def get_admin_user_manage_keyboard(target_user_id: int, current_role: str) -> InlineKeyboardMarkup:
+    """Action keyboard for a specific user: Switch role or delete access."""
+    keyboard = []
+    
+    # Available role switch buttons
+    roles = [
+        ("admin", "👑 تبدیل به مدیر کل"),
+        ("manager", "💼 تبدیل به مدیر تیم"),
+        ("member", "👤 تبدیل به عضو عادی"),
+        ("guest", "🌿 تبدیل به مهمان")
+    ]
+    for r_key, r_label in roles:
+        if r_key != current_role:
+            keyboard.append([InlineKeyboardButton(text=r_label, callback_data=f"adm_set_role:{target_user_id}:{r_key}")])
+
+    keyboard.append([InlineKeyboardButton(text="🗑 مسدودسازی و حذف دسترسی", callback_data=f"adm_confirm_del:{target_user_id}")])
+    keyboard.append([InlineKeyboardButton(text="🔙 بازگشت به لیست کاربران", callback_data="adm_list_users")])
+    return InlineKeyboardMarkup(inline_keyboard=keyboard)
+
+
+def get_admin_role_picker_keyboard(target_user_id: int) -> InlineKeyboardMarkup:
+    """Keyboard to choose role for newly added user."""
+    keyboard = [
+        [
+            InlineKeyboardButton(text="👑 مدیر کل (Admin)", callback_data=f"adm_assign_role:{target_user_id}:admin"),
+            InlineKeyboardButton(text="💼 مدیر تیم (Manager)", callback_data=f"adm_assign_role:{target_user_id}:manager")
+        ],
+        [
+            InlineKeyboardButton(text="👤 عضو عادی (Member)", callback_data=f"adm_assign_role:{target_user_id}:member"),
+            InlineKeyboardButton(text="🌿 مهمان (Guest)", callback_data=f"adm_assign_role:{target_user_id}:guest")
+        ],
+        [
+            InlineKeyboardButton(text="🔙 انصراف و بازگشت", callback_data="adm_back_to_dashboard")
+        ]
+    ]
+    return InlineKeyboardMarkup(inline_keyboard=keyboard)
+
+
+def get_admin_delete_confirm_keyboard(target_user_id: int) -> InlineKeyboardMarkup:
+    """Confirmation keyboard before removing a user."""
+    keyboard = [
+        [
+            InlineKeyboardButton(text="⚠️ بله، حذف دسترسی", callback_data=f"adm_do_del:{target_user_id}"),
+            InlineKeyboardButton(text="❌ انصراف", callback_data=f"adm_manage_user:{target_user_id}")
+        ]
+    ]
+    return InlineKeyboardMarkup(inline_keyboard=keyboard)
