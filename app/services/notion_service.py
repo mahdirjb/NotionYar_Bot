@@ -1,14 +1,86 @@
 from datetime import datetime, timezone, timedelta
 from typing import List, Dict, Any, Optional, cast
 from notion_client import Client
-from app.config import NOTION_TOKEN, NOTION_DBID_TIME_TRACKER
+from app.config import NOTION_TOKEN, NOTION_DBID_TIME_TRACKER, NOTION_DBID_LIFE_TRACKER
 
 notion = Client(auth=NOTION_TOKEN)
 
+# ==========================================
+# 🌿 LIFE TRACKER CONSTANTS & MAPPINGS
+# ==========================================
+
+LIFE_TRACKER_TYPES: List[str] = [
+    "مریضی",
+    "رانندگی",
+    "موپالمو",
+    "ریش و سبیل",
+    "خورشید",
+    "آینه",
+    "دوری",
+    "آرایشگاه",
+    "ناخن دست",
+    "ناخن پا",
+    "ویتامین دی",
+    "خرید",
+    "اتفاقات",
+    "سایر"
+]
+
+TYPE_MODE_MAPPING: Dict[str, List[str]] = {
+    "مریضی": ["سرماخوردگی", "سردرد"],
+    "رانندگی": ["پارک", "در پارکینگ", "شهر", "اتوبان"],
+    "موپالمو": ["ساق", "کل", "شانه کوچک", "شانه بزرگ"],
+    "ریش و سبیل": ["ریش", "سبیل", "کوتاه‌کردن", "مرتب‌کردن"],
+    "خورشید": ["نوره", "ژیلت"],
+    "آینه": ["نوره", "ژیلت"],
+    "دوری": ["شب"],
+}
+
+TYPE_EMOJIS: Dict[str, str] = {
+    "مریضی": "🤒",
+    "سایر": "📦",
+    "رانندگی": "🚗",
+    "اتفاقات": "⚡",
+    "خرید": "🛒",
+    "ویتامین دی": "💊",
+    "آرایشگاه": "💈",
+    "موپالمو": "🪒",
+    "ریش و سبیل": "🧔",
+    "دوری": "🌙",
+    "آینه": "🪞",
+    "خورشید": "☀️",
+    "ناخن پا": "🦶",
+    "ناخن دست": "💅"
+}
+
+MODE_EMOJIS: Dict[str, str] = {
+    "سرماخوردگی": "🤧",
+    "سردرد": "🤕",
+    "پارک": "🅿️",
+    "در پارکینگ": "🏢",
+    "شهر": "🏙",
+    "اتوبان": "🛣",
+    "ساق": "🦵",
+    "کل": "✨",
+    "شانه کوچک": "🪮",
+    "شانه بزرگ": "🪮",
+    "نوره": "🌿",
+    "ژیلت": "🪒",
+    "مرتب کردن": "✂️",
+    "کوتاه کردن": "✂️",
+    "مرتب‌کردن": "✂️",
+    "کوتاه‌کردن": "✂️",
+    "سبیل": "🧔‍♂️",
+    "ریش": "🧔",
+    "شب": "🌌"
+}
+
+# ==========================================
+# ⏱ TIME TRACKER FUNCTIONS
+# ==========================================
+
 def get_workspace_persons() -> List[Dict[str, str]]:
-    """
-    Dynamically fetches all persons: workspace members and database assignees.
-    """
+    """Dynamically fetches all persons: workspace members and database assignees."""
     found_people: Dict[str, str] = {}
 
     try:
@@ -64,10 +136,7 @@ def add_time_tracker_entry(
     person_id: Optional[str] = None,
     description: str = ""
 ) -> Any:
-    """
-    Creates a new row in the Time Tracker database in Notion.
-    Only provided optional fields are inserted.
-    """
+    """Creates a new row in the Time Tracker database in Notion."""
     if not NOTION_DBID_TIME_TRACKER:
         raise ValueError("NOTION_DBID_TIME_TRACKER is not defined in environment variables.")
 
@@ -87,37 +156,34 @@ def add_time_tracker_entry(
         }
     }
 
-    # Add optional satisfaction only if selected
     if satisfaction:
         properties["Satisfaction"] = {
             "select": {"name": satisfaction}
         }
 
-    # Add optional person only if selected
     if person_id:
         properties["Person"] = {
             "people": [{"id": person_id}]
         }
 
-    # Add optional description only if entered
     if description:
         properties["Description"] = {
             "rich_text": [{"text": {"content": description}}]
         }
 
-    response = notion.pages.create(
+    return notion.pages.create(
         parent={"database_id": NOTION_DBID_TIME_TRACKER},
         properties=properties
     )
-    return response
 
-_cached_data_source_id: Optional[str] = None
+
+_cached_time_tracker_ds_id: Optional[str] = None
 
 def get_time_tracker_data_source_id() -> str:
     """Retrieves and caches the data_source_id of the Time Tracker database."""
-    global _cached_data_source_id
-    if _cached_data_source_id:
-        return _cached_data_source_id
+    global _cached_time_tracker_ds_id
+    if _cached_time_tracker_ds_id:
+        return _cached_time_tracker_ds_id
 
     if not NOTION_DBID_TIME_TRACKER:
         raise ValueError("NOTION_DBID_TIME_TRACKER is not defined in environment variables.")
@@ -128,8 +194,8 @@ def get_time_tracker_data_source_id() -> str:
     )
     data_sources = db_info.get("data_sources", [])
     if data_sources:
-        _cached_data_source_id = data_sources[0]["id"]
-        return _cached_data_source_id
+        _cached_time_tracker_ds_id = data_sources[0]["id"]
+        return _cached_time_tracker_ds_id
 
     return NOTION_DBID_TIME_TRACKER
 
@@ -139,16 +205,10 @@ def query_time_tracker_entries(
     end_date_iso: Optional[str] = None,
     person_id: Optional[str] = None
 ) -> List[Dict[str, Any]]:
-    """
-    Queries time tracker entries from Notion within a date range and optional person filter.
-    Uses data_sources.query for compatibility with notion-client v3.x.
-    """
+    """Queries time tracker entries within a date range and optional person filter."""
     ds_id = get_time_tracker_data_source_id()
-
-    # Build filters
     and_filters: List[Dict[str, Any]] = []
 
-    # Date filter
     if end_date_iso and end_date_iso != start_date_iso:
         and_filters.append({
             "property": "Date",
@@ -164,7 +224,6 @@ def query_time_tracker_entries(
             "date": {"equals": start_date_iso}
         })
 
-    # Person filter (optional)
     if person_id:
         and_filters.append({
             "property": "Person",
@@ -173,7 +232,6 @@ def query_time_tracker_entries(
 
     filter_payload = {"and": and_filters} if len(and_filters) > 1 else and_filters[0]
 
-    # Query Notion via data_sources
     if hasattr(notion, "data_sources") and hasattr(notion.data_sources, "query"):
         query_res = notion.data_sources.query(
             data_source_id=ds_id,
@@ -181,7 +239,6 @@ def query_time_tracker_entries(
             sorts=[{"property": "Date", "direction": "descending"}]
         )
     else:
-        # Fallback for legacy database queries
         query_res = notion.databases.query( # type: ignore
             database_id=NOTION_DBID_TIME_TRACKER,
             filter=filter_payload,
@@ -193,33 +250,22 @@ def query_time_tracker_entries(
 
     for page in results:
         props = page.get("properties", {})
-
-        # 1. Title (Name)
         title_list = props.get("Name", {}).get("title", [])
         name = title_list[0].get("plain_text", "بدون عنوان") if title_list else "بدون عنوان"
 
-        # 2. Date & Times
         date_prop = props.get("Date", {}).get("date") or {}
         raw_start = date_prop.get("start")
         raw_end = date_prop.get("end")
 
-        # 3. MDuration (Minutes)
         m_duration = props.get("MDuration", {}).get("number")
-
-        # 4. Satisfaction
         satisfaction = (props.get("Satisfaction", {}).get("select") or {}).get("name")
 
-        # 5. Person
         people = props.get("Person", {}).get("people", [])
         person_name = people[0].get("name", "نامشخص") if people else None
         page_person_id = people[0].get("id") if people else None
 
-        # 6. Description
         desc_list = props.get("Description", {}).get("rich_text", [])
         description = desc_list[0].get("plain_text", "") if desc_list else ""
-
-        # 7. URL
-        url = page.get("url", "")
 
         parsed_entries.append({
             "id": page.get("id"),
@@ -231,65 +277,34 @@ def query_time_tracker_entries(
             "person_name": person_name,
             "person_id": page_person_id,
             "description": description,
-            "url": url
+            "url": page.get("url", "")
         })
 
     return parsed_entries
 
-def archive_notion_page(page_id: str) -> bool:
-    """
-    Archives (deletes) a page from Notion database.
-    """
-    try:
-        notion.pages.update(page_id=page_id, archived=True)
-        return True
-    except Exception as e:
-        print(f"Error archiving Notion page {page_id}: {e}")
-        return False
-    
-def update_notion_page_properties(page_id: str, properties: Dict[str, Any]) -> bool:
-    """
-    Updates specific properties of an existing page in Notion.
-    """
-    try:
-        notion.pages.update(page_id=page_id, properties=properties)
-        return True
-    except Exception as e:
-        print(f"Error updating Notion page {page_id}: {e}")
-        return False
-    
+
 def get_time_tracker_entry(page_id: str) -> Optional[Dict[str, Any]]:
-    """
-    Retrieves and parses a single time tracker page by page_id.
-    """
+    """Retrieves and parses a single time tracker page by page_id."""
     try:
         page = notion.pages.retrieve(page_id=page_id)
         if not isinstance(page, dict):
             return None
 
         props = page.get("properties", {})
-
-        # Title
         title_list = props.get("Name", {}).get("title", [])
         name = title_list[0].get("plain_text", "بدون عنوان") if title_list else "بدون عنوان"
 
-        # Date & Times
         date_prop = props.get("Date", {}).get("date") or {}
         raw_start = date_prop.get("start")
         raw_end = date_prop.get("end")
 
-        # MDuration
         m_duration = props.get("MDuration", {}).get("number")
-
-        # Satisfaction
         satisfaction = (props.get("Satisfaction", {}).get("select") or {}).get("name")
 
-        # Person
         people = props.get("Person", {}).get("people", [])
         person_name = people[0].get("name", "نامشخص") if people else None
         page_person_id = people[0].get("id") if people else None
 
-        # Description
         desc_list = props.get("Description", {}).get("rich_text", [])
         description = desc_list[0].get("plain_text", "") if desc_list else ""
 
@@ -308,3 +323,232 @@ def get_time_tracker_entry(page_id: str) -> Optional[Dict[str, Any]]:
     except Exception as e:
         print(f"Error retrieving entry {page_id}: {e}")
         return None
+
+
+# ==========================================
+# 🌿 LIFE TRACKER FUNCTIONS
+# ==========================================
+
+_cached_life_tracker_ds_id: Optional[str] = None
+
+def get_life_tracker_data_source_id() -> str:
+    """Retrieves and caches the data_source_id of the Life Tracker database."""
+    global _cached_life_tracker_ds_id
+    if _cached_life_tracker_ds_id:
+        return _cached_life_tracker_ds_id
+
+    if not NOTION_DBID_LIFE_TRACKER:
+        raise ValueError("NOTION_DBID_LIFE_TRACKER is not defined in environment variables.")
+
+    db_info = cast(
+        Dict[str, Any],
+        notion.databases.retrieve(database_id=NOTION_DBID_LIFE_TRACKER),
+    )
+    data_sources = db_info.get("data_sources", [])
+    if data_sources:
+        _cached_life_tracker_ds_id = data_sources[0]["id"]
+        return _cached_life_tracker_ds_id
+
+    return NOTION_DBID_LIFE_TRACKER
+
+
+def add_life_tracker_entry(
+    name: str,
+    type_val: str,
+    date_iso: str,
+    mode_list: Optional[List[str]] = None,
+    notes: str = ""
+) -> Any:
+    """
+    Creates a new row in the Life Tracker database in Notion.
+    Note: Formula fields (Date, Year, Month) are calculated by Notion automatically.
+    """
+    if not NOTION_DBID_LIFE_TRACKER:
+        raise ValueError("NOTION_DBID_LIFE_TRACKER is not defined in environment variables.")
+
+    properties: Dict[str, Any] = {
+        "Name": {
+            "title": [{"text": {"content": name}}]
+        },
+        "Type": {
+            "select": {"name": type_val}
+        },
+        "Date_": {
+            "date": {"start": date_iso}
+        }
+    }
+
+    if mode_list:
+        properties["Mode"] = {
+            "multi_select": [{"name": m} for m in mode_list]
+        }
+
+    if notes:
+        properties["Notes"] = {
+            "rich_text": [{"text": {"content": notes}}]
+        }
+
+    return notion.pages.create(
+        parent={"database_id": NOTION_DBID_LIFE_TRACKER},
+        properties=properties
+    )
+
+
+def query_life_tracker_entries(
+    start_date_iso: Optional[str] = None,
+    end_date_iso: Optional[str] = None,
+    type_val: Optional[str] = None,
+    mode_val: Optional[str] = None
+) -> List[Dict[str, Any]]:
+    """
+    Queries life tracker entries from Notion with date range, Type and Mode filters.
+    """
+    ds_id = get_life_tracker_data_source_id()
+    and_filters: List[Dict[str, Any]] = []
+
+    # 1. Date filter on Date_ property
+    if start_date_iso:
+        if end_date_iso and end_date_iso != start_date_iso:
+            and_filters.append({
+                "property": "Date_",
+                "date": {"on_or_after": start_date_iso}
+            })
+            and_filters.append({
+                "property": "Date_",
+                "date": {"on_or_before": end_date_iso}
+            })
+        else:
+            and_filters.append({
+                "property": "Date_",
+                "date": {"equals": start_date_iso}
+            })
+
+    # 2. Type filter
+    if type_val and type_val != "all":
+        and_filters.append({
+            "property": "Type",
+            "select": {"equals": type_val}
+        })
+
+    # 3. Mode filter
+    if mode_val and mode_val != "all":
+        and_filters.append({
+            "property": "Mode",
+            "multi_select": {"contains": mode_val}
+        })
+
+    filter_payload = None
+    if len(and_filters) == 1:
+        filter_payload = and_filters[0]
+    elif len(and_filters) > 1:
+        filter_payload = {"and": and_filters}
+
+    # Query Notion
+    kwargs: Dict[str, Any] = {
+        "data_source_id": ds_id,
+        "sorts": [{"property": "Date_", "direction": "descending"}]
+    }
+    if filter_payload:
+        kwargs["filter"] = filter_payload
+
+    if hasattr(notion, "data_sources") and hasattr(notion.data_sources, "query"):
+        query_res = notion.data_sources.query(**kwargs)
+    else:
+        kwargs.pop("data_source_id", None)
+        kwargs["database_id"] = NOTION_DBID_LIFE_TRACKER
+        if filter_payload:
+            kwargs["filter"] = filter_payload
+        query_res = notion.databases.query(**kwargs) # type: ignore
+
+    parsed_entries: List[Dict[str, Any]] = []
+    results = query_res.get("results", []) if isinstance(query_res, dict) else []
+
+    for page in results:
+        props = page.get("properties", {})
+
+        title_list = props.get("Name", {}).get("title", [])
+        name = title_list[0].get("plain_text", "بدون عنوان") if title_list else "بدون عنوان"
+
+        t_val = (props.get("Type", {}).get("select") or {}).get("name", "نامشخص")
+        
+        mode_items = props.get("Mode", {}).get("multi_select", [])
+        modes = [m.get("name") for m in mode_items if m.get("name")]
+
+        date_prop = props.get("Date_", {}).get("date") or {}
+        raw_date = date_prop.get("start")
+
+        notes_list = props.get("Notes", {}).get("rich_text", [])
+        notes = notes_list[0].get("plain_text", "") if notes_list else ""
+
+        parsed_entries.append({
+            "id": page.get("id"),
+            "name": name,
+            "type": t_val,
+            "modes": modes,
+            "date_iso": raw_date,
+            "notes": notes,
+            "url": page.get("url", "")
+        })
+
+    return parsed_entries
+
+
+def get_life_tracker_entry(page_id: str) -> Optional[Dict[str, Any]]:
+    """Retrieves and parses a single life tracker entry by page_id."""
+    try:
+        page = notion.pages.retrieve(page_id=page_id)
+        if not isinstance(page, dict):
+            return None
+
+        props = page.get("properties", {})
+
+        title_list = props.get("Name", {}).get("title", [])
+        name = title_list[0].get("plain_text", "بدون عنوان") if title_list else "بدون عنوان"
+
+        t_val = (props.get("Type", {}).get("select") or {}).get("name", "نامشخص")
+        
+        mode_items = props.get("Mode", {}).get("multi_select", [])
+        modes = [m.get("name") for m in mode_items if m.get("name")]
+
+        date_prop = props.get("Date_", {}).get("date") or {}
+        raw_date = date_prop.get("start")
+
+        notes_list = props.get("Notes", {}).get("rich_text", [])
+        notes = notes_list[0].get("plain_text", "") if notes_list else ""
+
+        return {
+            "id": page.get("id"),
+            "name": name,
+            "type": t_val,
+            "modes": modes,
+            "date_iso": raw_date,
+            "notes": notes,
+            "url": page.get("url", "")
+        }
+    except Exception as e:
+        print(f"Error retrieving life tracker entry {page_id}: {e}")
+        return None
+
+
+# ==========================================
+# 🛠 GENERAL NOTION HELPERS
+# ==========================================
+
+def archive_notion_page(page_id: str) -> bool:
+    """Archives (deletes) a page from any Notion database."""
+    try:
+        notion.pages.update(page_id=page_id, archived=True)
+        return True
+    except Exception as e:
+        print(f"Error archiving Notion page {page_id}: {e}")
+        return False
+
+
+def update_notion_page_properties(page_id: str, properties: Dict[str, Any]) -> bool:
+    """Updates specific properties of an existing page in Notion."""
+    try:
+        notion.pages.update(page_id=page_id, properties=properties)
+        return True
+    except Exception as e:
+        print(f"Error updating Notion page {page_id}: {e}")
+        return False

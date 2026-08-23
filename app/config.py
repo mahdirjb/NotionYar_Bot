@@ -1,3 +1,5 @@
+# app/config.py
+
 import os
 from dotenv import load_dotenv
 
@@ -12,9 +14,13 @@ NOTION_DBID_TIME_TRACKER = (
     os.getenv("NOTION_DATABASE_ID")
 )
 
+NOTION_DBID_LIFE_TRACKER = os.getenv("NOTION_DBID_LIFE_TRACKER")
+
+
 def _parse_user_ids(env_var_name: str) -> list[int]:
     raw = os.getenv(env_var_name, "")
     return [int(uid.strip()) for uid in raw.split(",") if uid.strip().isdigit()]
+
 
 # Role-based User ID Lists
 ADMIN_USERS = _parse_user_ids("ADMIN_USERS")
