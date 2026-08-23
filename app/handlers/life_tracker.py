@@ -1,6 +1,6 @@
 # app/handlers/life_tracker.py
 
-from datetime import datetime
+from typing import Any
 from aiogram import Router, F, Bot
 from aiogram.filters import Command
 from aiogram.types import Message, CallbackQuery
@@ -216,9 +216,10 @@ async def start_new_log_handler(callback: CallbackQuery, state: FSMContext):
             reply_markup=build_life_tracker_card_keyboard(initial_data),
             parse_mode="HTML"
         )
-        initial_data["card_message_id"] = card_msg.message_id
-        await state.update_data(**initial_data)
-        await state.set_state(LifeTrackerCard.viewing_card)
+        if isinstance(card_msg, Message):
+            initial_data["card_message_id"] = card_msg.message_id
+            await state.update_data(**initial_data)
+            await state.set_state(LifeTrackerCard.viewing_card)
     await callback.answer()
 
 
@@ -260,7 +261,6 @@ async def set_type_handler(callback: CallbackQuery, state: FSMContext):
     else:
         new_name = current_name
 
-    # Reset modes if newly selected type doesn't support them
     valid_modes_for_type = TYPE_MODE_MAPPING.get(selected_type, [])
     current_modes = data.get("modes", [])
     updated_modes = [m for m in current_modes if m in valid_modes_for_type]
@@ -580,7 +580,6 @@ def render_report_text(entries: list, data: dict, current_page: int = 1) -> tupl
 
         lines = [f"<b>{idx}. {t_em} {name}</b>{url_link}"]
         
-        # Format date
         raw_d = e.get("date_iso")
         if raw_d:
             parsed_d = parse_user_date_input(raw_d)
@@ -742,7 +741,6 @@ async def rep_process_custom_date(message: Message, state: FSMContext, bot: Bot)
     text = (message.text or "").strip()
     parsed = parse_custom_date_range(text)
     data = await state.get_data()
-    prompt_id = data.get("last_prompt_id")
 
     if not parsed:
         err = await message.answer(
@@ -955,7 +953,8 @@ async def show_edit_menu(event: Message | CallbackQuery, page_id: str, bot: Bot,
             except Exception:
                 pass
         msg = await event.answer(text, reply_markup=markup, parse_mode="HTML", disable_web_page_preview=True)
-        await state.update_data(detail_message_id=msg.message_id)
+        if isinstance(msg, Message):
+            await state.update_data(detail_message_id=msg.message_id)
 
 
 @router.callback_query(F.data.startswith("lt_edit:"))
@@ -986,16 +985,18 @@ async def process_edit_entry_name(message: Message, state: FSMContext, bot: Bot)
     text = (message.text or "").strip()
     data = await state.get_data()
     page_id = data.get("editing_page_id")
+    if not page_id:
+        return
 
     if not text:
         err = await message.answer("❌ عنوان نمی‌تواند خالی باشد:")
         await register_error_message(state, err, user_msg=message)
         return
 
-    update_notion_page_properties(page_id, {"Name": {"title": [{"text": {"content": text}}]}})
+    update_notion_page_properties(str(page_id), {"Name": {"title": [{"text": {"content": text}}]}})
     await cleanup_prompt_messages(bot, message.chat.id, state, user_msg=message)
     await state.set_state(LifeTrackerReportState.viewing_report)
-    await show_edit_menu(message, page_id, bot, state, alert_text="✅ عنوان به‌روزرسانی شد.")
+    await show_edit_menu(message, str(page_id), bot, state, alert_text="✅ عنوان به‌روزرسانی شد.")
 
 
 # B. Edit Notes
@@ -1019,14 +1020,16 @@ async def process_edit_entry_notes(message: Message, state: FSMContext, bot: Bot
     text = (message.text or "").strip()
     data = await state.get_data()
     page_id = data.get("editing_page_id")
+    if not page_id:
+        return
 
     content = "" if text == "خالی" else text
     rich_text = [{"text": {"content": content}}] if content else []
-    update_notion_page_properties(page_id, {"Notes": {"rich_text": rich_text}})
+    update_notion_page_properties(str(page_id), {"Notes": {"rich_text": rich_text}})
 
     await cleanup_prompt_messages(bot, message.chat.id, state, user_msg=message)
     await state.set_state(LifeTrackerReportState.viewing_report)
-    await show_edit_menu(message, page_id, bot, state, alert_text="✅ یادداشت به‌روزرسانی شد.")
+    await show_edit_menu(message, str(page_id), bot, state, alert_text="✅ یادداشت به‌روزرسانی شد.")
 
 
 # C. Edit Date
@@ -1051,6 +1054,8 @@ async def process_edit_entry_date(message: Message, state: FSMContext, bot: Bot)
     parsed = parse_user_date_input(text)
     data = await state.get_data()
     page_id = data.get("editing_page_id")
+    if not page_id:
+        return
 
     if not parsed:
         err = await message.answer("❌ تاریخ نامعتبر است:")
@@ -1058,10 +1063,10 @@ async def process_edit_entry_date(message: Message, state: FSMContext, bot: Bot)
         return
 
     g_iso, _ = parsed
-    update_notion_page_properties(page_id, {"Date_": {"date": {"start": g_iso}}})
+    update_notion_page_properties(str(page_id), {"Date_": {"date": {"start": g_iso}}})
     await cleanup_prompt_messages(bot, message.chat.id, state, user_msg=message)
     await state.set_state(LifeTrackerReportState.viewing_report)
-    await show_edit_menu(message, page_id, bot, state, alert_text="✅ تاریخ به‌روزرسانی شد.")
+    await show_edit_menu(message, str(page_id), bot, state, alert_text="✅ تاریخ به‌روزرسانی شد.")
 
 
 # D. Edit Type
@@ -1083,8 +1088,7 @@ async def set_edit_entry_type(callback: CallbackQuery, state: FSMContext, bot: B
     parts = (callback.data or "").split(":", 2)
     page_id, new_type = parts[1], parts[2]
     
-    props = {"Type": {"select": {"name": new_type}}}
-    # Clear modes if new type does not support modes
+    props: dict[str, Any] = {"Type": {"select": {"name": new_type}}}
     if new_type not in TYPE_MODE_MAPPING:
         props["Mode"] = {"multi_select": []}
 
@@ -1097,4 +1101,67 @@ async def set_edit_entry_type(callback: CallbackQuery, state: FSMContext, bot: B
 async def edit_entry_mode_menu(callback: CallbackQuery, state: FSMContext):
     page_id = (callback.data or "").split(":", 1)[1]
     await state.update_data(editing_page_id=page_id)
-    entry
+    entry = get_life_tracker_entry(page_id)
+    if not entry:
+        await callback.answer("⚠️ رکورد یافت نشد.", show_alert=True)
+        return
+
+    t_val = entry.get("type", "")
+    current_modes = entry.get("modes", [])
+    await state.update_data(temp_ed_modes=current_modes)
+
+    if isinstance(callback.message, Message):
+        await callback.message.edit_text(
+            f"🎭 <b>تغییر حالت‌ها برای «{t_val}»:</b>",
+            reply_markup=get_lt_edit_mode_keyboard(page_id, t_val, current_modes),
+            parse_mode="HTML"
+        )
+    await callback.answer()
+
+
+@router.callback_query(F.data.startswith("lt_tog_ed_mode:"))
+async def toggle_edit_entry_mode(callback: CallbackQuery, state: FSMContext):
+    parts = (callback.data or "").split(":", 2)
+    page_id, mode_name = parts[1], parts[2]
+
+    data = await state.get_data()
+    entry = get_life_tracker_entry(page_id)
+    t_val = entry.get("type", "") if entry else ""
+    temp_modes = list(data.get("temp_ed_modes", []))
+
+    if mode_name in temp_modes:
+        temp_modes.remove(mode_name)
+    else:
+        temp_modes.append(mode_name)
+
+    await state.update_data(temp_ed_modes=temp_modes)
+    if isinstance(callback.message, Message):
+        await callback.message.edit_reply_markup(
+            reply_markup=get_lt_edit_mode_keyboard(page_id, t_val, temp_modes)
+        )
+    await callback.answer()
+
+
+@router.callback_query(F.data.startswith("lt_clear_ed_modes:"))
+async def clear_edit_entry_modes(callback: CallbackQuery, state: FSMContext):
+    page_id = (callback.data or "").split(":", 1)[1]
+    entry = get_life_tracker_entry(page_id)
+    t_val = entry.get("type", "") if entry else ""
+    await state.update_data(temp_ed_modes=[])
+    if isinstance(callback.message, Message):
+        await callback.message.edit_reply_markup(
+            reply_markup=get_lt_edit_mode_keyboard(page_id, t_val, [])
+        )
+    await callback.answer("حالت‌ها پاک شدند.")
+
+
+@router.callback_query(F.data.startswith("lt_save_ed_modes:"))
+async def save_edit_entry_modes(callback: CallbackQuery, state: FSMContext, bot: Bot):
+    page_id = (callback.data or "").split(":", 1)[1]
+    data = await state.get_data()
+    modes_to_save = data.get("temp_ed_modes", [])
+
+    update_notion_page_properties(page_id, {
+        "Mode": {"multi_select": [{"name": m} for m in modes_to_save]}
+    })
+    await show_edit_menu(callback, page_id, bot, state, alert_text="✅ حالت‌ها با موفقیت ذخیره شدند.")

@@ -1,3 +1,5 @@
+# app/services/notion_service.py
+
 from datetime import datetime, timezone, timedelta
 from typing import List, Dict, Any, Optional, cast
 from notion_client import Client
@@ -366,7 +368,7 @@ def add_life_tracker_entry(
 ) -> Any:
     """
     Creates a new row in the Life Tracker database in Notion.
-    Automatically links to the default Intervals page.
+    Automatically links to the default Intervals page if configured.
     """
     if not NOTION_DBID_LIFE_TRACKER:
         raise ValueError("NOTION_DBID_LIFE_TRACKER is not defined in environment variables.")
@@ -383,7 +385,6 @@ def add_life_tracker_entry(
         }
     }
 
-    # Automatically link to the default Intervals page if configured
     if NOTION_LIFE_TRACKER_INTERVALS_PAGE_ID:
         properties["Intervals"] = {
             "relation": [{"id": NOTION_LIFE_TRACKER_INTERVALS_PAGE_ID}]
@@ -404,6 +405,7 @@ def add_life_tracker_entry(
         properties=properties
     )
 
+
 def query_life_tracker_entries(
     start_date_iso: Optional[str] = None,
     end_date_iso: Optional[str] = None,
@@ -416,7 +418,6 @@ def query_life_tracker_entries(
     ds_id = get_life_tracker_data_source_id()
     and_filters: List[Dict[str, Any]] = []
 
-    # 1. Date filter on Date_ property
     if start_date_iso:
         if end_date_iso and end_date_iso != start_date_iso:
             and_filters.append({
@@ -433,14 +434,12 @@ def query_life_tracker_entries(
                 "date": {"equals": start_date_iso}
             })
 
-    # 2. Type filter
     if type_val and type_val != "all":
         and_filters.append({
             "property": "Type",
             "select": {"equals": type_val}
         })
 
-    # 3. Mode filter
     if mode_val and mode_val != "all":
         and_filters.append({
             "property": "Mode",
@@ -453,7 +452,6 @@ def query_life_tracker_entries(
     elif len(and_filters) > 1:
         filter_payload = {"and": and_filters}
 
-    # Query Notion
     kwargs: Dict[str, Any] = {
         "data_source_id": ds_id,
         "sorts": [{"property": "Date_", "direction": "descending"}]
