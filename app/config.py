@@ -8,13 +8,33 @@ load_dotenv()
 BOT_TOKEN = os.getenv("BOT_TOKEN")
 NOTION_TOKEN = os.getenv("NOTION_TOKEN")
 
-NOTION_DBID_TIME_TRACKER = (
+
+def _clean_database_id(raw_id: str | None) -> str | None:
+    """
+    Cleans Notion Database or Page ID by removing URL prefixes and query params (like ?v=...).
+    """
+    if not raw_id:
+        return None
+    cleaned = raw_id.strip()
+    if "?" in cleaned:
+        cleaned = cleaned.split("?")[0]
+    if "/" in cleaned:
+        cleaned = cleaned.split("/")[-1]
+    return cleaned
+
+
+NOTION_DBID_TIME_TRACKER = _clean_database_id(
     os.getenv("NOTION_DBID_TIME_TRACKER") or 
     os.getenv("NOTION_DBID_Time_Tracker") or 
     os.getenv("NOTION_DATABASE_ID")
 )
 
-NOTION_DBID_LIFE_TRACKER = os.getenv("NOTION_DBID_LIFE_TRACKER")
+NOTION_DBID_LIFE_TRACKER = _clean_database_id(os.getenv("NOTION_DBID_LIFE_TRACKER"))
+
+# Default Page ID for Life Tracker 'Intervals' relation field
+NOTION_LIFE_TRACKER_INTERVALS_PAGE_ID = _clean_database_id(
+    os.getenv("NOTION_LIFE_TRACKER_INTERVALS_PAGE_ID") or "1e3a75a2561480ba972bcecbf620304f"
+)
 
 
 def _parse_user_ids(env_var_name: str) -> list[int]:

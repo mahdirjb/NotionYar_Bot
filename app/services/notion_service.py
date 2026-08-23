@@ -1,7 +1,12 @@
 from datetime import datetime, timezone, timedelta
 from typing import List, Dict, Any, Optional, cast
 from notion_client import Client
-from app.config import NOTION_TOKEN, NOTION_DBID_TIME_TRACKER, NOTION_DBID_LIFE_TRACKER
+from app.config import (
+    NOTION_TOKEN,
+    NOTION_DBID_TIME_TRACKER,
+    NOTION_DBID_LIFE_TRACKER,
+    NOTION_LIFE_TRACKER_INTERVALS_PAGE_ID
+)
 
 notion = Client(auth=NOTION_TOKEN)
 
@@ -361,7 +366,7 @@ def add_life_tracker_entry(
 ) -> Any:
     """
     Creates a new row in the Life Tracker database in Notion.
-    Note: Formula fields (Date, Year, Month) are calculated by Notion automatically.
+    Automatically links to the default Intervals page.
     """
     if not NOTION_DBID_LIFE_TRACKER:
         raise ValueError("NOTION_DBID_LIFE_TRACKER is not defined in environment variables.")
@@ -378,6 +383,12 @@ def add_life_tracker_entry(
         }
     }
 
+    # Automatically link to the default Intervals page if configured
+    if NOTION_LIFE_TRACKER_INTERVALS_PAGE_ID:
+        properties["Intervals"] = {
+            "relation": [{"id": NOTION_LIFE_TRACKER_INTERVALS_PAGE_ID}]
+        }
+
     if mode_list:
         properties["Mode"] = {
             "multi_select": [{"name": m} for m in mode_list]
@@ -392,7 +403,6 @@ def add_life_tracker_entry(
         parent={"database_id": NOTION_DBID_LIFE_TRACKER},
         properties=properties
     )
-
 
 def query_life_tracker_entries(
     start_date_iso: Optional[str] = None,
