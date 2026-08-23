@@ -522,8 +522,11 @@ def build_life_tracker_report_keyboard(
 
 
 def get_lt_report_date_range_keyboard() -> InlineKeyboardMarkup:
-    """Date presets for Life Tracker reports."""
+    """Date presets for Life Tracker reports including All Time."""
     keyboard = [
+        [
+            InlineKeyboardButton(text="🌐 تمام زمان‌ها (نمایش همه سطرها)", callback_data="lt_rep_set_date:all_time")
+        ],
         [
             InlineKeyboardButton(text="📍 امروز", callback_data="lt_rep_set_date:today"),
             InlineKeyboardButton(text="⏮ دیروز", callback_data="lt_rep_set_date:yesterday")
@@ -540,7 +543,6 @@ def get_lt_report_date_range_keyboard() -> InlineKeyboardMarkup:
         ]
     ]
     return InlineKeyboardMarkup(inline_keyboard=keyboard)
-
 
 def get_lt_report_type_filter_keyboard() -> InlineKeyboardMarkup:
     """Type filter keyboard for Life Tracker reports."""

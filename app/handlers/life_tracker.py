@@ -712,14 +712,30 @@ async def rep_pick_date_handler(callback: CallbackQuery):
     await callback.answer()
 
 
+# در فایل app/handlers/life_tracker.py
+
 @router.callback_query(F.data.startswith("lt_rep_set_date:"))
 async def rep_set_date_preset(callback: CallbackQuery, state: FSMContext):
     preset = (callback.data or "").split(":", 1)[1]
-    s_iso, e_iso, d_label = get_preset_date_range(preset)
-    await state.update_data(start_iso=s_iso, end_iso=e_iso, date_preset=preset, date_label=d_label)
+    
+    if preset == "all_time":
+        await state.update_data(
+            start_iso=None,
+            end_iso=None,
+            date_preset="all_time",
+            date_label="تمام زمان‌ها"
+        )
+    else:
+        s_iso, e_iso, d_label = get_preset_date_range(preset)
+        await state.update_data(
+            start_iso=s_iso,
+            end_iso=e_iso,
+            date_preset=preset,
+            date_label=d_label
+        )
+        
     await fetch_and_render_report(callback, state, page=1)
     await callback.answer()
-
 
 @router.callback_query(F.data == "lt_rep_custom_date")
 async def rep_custom_date_prompt(callback: CallbackQuery, state: FSMContext):
