@@ -1,5 +1,23 @@
+# app/keyboards/inline.py
+
 from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
 from typing import Dict, Any, List
+from app.services.auth_service import (
+    has_permission,
+    PERM_VIEW_ALL_USERS,
+    PERM_EDIT_RECORDS,
+    PERM_DELETE_RECORDS
+)
+from app.services.notion_service import (
+    LIFE_TRACKER_TYPES,
+    TYPE_MODE_MAPPING,
+    TYPE_EMOJIS,
+    MODE_EMOJIS
+)
+
+# ==========================================
+# ⏱ TIME TRACKER KEYBOARDS
+# ==========================================
 
 SATISFACTION_EMOJIS = {
     "عالی": "🤩",
@@ -116,26 +134,12 @@ def get_back_cancel_keyboard() -> InlineKeyboardMarkup:
     buttons = [[InlineKeyboardButton(text="🔙 انصراف و بازگشت به فرم", callback_data="back_to_card")]]
     return InlineKeyboardMarkup(inline_keyboard=buttons)
 
-from app.services.auth_service import (
-    has_permission,
-    PERM_VIEW_ALL_USERS,
-    PERM_EDIT_RECORDS,
-    PERM_DELETE_RECORDS
-)
-
 def build_report_keyboard(data: dict, has_entries: bool = True, user_id: int | None = None) -> InlineKeyboardMarkup:
-    """
-    Main interactive controls for the report message with granular permissions.
-    """
     row_1 = [InlineKeyboardButton(text="📅 تغییر بازه زمانی", callback_data="rep_pick_date")]
-    
-    # Only show person filter if user has view_all_users permission
     if has_permission(user_id, PERM_VIEW_ALL_USERS):
         row_1.append(InlineKeyboardButton(text="👤 تغییر شخص", callback_data="rep_pick_person"))
-        
     keyboard = [row_1]
 
-    # Only show manage/edit/delete button if user has permission and entries exist
     can_manage = has_permission(user_id, PERM_EDIT_RECORDS) or has_permission(user_id, PERM_DELETE_RECORDS)
     if has_entries and can_manage:
         keyboard.append([
@@ -149,9 +153,6 @@ def build_report_keyboard(data: dict, has_entries: bool = True, user_id: int | N
     return InlineKeyboardMarkup(inline_keyboard=keyboard)
 
 def get_report_date_range_keyboard() -> InlineKeyboardMarkup:
-    """
-    Presets keyboard for report date filters including custom range.
-    """
     keyboard = [
         [
             InlineKeyboardButton(text="📍 امروز", callback_data="rep_set_date:today"),
@@ -171,16 +172,11 @@ def get_report_date_range_keyboard() -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(inline_keyboard=keyboard)
 
 def get_report_person_keyboard(persons: list) -> InlineKeyboardMarkup:
-    """
-    Person selection keyboard for filtering reports.
-    Keeps callback_data under Telegram's 64-byte limit.
-    """
     keyboard = [
         [InlineKeyboardButton(text="👥 همه افراد (بدون فیلتر)", callback_data="rep_set_person:all")]
     ]
     for p in persons:
         btn_text = f"👤 {p['name']}"
-        # Only pass person ID to keep under 64 bytes limit
         callback_data = f"rep_set_person:{p['id']}"
         keyboard.append([InlineKeyboardButton(text=btn_text, callback_data=callback_data)])
 
@@ -188,14 +184,9 @@ def get_report_person_keyboard(persons: list) -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(inline_keyboard=keyboard)
 
 def get_entries_selector_keyboard(entries: list) -> InlineKeyboardMarkup:
-    """
-    Builds a list of buttons for each record in the report to inspect or delete.
-    Keeps callback_data under 64 bytes by only using page_id.
-    """
     keyboard = []
     for idx, e in enumerate(entries, 1):
         name = e.get("name", "بدون عنوان")
-        # Shorten name for button if too long
         display_name = (name[:25] + "...") if len(name) > 25 else name
         btn_text = f"{idx}. {display_name}"
         keyboard.append([InlineKeyboardButton(text=btn_text, callback_data=f"rep_det:{e['id']}")])
@@ -203,11 +194,7 @@ def get_entries_selector_keyboard(entries: list) -> InlineKeyboardMarkup:
     keyboard.append([InlineKeyboardButton(text="🔙 بازگشت به گزارش", callback_data="rep_back_to_report")])
     return InlineKeyboardMarkup(inline_keyboard=keyboard)
 
-
 def get_entry_detail_keyboard(page_id: str, page_url: str, user_id: int | None = None) -> InlineKeyboardMarkup:
-    """
-    Action buttons for a single entry detail view with granular permissions.
-    """
     action_row = []
     if has_permission(user_id, PERM_EDIT_RECORDS):
         action_row.append(InlineKeyboardButton(text="✏️ ویرایش این رکورد", callback_data=f"rep_edit:{page_id}"))
@@ -225,9 +212,6 @@ def get_entry_detail_keyboard(page_id: str, page_url: str, user_id: int | None =
     return InlineKeyboardMarkup(inline_keyboard=keyboard)
 
 def get_delete_confirm_keyboard(page_id: str) -> InlineKeyboardMarkup:
-    """
-    Two-step confirmation buttons for deleting a record.
-    """
     keyboard = [
         [
             InlineKeyboardButton(text="⚠️ بله، حذف شود", callback_data=f"rep_do_del:{page_id}"),
@@ -237,9 +221,6 @@ def get_delete_confirm_keyboard(page_id: str) -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(inline_keyboard=keyboard)
 
 def get_edit_fields_keyboard(page_id: str) -> InlineKeyboardMarkup:
-    """
-    Submenu to pick which field of the record to edit.
-    """
     keyboard = [
         [
             InlineKeyboardButton(text="📌 ویرایش عنوان", callback_data=f"rep_ed_name:{page_id}"),
@@ -260,9 +241,6 @@ def get_edit_fields_keyboard(page_id: str) -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(inline_keyboard=keyboard)
 
 def get_edit_satisfaction_keyboard(page_id: str) -> InlineKeyboardMarkup:
-    """
-    Satisfaction picker for editing.
-    """
     options = ["عالی", "خوب", "متوسط", "بد", "داغون"]
     keyboard = []
     for opt in options:
@@ -271,18 +249,16 @@ def get_edit_satisfaction_keyboard(page_id: str) -> InlineKeyboardMarkup:
     keyboard.append([InlineKeyboardButton(text="🔙 انصراف", callback_data=f"rep_edit:{page_id}")])
     return InlineKeyboardMarkup(inline_keyboard=keyboard)
 
-
 def get_edit_person_keyboard(page_id: str, persons: list) -> InlineKeyboardMarkup:
-    """
-    Person picker for editing.
-    """
     keyboard = []
     for p in persons:
         keyboard.append([InlineKeyboardButton(text=f"👤 {p['name']}", callback_data=f"rep_set_ed_per:{p['id']}")])
     keyboard.append([InlineKeyboardButton(text="🔙 انصراف", callback_data=f"rep_edit:{page_id}")])
     return InlineKeyboardMarkup(inline_keyboard=keyboard)
 
-# --- Admin Panel Keyboards ---
+# ==========================================
+# 👑 ADMIN PANEL KEYBOARDS
+# ==========================================
 
 ROLE_BADGES = {
     "admin": "👑 مدیر کل",
@@ -292,7 +268,6 @@ ROLE_BADGES = {
 }
 
 def build_admin_dashboard_keyboard() -> InlineKeyboardMarkup:
-    """Main dashboard keyboard for Admin Panel."""
     keyboard = [
         [
             InlineKeyboardButton(text="👥 مدیریت و لیست کاربران", callback_data="adm_list_users"),
@@ -305,9 +280,7 @@ def build_admin_dashboard_keyboard() -> InlineKeyboardMarkup:
     ]
     return InlineKeyboardMarkup(inline_keyboard=keyboard)
 
-
 def get_admin_users_list_keyboard(users: dict) -> InlineKeyboardMarkup:
-    """Keyboard listing all registered users with custom names."""
     keyboard = []
     for uid, info in users.items():
         role = info.get("role", "member")
@@ -322,14 +295,10 @@ def get_admin_users_list_keyboard(users: dict) -> InlineKeyboardMarkup:
     ])
     return InlineKeyboardMarkup(inline_keyboard=keyboard)
 
-
 def get_admin_user_manage_keyboard(target_user_id: int, current_role: str) -> InlineKeyboardMarkup:
-    """Action keyboard for a specific user: Edit name, switch role or delete access."""
     keyboard = [
         [InlineKeyboardButton(text="✏️ ویرایش نام کاربر", callback_data=f"adm_edit_name:{target_user_id}")]
     ]
-    
-    # Available role switch buttons
     roles = [
         ("admin", "👑 تبدیل به مدیر کل"),
         ("manager", "💼 تبدیل به مدیر تیم"),
@@ -344,9 +313,7 @@ def get_admin_user_manage_keyboard(target_user_id: int, current_role: str) -> In
     keyboard.append([InlineKeyboardButton(text="🔙 بازگشت به لیست کاربران", callback_data="adm_list_users")])
     return InlineKeyboardMarkup(inline_keyboard=keyboard)
 
-
 def get_admin_role_picker_keyboard(target_user_id: int) -> InlineKeyboardMarkup:
-    """Keyboard to choose role for newly added user."""
     keyboard = [
         [
             InlineKeyboardButton(text="👑 مدیر کل (Admin)", callback_data=f"adm_assign_role:{target_user_id}:admin"),
@@ -362,13 +329,386 @@ def get_admin_role_picker_keyboard(target_user_id: int) -> InlineKeyboardMarkup:
     ]
     return InlineKeyboardMarkup(inline_keyboard=keyboard)
 
-
 def get_admin_delete_confirm_keyboard(target_user_id: int) -> InlineKeyboardMarkup:
-    """Confirmation keyboard before removing a user."""
     keyboard = [
         [
             InlineKeyboardButton(text="⚠️ بله، حذف دسترسی", callback_data=f"adm_do_del:{target_user_id}"),
             InlineKeyboardButton(text="❌ انصراف", callback_data=f"adm_manage_user:{target_user_id}")
         ]
     ]
+    return InlineKeyboardMarkup(inline_keyboard=keyboard)
+
+
+# ==========================================
+# 🌿 LIFE TRACKER KEYBOARDS
+# ==========================================
+
+def build_life_tracker_hub_keyboard() -> InlineKeyboardMarkup:
+    """Main landing hub keyboard for Life Tracker."""
+    keyboard = [
+        [
+            InlineKeyboardButton(text="📝 ثبت لاگ جدید", callback_data="lt_new_log"),
+            InlineKeyboardButton(text="📊 تاریخچه و گزارش‌ها", callback_data="lt_reports")
+        ],
+        [
+            InlineKeyboardButton(text="❌ بستن منو", callback_data="lt_close_hub")
+        ]
+    ]
+    return InlineKeyboardMarkup(inline_keyboard=keyboard)
+
+
+def build_life_tracker_card_keyboard(data: Dict[str, Any]) -> InlineKeyboardMarkup:
+    """Interactive card for creating a new Life Tracker entry."""
+    name_label = "✏️ عنوان: " + (data.get("name") or "وارد نشده ❌")
+    
+    t_val = data.get("type")
+    t_emoji = TYPE_EMOJIS.get(t_val, "🏷") if t_val else "🏷"
+    type_label = f"{t_emoji} نوع فعالیت: " + (t_val or "انتخاب نشده ❌")
+
+    modes = data.get("modes") or []
+    if modes:
+        mode_str = " | ".join([f"{MODE_EMOJIS.get(m, '✨')} {m}" for m in modes])
+        mode_label = f"🎭 حالت: {mode_str}"
+    else:
+        mode_label = "🎭 حالت: بدون انتخاب (عادی)"
+
+    date_label = "📅 تاریخ: " + (data.get("date_label") or "امروز")
+    notes_label = "📝 یادداشت: " + ("ثبت شده ✅" if data.get("notes") else "—")
+
+    buttons = [
+        [InlineKeyboardButton(text=type_label, callback_data="lt_pick_type")],
+        [InlineKeyboardButton(text=name_label, callback_data="lt_edit_name")],
+    ]
+
+    # Only show Mode button if selected Type supports modes or if modes already exist
+    available_modes = TYPE_MODE_MAPPING.get(t_val or "", [])
+    if available_modes or modes:
+        buttons.append([InlineKeyboardButton(text=mode_label, callback_data="lt_pick_mode")])
+
+    buttons.extend([
+        [InlineKeyboardButton(text=date_label, callback_data="lt_pick_date")],
+        [InlineKeyboardButton(text=notes_label, callback_data="lt_edit_notes")],
+        [
+            InlineKeyboardButton(text="✅ ثبت در روزمرگی", callback_data="lt_submit_card"),
+            InlineKeyboardButton(text="❌ انصراف", callback_data="lt_cancel_card")
+        ]
+    ])
+    return InlineKeyboardMarkup(inline_keyboard=buttons)
+
+
+def get_life_tracker_type_keyboard() -> InlineKeyboardMarkup:
+    """Type picker keyboard for Life Tracker with custom emojis."""
+    keyboard = []
+    row = []
+    for t in LIFE_TRACKER_TYPES:
+        emoji = TYPE_EMOJIS.get(t, "🏷")
+        row.append(InlineKeyboardButton(text=f"{emoji} {t}", callback_data=f"lt_set_type:{t}"))
+        if len(row) == 2:
+            keyboard.append(row)
+            row = []
+    if row:
+        keyboard.append(row)
+
+    keyboard.append([InlineKeyboardButton(text="🔙 بازگشت به فرم", callback_data="lt_back_to_card")])
+    return InlineKeyboardMarkup(inline_keyboard=keyboard)
+
+
+def get_life_tracker_mode_keyboard(type_val: str, selected_modes: List[str]) -> InlineKeyboardMarkup:
+    """
+    Dynamic Multi-Select Mode picker keyboard with toggle checkboxes (✅ / ⬜).
+    """
+    available_modes = TYPE_MODE_MAPPING.get(type_val, [])
+    keyboard = []
+    row = []
+
+    for m in available_modes:
+        is_selected = m in selected_modes
+        check_icon = "✅" if is_selected else "⬜"
+        m_emoji = MODE_EMOJIS.get(m, "✨")
+        btn_text = f"{check_icon} {m_emoji} {m}"
+        row.append(InlineKeyboardButton(text=btn_text, callback_data=f"lt_tog_mode:{m}"))
+        if len(row) == 2:
+            keyboard.append(row)
+            row = []
+    if row:
+        keyboard.append(row)
+
+    keyboard.append([
+        InlineKeyboardButton(text="🗑 پاک کردن همه حالت‌ها", callback_data="lt_clear_modes"),
+        InlineKeyboardButton(text="✔️ تایید و بازگشت", callback_data="lt_back_to_card")
+    ])
+    return InlineKeyboardMarkup(inline_keyboard=keyboard)
+
+
+def get_life_tracker_date_keyboard() -> InlineKeyboardMarkup:
+    """Preset date picker for Life Tracker."""
+    keyboard = [
+        [
+            InlineKeyboardButton(text="امروز", callback_data="lt_set_date_preset:0:امروز"),
+            InlineKeyboardButton(text="دیروز", callback_data="lt_set_date_preset:1:دیروز"),
+            InlineKeyboardButton(text="پریروز", callback_data="lt_set_date_preset:2:پریروز")
+        ],
+        [InlineKeyboardButton(text="✍️ ورود تاریخ دلخواه شمسی", callback_data="lt_enter_custom_date")],
+        [InlineKeyboardButton(text="🔙 بازگشت به فرم", callback_data="lt_back_to_card")]
+    ]
+    return InlineKeyboardMarkup(inline_keyboard=keyboard)
+
+
+def get_life_tracker_notes_keyboard() -> InlineKeyboardMarkup:
+    """Action buttons when typing notes."""
+    keyboard = [
+        [InlineKeyboardButton(text="🗑 پاک کردن یادداشت", callback_data="lt_clear_notes")],
+        [InlineKeyboardButton(text="🔙 انصراف و بازگشت", callback_data="lt_back_to_card")]
+    ]
+    return InlineKeyboardMarkup(inline_keyboard=keyboard)
+
+
+def get_lt_back_cancel_keyboard() -> InlineKeyboardMarkup:
+    """Generic cancel and back to Life Tracker card."""
+    return InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="🔙 انصراف و بازگشت به فرم", callback_data="lt_back_to_card")]
+    ])
+
+
+# --- Life Tracker Reports & Pagination Keyboards ---
+
+def build_life_tracker_report_keyboard(
+    data: Dict[str, Any],
+    current_page: int = 1,
+    total_pages: int = 1,
+    has_entries: bool = True
+) -> InlineKeyboardMarkup:
+    """
+    Main interactive controls for Life Tracker reports with pagination.
+    """
+    selected_type = data.get("type_val")
+    filter_row = [
+        InlineKeyboardButton(text="📅 تاریخ", callback_data="lt_rep_pick_date"),
+        InlineKeyboardButton(text="🏷 نوع فعالیت", callback_data="lt_rep_pick_type")
+    ]
+    if selected_type and selected_type in TYPE_MODE_MAPPING:
+        filter_row.append(InlineKeyboardButton(text="🎭 حالت", callback_data="lt_rep_pick_mode"))
+    
+    keyboard = [filter_row]
+
+    if has_entries:
+        keyboard.append([
+            InlineKeyboardButton(text="🔍 مدیریت، ویرایش و حذف رکوردها", callback_data="lt_rep_manage")
+        ])
+
+    # Pagination Row
+    if total_pages > 1:
+        pag_row = []
+        if current_page > 1:
+            pag_row.append(InlineKeyboardButton(text="◀️ قبلی", callback_data=f"lt_page:{current_page - 1}"))
+        else:
+            pag_row.append(InlineKeyboardButton(text="▪️", callback_data="lt_noop"))
+
+        pag_row.append(InlineKeyboardButton(text=f"صفحه {current_page} از {total_pages}", callback_data="lt_noop"))
+
+        if current_page < total_pages:
+            pag_row.append(InlineKeyboardButton(text="بعدی ▶️", callback_data=f"lt_page:{current_page + 1}"))
+        else:
+            pag_row.append(InlineKeyboardButton(text="▪️", callback_data="lt_noop"))
+
+        keyboard.append(pag_row)
+
+    keyboard.append([
+        InlineKeyboardButton(text="🔄 بروزرسانی", callback_data="lt_rep_refresh"),
+        InlineKeyboardButton(text="🌱 هاب روزمرگی", callback_data="lt_back_to_hub"),
+        InlineKeyboardButton(text="❌ بستن", callback_data="lt_rep_close")
+    ])
+    return InlineKeyboardMarkup(inline_keyboard=keyboard)
+
+
+def get_lt_report_date_range_keyboard() -> InlineKeyboardMarkup:
+    """Date presets for Life Tracker reports."""
+    keyboard = [
+        [
+            InlineKeyboardButton(text="📍 امروز", callback_data="lt_rep_set_date:today"),
+            InlineKeyboardButton(text="⏮ دیروز", callback_data="lt_rep_set_date:yesterday")
+        ],
+        [
+            InlineKeyboardButton(text="🗓 ۷ روز اخیر", callback_data="lt_rep_set_date:last_7_days"),
+            InlineKeyboardButton(text="🌙 ماه جاری شمسی", callback_data="lt_rep_set_date:this_month")
+        ],
+        [
+            InlineKeyboardButton(text="✍️ بازه دلخواه شمسی (تایپ دستی)", callback_data="lt_rep_custom_date")
+        ],
+        [
+            InlineKeyboardButton(text="🔙 بازگشت به گزارش", callback_data="lt_back_to_report")
+        ]
+    ]
+    return InlineKeyboardMarkup(inline_keyboard=keyboard)
+
+
+def get_lt_report_type_filter_keyboard() -> InlineKeyboardMarkup:
+    """Type filter keyboard for Life Tracker reports."""
+    keyboard = [
+        [InlineKeyboardButton(text="👥 همه انواع (بدون فیلتر)", callback_data="lt_rep_set_type:all")]
+    ]
+    row = []
+    for t in LIFE_TRACKER_TYPES:
+        emoji = TYPE_EMOJIS.get(t, "🏷")
+        row.append(InlineKeyboardButton(text=f"{emoji} {t}", callback_data=f"lt_rep_set_type:{t}"))
+        if len(row) == 2:
+            keyboard.append(row)
+            row = []
+    if row:
+        keyboard.append(row)
+
+    keyboard.append([InlineKeyboardButton(text="🔙 بازگشت به گزارش", callback_data="lt_back_to_report")])
+    return InlineKeyboardMarkup(inline_keyboard=keyboard)
+
+
+def get_lt_report_mode_filter_keyboard(type_val: str) -> InlineKeyboardMarkup:
+    """Mode filter keyboard for Life Tracker reports."""
+    keyboard = [
+        [InlineKeyboardButton(text="👥 همه حالت‌ها (بدون فیلتر)", callback_data="lt_rep_set_mode:all")]
+    ]
+    available_modes = TYPE_MODE_MAPPING.get(type_val, [])
+    row = []
+    for m in available_modes:
+        emoji = MODE_EMOJIS.get(m, "✨")
+        row.append(InlineKeyboardButton(text=f"{emoji} {m}", callback_data=f"lt_rep_set_mode:{m}"))
+        if len(row) == 2:
+            keyboard.append(row)
+            row = []
+    if row:
+        keyboard.append(row)
+
+    keyboard.append([InlineKeyboardButton(text="🔙 بازگشت به گزارش", callback_data="lt_back_to_report")])
+    return InlineKeyboardMarkup(inline_keyboard=keyboard)
+
+
+def get_lt_entries_selector_keyboard(entries: list, page: int = 1, page_size: int = 5) -> InlineKeyboardMarkup:
+    """Builds a paginated list of Life Tracker entries to inspect."""
+    total_entries = len(entries)
+    total_pages = max(1, (total_entries + page_size - 1) // page_size)
+    start_idx = (page - 1) * page_size
+    end_idx = start_idx + page_size
+    page_entries = entries[start_idx:end_idx]
+
+    keyboard = []
+    for idx, e in enumerate(page_entries, start_idx + 1):
+        name = e.get("name", "بدون عنوان")
+        t_val = e.get("type", "")
+        t_emoji = TYPE_EMOJIS.get(t_val, "🏷")
+        display_name = (name[:22] + "...") if len(name) > 22 else name
+        btn_text = f"{idx}. {t_emoji} {display_name}"
+        keyboard.append([InlineKeyboardButton(text=btn_text, callback_data=f"lt_det:{e['id']}")])
+
+    # Pagination controls in selector
+    if total_pages > 1:
+        pag_row = []
+        if page > 1:
+            pag_row.append(InlineKeyboardButton(text="◀️ قبلی", callback_data=f"lt_sel_page:{page - 1}"))
+        else:
+            pag_row.append(InlineKeyboardButton(text="▪️", callback_data="lt_noop"))
+
+        pag_row.append(InlineKeyboardButton(text=f"صفحه {page} از {total_pages}", callback_data="lt_noop"))
+
+        if page < total_pages:
+            pag_row.append(InlineKeyboardButton(text="بعدی ▶️", callback_data=f"lt_sel_page:{page + 1}"))
+        else:
+            pag_row.append(InlineKeyboardButton(text="▪️", callback_data="lt_noop"))
+
+        keyboard.append(pag_row)
+
+    keyboard.append([InlineKeyboardButton(text="🔙 بازگشت به گزارش", callback_data="lt_back_to_report")])
+    return InlineKeyboardMarkup(inline_keyboard=keyboard)
+
+
+def get_lt_entry_detail_keyboard(page_id: str, page_url: str) -> InlineKeyboardMarkup:
+    """Action buttons for viewing a single Life Tracker record."""
+    keyboard = [
+        [
+            InlineKeyboardButton(text="✏️ ویرایش این رکورد", callback_data=f"lt_edit:{page_id}"),
+            InlineKeyboardButton(text="🗑 حذف این رکورد", callback_data=f"lt_confirm_del:{page_id}")
+        ]
+    ]
+    if page_url:
+        keyboard.append([InlineKeyboardButton(text="🔗 مشاهده در نوشن", url=page_url)])
+    keyboard.append([InlineKeyboardButton(text="🔙 بازگشت به لیست رکوردها", callback_data="lt_rep_manage")])
+    return InlineKeyboardMarkup(inline_keyboard=keyboard)
+
+
+def get_lt_delete_confirm_keyboard(page_id: str) -> InlineKeyboardMarkup:
+    """Confirmation before archiving a Life Tracker entry."""
+    return InlineKeyboardMarkup(inline_keyboard=[
+        [
+            InlineKeyboardButton(text="⚠️ بله، حذف شود", callback_data=f"lt_do_del:{page_id}"),
+            InlineKeyboardButton(text="❌ انصراف", callback_data=f"lt_det:{page_id}")
+        ]
+    ])
+
+
+def get_lt_edit_fields_keyboard(page_id: str, type_val: str) -> InlineKeyboardMarkup:
+    """Submenu for picking which field of Life Tracker entry to edit."""
+    keyboard = [
+        [
+            InlineKeyboardButton(text="📌 ویرایش عنوان", callback_data=f"lt_ed_name:{page_id}"),
+            InlineKeyboardButton(text="🏷 تغییر نوع فعالیت", callback_data=f"lt_ed_type:{page_id}")
+        ]
+    ]
+
+    available_modes = TYPE_MODE_MAPPING.get(type_val, [])
+    if available_modes:
+        keyboard.append([
+            InlineKeyboardButton(text="🎭 تغییر حالت‌ها (Mode)", callback_data=f"lt_ed_mode:{page_id}")
+        ])
+
+    keyboard.extend([
+        [
+            InlineKeyboardButton(text="📅 تغییر تاریخ", callback_data=f"lt_ed_date:{page_id}"),
+            InlineKeyboardButton(text="📝 ویرایش یادداشت", callback_data=f"lt_ed_notes:{page_id}")
+        ],
+        [
+            InlineKeyboardButton(text="📄 مشاهده کارت رکورد", callback_data=f"lt_det:{page_id}"),
+            InlineKeyboardButton(text="📋 لیست رکوردها", callback_data="lt_rep_manage")
+        ]
+    ])
+    return InlineKeyboardMarkup(inline_keyboard=keyboard)
+
+
+def get_lt_edit_type_keyboard(page_id: str) -> InlineKeyboardMarkup:
+    """Type picker when editing an existing entry."""
+    keyboard = []
+    row = []
+    for t in LIFE_TRACKER_TYPES:
+        emoji = TYPE_EMOJIS.get(t, "🏷")
+        row.append(InlineKeyboardButton(text=f"{emoji} {t}", callback_data=f"lt_set_ed_type:{page_id}:{t}"))
+        if len(row) == 2:
+            keyboard.append(row)
+            row = []
+    if row:
+        keyboard.append(row)
+
+    keyboard.append([InlineKeyboardButton(text="🔙 انصراف", callback_data=f"lt_edit:{page_id}")])
+    return InlineKeyboardMarkup(inline_keyboard=keyboard)
+
+
+def get_lt_edit_mode_keyboard(page_id: str, type_val: str, selected_modes: List[str]) -> InlineKeyboardMarkup:
+    """Mode picker with toggles when editing an existing entry."""
+    available_modes = TYPE_MODE_MAPPING.get(type_val, [])
+    keyboard = []
+    row = []
+
+    for m in available_modes:
+        is_selected = m in selected_modes
+        check_icon = "✅" if is_selected else "⬜"
+        m_emoji = MODE_EMOJIS.get(m, "✨")
+        btn_text = f"{check_icon} {m_emoji} {m}"
+        row.append(InlineKeyboardButton(text=btn_text, callback_data=f"lt_tog_ed_mode:{page_id}:{m}"))
+        if len(row) == 2:
+            keyboard.append(row)
+            row = []
+    if row:
+        keyboard.append(row)
+
+    keyboard.append([
+        InlineKeyboardButton(text="🗑 پاک کردن همه حالت‌ها", callback_data=f"lt_clear_ed_modes:{page_id}"),
+        InlineKeyboardButton(text="💾 ذخیره تغییرات", callback_data=f"lt_save_ed_modes:{page_id}")
+    ])
+    keyboard.append([InlineKeyboardButton(text="🔙 انصراف", callback_data=f"lt_edit:{page_id}")])
     return InlineKeyboardMarkup(inline_keyboard=keyboard)
