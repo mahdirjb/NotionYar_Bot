@@ -1,6 +1,6 @@
 # app/handlers/life_tracker.py
 
-from typing import Any
+from typing import Any, Dict
 from aiogram import Router, F, Bot
 from aiogram.filters import Command
 from aiogram.types import Message, CallbackQuery
