@@ -25,7 +25,10 @@ from app.keyboards.inline import (
     get_lt_edit_type_keyboard,
     get_lt_edit_mode_keyboard,
     TYPE_EMOJIS,
-    MODE_EMOJIS
+    MODE_EMOJIS,
+    build_insights_dashboard_keyboard,
+    get_insights_habit_detail_keyboard,
+    get_insights_settings_keyboard
 )
 from app.services.notion_service import (
     TYPE_MODE_MAPPING,
@@ -40,6 +43,11 @@ from app.services.date_helper import (
     parse_user_date_input,
     get_preset_date_range,
     parse_custom_date_range
+)
+from app.services.insights_service import (
+    calculate_habit_insights,
+    get_enabled_insight_types,
+    toggle_insight_type
 )
 from app.services.auth_service import has_permission, PERM_ADMIN
 
@@ -1181,3 +1189,150 @@ async def save_edit_entry_modes(callback: CallbackQuery, state: FSMContext, bot:
         "Mode": {"multi_select": [{"name": m} for m in modes_to_save]}
     })
     await show_edit_menu(callback, page_id, bot, state, alert_text="✅ حالت‌ها با موفقیت ذخیره شدند.")
+    
+# ==========================================
+# 📈 SMART HABIT & INTERVAL INSIGHTS HANDLERS
+# ==========================================
+
+def render_insights_dashboard_text(insights: Dict[str, Any]) -> str:
+    """Formats the comprehensive overview card for all active habits."""
+    if not insights:
+        return (
+            "📈 <b>داشبورد تحلیل فواصل و روتین‌های زندگی</b>\n\n"
+            "⚠️ <i>هیچ آیتمی برای تحلیل فعال نیست یا داده‌ای ثبت نشده است.</i>\n"
+            "👇 از دکمه <b>«⚙️ تنظیم آیتم‌های فعال»</b> برای انتخاب موارد استفاده کنید."
+        )
+
+    lines = [
+        "📈 <b>داشبورد تحلیل فواصل و روتین‌های زندگی</b>\n",
+        "💡 <i>راهنمای نشانگرها:</i> 🟢 به‌موقع | 🟡 نزدیک موعد | 🔴 گذشته از موعد\n",
+        "─────────────────"
+    ]
+
+    has_any = False
+    for t_name, info in insights.items():
+        if info.get("has_data"):
+            has_any = True
+            badge = info["badge"]
+            emoji = info["emoji"]
+            days = info["days_ago"]
+            days_str = "امروز" if days == 0 else f"<code>{days} روز پیش</code>"
+            avg_str = f"(میانگین: {info['avg_interval']} روز)" if info.get("avg_interval") else ""
+            lines.append(f"{badge} <b>{emoji} {t_name}:</b> {days_str} {avg_str}")
+
+    if not has_any:
+        lines.append("🔍 <i>هنوز داده‌ای برای آیتم‌های فعال ثبت نشده است.</i>")
+
+    lines.append("─────────────────")
+    lines.append("👇 <i>برای مشاهده تاریخچه و رکوردها، روی دکمه هر فعالیت کلیک کنید:</i>")
+
+    return "\n".join(lines)
+
+
+def render_habit_deep_dive_text(t_name: str, info: dict) -> str:
+    """Formats deep dive analytical report for a single habit."""
+    emoji = info.get("emoji", "🏷")
+    badge = info.get("badge", "▫️")
+    status = info.get("status_text", "")
+    days = info.get("days_ago", 0)
+    days_str = "امروز" if days == 0 else f"{days} روز پیش"
+
+    lines = [
+        f"📊 <b>تحلیل عمیق: {emoji} {t_name}</b>\n",
+        f"📌 <b>وضعیت فعلی:</b> {badge} <b>{status}</b>",
+        f"📅 <b>آخرین بار:</b> <code>{info.get('last_date_shamsi')}</code> ({days_str})",
+        f"🔢 <b>تعداد کل ثبت‌ها:</b> <code>{info.get('total_count')} نوبت</code>\n"
+    ]
+
+    if info.get("avg_interval") is not None:
+        lines.extend([
+            "⏱ <b>آمار فواصل و ریتم معمول:</b>",
+            f"├ 🎯 <b>فاصله میانگین:</b> هر <code>{info['avg_interval']} روز یک‌بار</code>",
+            f"├ ⚡ <b>سریع‌ترین فاصله (رکورد):</b> <code>{info['min_interval']} روز</code>",
+            f"└ ⏳ <b>طولانی‌ترین فاصله:</b> <code>{info['max_interval']} روز</code>\n"
+        ])
+
+        recents = info.get("recent_intervals", [])
+        if recents:
+            recent_str = " ⬅️ ".join([f"<b>{r} روز</b>" for r in recents])
+            lines.append(f"🔄 <b>فواصل نوبت‌های اخیر:</b>\n   {recent_str}\n")
+
+        dates_str = " | ".join(info.get("recent_dates", []))
+        lines.append(f"🗓 <b>تاریخ ۵ نوبت اخیر:</b>\n   <code>{dates_str}</code>")
+    else:
+        lines.append("ℹ️ <i>برای محاسبه میانگین و فواصل، حداقل ۲ بار ثبت در تاریخ‌های مختلف نیاز است.</i>")
+
+    return "\n".join(lines)
+
+
+@router.callback_query(F.data == "lt_ins_hub")
+@router.callback_query(F.data == "lt_ins_refresh")
+async def show_insights_dashboard(callback: CallbackQuery, state: FSMContext):
+    user_id = callback.from_user.id if callback.from_user else None
+    if not has_permission(user_id, PERM_ADMIN):
+        await callback.answer("⛔ عدم دسترسی.", show_alert=True)
+        return
+
+    await state.clear()
+    insights = calculate_habit_insights()
+    text = render_insights_dashboard_text(insights)
+    markup = build_insights_dashboard_keyboard(insights)
+
+    if isinstance(callback.message, Message):
+        await callback.message.edit_text(text, reply_markup=markup, parse_mode="HTML")
+    await callback.answer()
+
+
+@router.callback_query(F.data.startswith("lt_ins_h:"))
+async def habit_deep_dive_handler(callback: CallbackQuery):
+    user_id = callback.from_user.id if callback.from_user else None
+    if not has_permission(user_id, PERM_ADMIN):
+        await callback.answer("⛔ عدم دسترسی.", show_alert=True)
+        return
+
+    t_name = (callback.data or "").split(":", 1)[1]
+    insights = calculate_habit_insights()
+    info = insights.get(t_name)
+
+    if not info or not info.get("has_data"):
+        await callback.answer("⚠️ داده‌ای برای این فعالیت ثبت نشده است.", show_alert=True)
+        return
+
+    text = render_habit_deep_dive_text(t_name, info)
+    markup = get_insights_habit_detail_keyboard()
+
+    if isinstance(callback.message, Message):
+        await callback.message.edit_text(text, reply_markup=markup, parse_mode="HTML")
+    await callback.answer()
+
+
+@router.callback_query(F.data == "lt_ins_set")
+async def insights_settings_handler(callback: CallbackQuery):
+    user_id = callback.from_user.id if callback.from_user else None
+    if not has_permission(user_id, PERM_ADMIN):
+        await callback.answer("⛔ عدم دسترسی.", show_alert=True)
+        return
+
+    enabled_types = get_enabled_insight_types()
+    text = (
+        "⚙️ <b>تنظیم آیتم‌های فعال در تحلیل فواصل و روتین‌ها:</b>\n\n"
+        "<i>روی هر آیتم کلیک کنید تا تحلیل آن فعال (✅) یا غیرفعال (⬜) شود:</i>"
+    )
+    markup = get_insights_settings_keyboard(enabled_types)
+
+    if isinstance(callback.message, Message):
+        await callback.message.edit_text(text, reply_markup=markup, parse_mode="HTML")
+    await callback.answer()
+
+
+@router.callback_query(F.data.startswith("lt_ins_tog:"))
+async def toggle_insight_item_handler(callback: CallbackQuery):
+    t_name = (callback.data or "").split(":", 1)[1]
+    is_on = toggle_insight_type(t_name)
+    enabled_types = get_enabled_insight_types()
+
+    if isinstance(callback.message, Message):
+        await callback.message.edit_reply_markup(
+            reply_markup=get_insights_settings_keyboard(enabled_types)
+        )
+    await callback.answer(f"{'فعال شد ✅' if is_on else 'غیرفعال شد ⬜'}: {t_name}")

@@ -344,18 +344,20 @@ def get_admin_delete_confirm_keyboard(target_user_id: int) -> InlineKeyboardMark
 # ==========================================
 
 def build_life_tracker_hub_keyboard() -> InlineKeyboardMarkup:
-    """Main landing hub keyboard for Life Tracker."""
+    """Main landing hub keyboard for Life Tracker with Insights button."""
     keyboard = [
         [
             InlineKeyboardButton(text="📝 ثبت لاگ جدید", callback_data="lt_new_log"),
             InlineKeyboardButton(text="📊 تاریخچه و گزارش‌ها", callback_data="lt_reports")
         ],
         [
+            InlineKeyboardButton(text="📈 تحلیل فواصل و روتین‌ها", callback_data="lt_ins_hub")
+        ],
+        [
             InlineKeyboardButton(text="❌ بستن منو", callback_data="lt_close_hub")
         ]
     ]
     return InlineKeyboardMarkup(inline_keyboard=keyboard)
-
 
 def build_life_tracker_card_keyboard(data: Dict[str, Any]) -> InlineKeyboardMarkup:
     """Interactive card for creating a new Life Tracker entry."""
@@ -713,4 +715,71 @@ def get_lt_edit_mode_keyboard(page_id: str, type_val: str, selected_modes: List[
         InlineKeyboardButton(text="💾 ذخیره تغییرات", callback_data=f"lt_save_ed_modes:{page_id}")
     ])
     keyboard.append([InlineKeyboardButton(text="🔙 انصراف", callback_data=f"lt_edit:{page_id}")])
+    return InlineKeyboardMarkup(inline_keyboard=keyboard)
+
+# ==========================================
+# 📈 INSIGHTS & HABIT INTERVAL KEYBOARDS
+# ==========================================
+
+def build_insights_dashboard_keyboard(insights_data: Dict[str, Any]) -> InlineKeyboardMarkup:
+    """Dashboard keyboard showing active habit drill-down buttons."""
+    keyboard = []
+    row = []
+
+    for t_name, info in insights_data.items():
+        if info.get("has_data"):
+            badge = info.get("badge", "▫️")
+            emoji = info.get("emoji", "🏷")
+            btn_text = f"{badge} {emoji} {t_name}"
+            row.append(InlineKeyboardButton(text=btn_text, callback_data=f"lt_ins_h:{t_name}"))
+            if len(row) == 2:
+                keyboard.append(row)
+                row = []
+
+    if row:
+        keyboard.append(row)
+
+    keyboard.extend([
+        [
+            InlineKeyboardButton(text="⚙️ تنظیم آیتم‌های فعال", callback_data="lt_ins_set"),
+            InlineKeyboardButton(text="🔄 بروزرسانی", callback_data="lt_ins_refresh")
+        ],
+        [
+            InlineKeyboardButton(text="🔙 بازگشت به هاب روزمرگی", callback_data="lt_back_to_hub")
+        ]
+    ])
+    return InlineKeyboardMarkup(inline_keyboard=keyboard)
+
+
+def get_insights_habit_detail_keyboard() -> InlineKeyboardMarkup:
+    """Action keyboard when viewing deep dive of a specific habit."""
+    return InlineKeyboardMarkup(inline_keyboard=[
+        [
+            InlineKeyboardButton(text="🔙 بازگشت به داشبورد تحلیل", callback_data="lt_ins_hub"),
+            InlineKeyboardButton(text="🌱 هاب روزمرگی", callback_data="lt_back_to_hub")
+        ]
+    ])
+
+
+def get_insights_settings_keyboard(enabled_types: List[str]) -> InlineKeyboardMarkup:
+    """Settings keyboard to toggle on/off habit calculations for each type."""
+    keyboard = []
+    row = []
+
+    for t in LIFE_TRACKER_TYPES:
+        is_on = t in enabled_types
+        icon = "✅" if is_on else "⬜"
+        emoji = TYPE_EMOJIS.get(t, "🏷")
+        btn_text = f"{icon} {emoji} {t}"
+        row.append(InlineKeyboardButton(text=btn_text, callback_data=f"lt_ins_tog:{t}"))
+        if len(row) == 2:
+            keyboard.append(row)
+            row = []
+
+    if row:
+        keyboard.append(row)
+
+    keyboard.append([
+        InlineKeyboardButton(text="✔️ ذخیره و بازگشت به داشبورد", callback_data="lt_ins_hub")
+    ])
     return InlineKeyboardMarkup(inline_keyboard=keyboard)
