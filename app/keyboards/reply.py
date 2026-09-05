@@ -5,6 +5,7 @@ from app.services.auth_service import has_permission, PERM_ADD_TIME, PERM_VIEW_R
 
 BTN_ADD_TIME = "⏱ ثبت زمان جدید"
 BTN_REPORTS = "📊 گزارش و کارکردها"
+BTN_HABITS = "🎯 عادات روزانه"
 BTN_LIFE_TRACKER = "🌱 لاگ روزمرگی"
 BTN_ADMIN = "⚙️ پنل مدیریت"
 BTN_HELP = "ℹ️ راهنما"
@@ -26,10 +27,13 @@ def get_main_reply_keyboard(user_id: int | None = None) -> ReplyKeyboardMarkup:
     row_2.append(KeyboardButton(text=BTN_HELP))
     keyboard.append(row_2)
 
-    # Row 3: Admin & Life Tracker (Exclusive for Admins)
+    # Row 3 & 4: Habits, Life Tracker & Admin (Exclusive for Admins)
     if has_permission(user_id, PERM_ADMIN):
         keyboard.append([
-            KeyboardButton(text=BTN_LIFE_TRACKER),
+            KeyboardButton(text=BTN_HABITS),
+            KeyboardButton(text=BTN_LIFE_TRACKER)
+        ])
+        keyboard.append([
             KeyboardButton(text=BTN_ADMIN)
         ])
 
