@@ -30,6 +30,7 @@ NOTION_DBID_TIME_TRACKER = _clean_database_id(
 )
 
 NOTION_DBID_LIFE_TRACKER = _clean_database_id(os.getenv("NOTION_DBID_LIFE_TRACKER"))
+NOTION_DBID_HABITS = _clean_database_id(os.getenv("NOTION_DBID_HABITS"))
 
 # Default Page ID for Life Tracker 'Intervals' relation field
 NOTION_LIFE_TRACKER_INTERVALS_PAGE_ID = _clean_database_id(
