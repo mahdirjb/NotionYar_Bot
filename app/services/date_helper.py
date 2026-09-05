@@ -175,3 +175,40 @@ def parse_custom_date_range(input_text: str) -> tuple[str, str, str] | None:
         return g_start_iso, g_end_iso, f"{j_start_str} تا {j_end_str}"
         
     return None
+
+def format_jalali_full_display(gregorian_iso: str) -> str:
+    """
+    Converts 'YYYY-MM-DD' Gregorian ISO string to full Jalali string with weekday.
+    Example: 'یکشنبه ۱۵ شهریور ۱۴۰۵'
+    """
+    try:
+        g_date = date.fromisoformat(gregorian_iso)
+        j_date = jdatetime.date.fromgregorian(date=g_date)
+        weekdays = [
+            "شنبه",
+            "یکشنبه",
+            "دوشنبه",
+            "سه‌شنبه",
+            "چهارشنبه",
+            "پنج‌شنبه",
+            "جمعه",
+        ]
+        months = [
+            "فروردین",
+            "اردیبهشت",
+            "خرداد",
+            "تیر",
+            "مرداد",
+            "شهریور",
+            "مهر",
+            "آبان",
+            "آذر",
+            "دی",
+            "بهمن",
+            "اسفند",
+        ]
+        w_name = weekdays[j_date.weekday()]
+        m_name = months[j_date.month - 1]
+        return f"{w_name} {j_date.day} {m_name} {j_date.year}"
+    except Exception:
+        return gregorian_iso
