@@ -1,7 +1,7 @@
 # app/keyboards/inline.py
 
 from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
-from typing import Dict, Any, List
+from typing import Dict, Any, List, Optional
 from app.services.auth_service import (
     has_permission,
     PERM_VIEW_ALL_USERS,
