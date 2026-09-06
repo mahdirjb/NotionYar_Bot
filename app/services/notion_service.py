@@ -564,23 +564,23 @@ def update_notion_page_properties(page_id: str, properties: Dict[str, Any]) -> b
         return False
     
 # ==========================================
-# 🎯 HABIT TRACKER CONSTANTS & FUNCTIONS
+# 🎯 HABIT TRACKER CONSTANTS & FUNCTIONS (V2.0)
 # ==========================================
 
-# 12 Habits Mapping with short keys (to respect 64-byte Telegram callback limits)
+# 12 Habits Mapping with Persian names, emojis, and 2-3 letter Stealth Codes
 HABIT_ITEMS: Dict[str, Dict[str, str]] = {
-    "bt": {"prop": "Brush Teeth", "fa": "مسواک", "emoji": "🪥"},
-    "fr": {"prop": "Face Routine", "fa": "روتین پوستی", "emoji": "🧖"},
-    "mb": {"prop": "Make the Bed", "fa": "مرتب‌کردن تخت", "emoji": "🛏️"},
-    "ex": {"prop": "Exercise", "fa": "ورزش", "emoji": "🏃"},
-    "md": {"prop": "Meditation", "fa": "مدیتیشن", "emoji": "🧘"},
-    "gr": {"prop": "Gratitude", "fa": "شکرگزاری", "emoji": "🌸"},
-    "rq": {"prop": "Read Holy Quran", "fa": "تلاوت قرآن", "emoji": "📖"},
-    "sl": {"prop": "Salam", "fa": "سلام", "emoji": "🕊️"},
-    "es": {"prop": "Esteghfar", "fa": "استغفار", "emoji": "📿"},
-    "ps": {"prop": "Pray After Salah", "fa": "تعقیبات نماز", "emoji": "🤲"},
-    "bp": {"prop": "Bedtime Prayer", "fa": "دعای قبل خواب", "emoji": "🌙"},
-    "sg": {"prop": "Spritual Gift", "fa": "هدیه معنوی", "emoji": "🎁"},
+    "bt": {"prop": "Brush Teeth", "fa": "مسواک", "emoji": "🪥", "code": "BST", "cat": "جسمی"},
+    "fr": {"prop": "Face Routine", "fa": "روتین پوستی", "emoji": "🧖", "code": "SKN", "cat": "جسمی"},
+    "mb": {"prop": "Make the Bed", "fa": "مرتب‌کردن تخت", "emoji": "🛏️", "code": "BDM", "cat": "نظم"},
+    "ex": {"prop": "Exercise", "fa": "ورزش", "emoji": "🏃", "code": "WKO", "cat": "جسمی"},
+    "md": {"prop": "Meditation", "fa": "مدیتیشن", "emoji": "🧘", "code": "MDT", "cat": "ذهنی"},
+    "gr": {"prop": "Gratitude", "fa": "شکرگزاری", "emoji": "🌸", "code": "THG", "cat": "ذهنی"},
+    "rq": {"prop": "Read Holy Quran", "fa": "تلاوت قرآن", "emoji": "📖", "code": "QRN", "cat": "معنوی"},
+    "sl": {"prop": "Salam", "fa": "سلام", "emoji": "🕊️", "code": "SLM", "cat": "معنوی"},
+    "es": {"prop": "Esteghfar", "fa": "استغفار", "emoji": "📿", "code": "EST", "cat": "معنوی"},
+    "ps": {"prop": "Pray After Salah", "fa": "تعقیبات نماز", "emoji": "🤲", "code": "PAS", "cat": "معنوی"},
+    "bp": {"prop": "Bedtime Prayer", "fa": "دعای قبل خواب", "emoji": "🌙", "code": "BDP", "cat": "معنوی"},
+    "sg": {"prop": "Spritual Gift", "fa": "هدیه معنوی", "emoji": "🎁", "code": "SPG", "cat": "معنوی"}
 }
 
 HABIT_LEVELS: Dict[str, str] = {
@@ -588,7 +588,7 @@ HABIT_LEVELS: Dict[str, str] = {
     "2": "2-🏃‍♂️ نیمه‌کامل",
     "3": "3-🐢 سبک",
     "4": "4-❌ با دلیل",
-    "5": "5-⛔ بدون دلیل",
+    "5": "5-⛔ بدون دلیل"
 }
 
 LEVEL_BADGES: Dict[str, str] = {
@@ -596,11 +596,26 @@ LEVEL_BADGES: Dict[str, str] = {
     "2-🏃‍♂️ نیمه‌کامل": "🏃‍♂️ نیمه‌کامل",
     "3-🐢 سبک": "🐢 سبک",
     "4-❌ با دلیل": "❌ با دلیل",
-    "5-⛔ بدون دلیل": "⛔ بدون دلیل",
+    "5-⛔ بدون دلیل": "⛔ بدون دلیل"
 }
 
-_cached_habits_ds_id: Optional[str] = None
+def get_persian_cheerleader(progress_float: float) -> str:
+    """Generates warm, colloquial Persian motivational feedback based on progress percentage."""
+    pct = max(0.0, min(1.0, progress_float))
+    if pct >= 1.0:
+        return "👑 سلطان نظم و اراده! امروز رو ترکوندی، دمت گرم."
+    elif pct >= 0.80:
+        return "🔥 فوق‌العاده بود! بخش اعظم روزت با اقتدار برنده شد."
+    elif pct >= 0.50:
+        return "🏃‍♂️ دمت گرم، بیشتر از نصف مسیر رو رفتی. روز قابل قبولی بود."
+    elif pct >= 0.25:
+        return "🐢 پایبندی حداقلی هم پیروزیه! استمرار از کمال‌گرایی مهم‌تره."
+    elif pct > 0.0:
+        return "🌱 هنوز وقت هست؛ یه حرکت کوچیک بزن که زنجیره قطع نشه."
+    else:
+        return "☕ روز هنوز شروع نشده؛ برو جلو که امروز مال خودته!"
 
+_cached_habits_ds_id: Optional[str] = None
 
 def get_habits_data_source_id() -> str:
     """Retrieves and caches the data_source_id of the Habit Tracker database."""
@@ -609,9 +624,7 @@ def get_habits_data_source_id() -> str:
         return _cached_habits_ds_id
 
     if not NOTION_DBID_HABITS:
-        raise ValueError(
-            "NOTION_DBID_HABITS is not defined in environment variables."
-        )
+        raise ValueError("NOTION_DBID_HABITS is not defined in environment variables.")
 
     db_info = cast(
         Dict[str, Any],
@@ -625,48 +638,41 @@ def get_habits_data_source_id() -> str:
     return NOTION_DBID_HABITS
 
 
-def get_or_create_habit_day(
-    date_iso: str, day_title: str = "New Habit"
-) -> Dict[str, Any]:
+def get_or_create_habit_day(date_iso: str, day_title: str = "New Habit") -> Dict[str, Any]:
     """
     Finds existing habit page for the given date, or creates a new row if none exists.
-    Returns parsed dictionary of the day's habit states.
     """
     if not NOTION_DBID_HABITS:
-        raise ValueError(
-            "NOTION_DBID_HABITS is not defined in environment variables."
-        )
+        raise ValueError("NOTION_DBID_HABITS is not defined in environment variables.")
 
     ds_id = get_habits_data_source_id()
     filter_payload = {"property": "Date_", "date": {"equals": date_iso}}
 
-    if hasattr(notion, "data_sources") and hasattr(
-        notion.data_sources, "query"
-    ):
+    if hasattr(notion, "data_sources") and hasattr(notion.data_sources, "query"):
         query_res = notion.data_sources.query(
-            data_source_id=ds_id, filter=filter_payload, page_size=1
+            data_source_id=ds_id,
+            filter=filter_payload,
+            page_size=1
         )
     else:
-        query_res = notion.databases.query(  # type: ignore
+        query_res = notion.databases.query( # type: ignore
             database_id=NOTION_DBID_HABITS,
             filter=filter_payload,
-            page_size=1,
+            page_size=1
         )
 
-    results = (
-        query_res.get("results", []) if isinstance(query_res, dict) else []
-    )
+    results = query_res.get("results", []) if isinstance(query_res, dict) else []
 
     if results:
         page = results[0]
     else:
-        # Create a new day entry in Notion
         create_props: Dict[str, Any] = {
             "Day": {"title": [{"text": {"content": day_title}}]},
-            "Date_": {"date": {"start": date_iso}},
+            "Date_": {"date": {"start": date_iso}}
         }
         page = notion.pages.create(
-            parent={"database_id": NOTION_DBID_HABITS}, properties=create_props
+            parent={"database_id": NOTION_DBID_HABITS},
+            properties=create_props
         )
 
     return parse_habit_page(page)
@@ -677,34 +683,22 @@ def parse_habit_page(page: Dict[str, Any]) -> Dict[str, Any]:
     props = page.get("properties", {})
 
     title_list = props.get("Day", {}).get("title", [])
-    day_name = (
-        title_list[0].get("plain_text", "New Habit")
-        if title_list
-        else "New Habit"
-    )
+    day_name = title_list[0].get("plain_text", "New Habit") if title_list else "New Habit"
 
     date_prop = props.get("Date_", {}).get("date") or {}
     raw_date = date_prop.get("start", "")
 
     # Progress formula
     prog_prop = props.get("Progress", {}).get("formula", {})
-    progress_val = (
-        prog_prop.get("number", 0.0)
-        if prog_prop.get("type") == "number"
-        else 0.0
-    )
-
-    # Cheerleader formula
-    cheer_prop = props.get("Habit Cheerleader", {}).get("formula", {})
-    cheer_val = (
-        cheer_prop.get("string", "")
-        if cheer_prop.get("type") == "string"
-        else ""
-    )
+    progress_val = prog_prop.get("number", 0.0) if prog_prop.get("type") == "number" else 0.0
 
     # Notes
     notes_list = props.get("Notes", {}).get("rich_text", [])
     notes = notes_list[0].get("plain_text", "") if notes_list else ""
+
+    # Gratitude Log (Rich Text)
+    grat_list = props.get("Gratitude Log", {}).get("rich_text", [])
+    gratitude_log = grat_list[0].get("plain_text", "") if grat_list else ""
 
     # 12 Habits values
     habits_status = {}
@@ -718,22 +712,21 @@ def parse_habit_page(page: Dict[str, Any]) -> Dict[str, Any]:
         "day_name": day_name,
         "date_iso": raw_date,
         "progress": progress_val,
-        "cheerleader": cheer_val,
+        "cheerleader": get_persian_cheerleader(progress_val),
         "notes": notes,
+        "gratitude_log": gratitude_log,
         "habits": habits_status,
-        "url": page.get("url", ""),
+        "url": page.get("url", "")
     }
 
 
-def update_habit_entry(
-    page_id: str, habit_prop_name: str, select_val: Optional[str]
-) -> bool:
+def update_habit_entry(page_id: str, habit_prop_name: str, select_val: Optional[str]) -> bool:
     """Updates a single habit property (or clears it if select_val is None)."""
     try:
         val_payload = {"name": select_val} if select_val else None
         notion.pages.update(
             page_id=page_id,
-            properties={habit_prop_name: {"select": val_payload}},
+            properties={habit_prop_name: {"select": val_payload}}
         )
         return True
     except Exception as e:
@@ -756,14 +749,64 @@ def bulk_update_all_habits(page_id: str, select_val: Optional[str]) -> bool:
         return False
 
 
+def batch_update_habit_dict(page_id: str, habit_dict: Dict[str, Optional[str]]) -> bool:
+    """Updates multiple specific habits in a single API call (used by Quick-Run Wizard)."""
+    try:
+        update_props = {}
+        for h_key, sel_val in habit_dict.items():
+            if h_key in HABIT_ITEMS:
+                prop_name = HABIT_ITEMS[h_key]["prop"]
+                val_payload = {"name": sel_val} if sel_val else None
+                update_props[prop_name] = {"select": val_payload}
+
+        if update_props:
+            notion.pages.update(page_id=page_id, properties=update_props)
+        return True
+    except Exception as e:
+        print(f"Error batch updating habits: {e}")
+        return False
+
+
 def update_habit_notes(page_id: str, notes: str) -> bool:
     """Updates the rich_text Notes property for a habit day."""
     try:
         payload = [{"text": {"content": notes}}] if notes else []
         notion.pages.update(
-            page_id=page_id, properties={"Notes": {"rich_text": payload}}
+            page_id=page_id,
+            properties={"Notes": {"rich_text": payload}}
         )
         return True
     except Exception as e:
         print(f"Error updating habit notes: {e}")
+        return False
+
+
+def update_habit_gratitude(page_id: str, gratitude_text: str) -> bool:
+    """Updates the rich_text Gratitude Log property for a habit day."""
+    try:
+        payload = [{"text": {"content": gratitude_text}}] if gratitude_text else []
+        notion.pages.update(
+            page_id=page_id,
+            properties={"Gratitude Log": {"rich_text": payload}}
+        )
+        return True
+    except Exception as e:
+        print(f"Error updating habit gratitude log: {e}")
+        return False
+
+
+def reset_habit_day(page_id: str) -> bool:
+    """Safely resets all 12 habits, notes, and gratitude log for a day."""
+    try:
+        reset_props: Dict[str, Any] = {
+            h_info["prop"]: {"select": None}
+            for h_info in HABIT_ITEMS.values()
+        }
+        reset_props["Notes"] = {"rich_text": []}
+        reset_props["Gratitude Log"] = {"rich_text": []}
+
+        notion.pages.update(page_id=page_id, properties=reset_props)
+        return True
+    except Exception as e:
+        print(f"Error resetting habit day: {e}")
         return False
