@@ -564,7 +564,7 @@ def update_notion_page_properties(page_id: str, properties: Dict[str, Any]) -> b
         return False
     
 # ==========================================
-# 🎯 HABIT TRACKER CONSTANTS & FUNCTIONS (V2.0)
+# 🎯 HABIT TRACKER CONSTANTS & FUNCTIONS (V2.1)
 # ==========================================
 
 HABIT_ITEMS: Dict[str, Dict[str, str]] = {
@@ -582,6 +582,70 @@ HABIT_ITEMS: Dict[str, Dict[str, str]] = {
     "sg": {"prop": "Spritual Gift", "fa": "هدیه معنوی", "emoji": "🎁", "code": "SPG", "cat": "معنوی"}
 }
 
+# Detailed definitions for V1, V2, V3 for each habit
+HABIT_DESCRIPTIONS: Dict[str, Dict[str, str]] = {
+    "bt": {
+        "v1": "مسواک زدن کامل + نخ دندان",
+        "v2": "فقط مسواک زدن دقیق",
+        "v3": "فقط نخ دندان کشیدن"
+    },
+    "fr": {
+        "v1": "شستشوی صورت با شوینده در ۲ نوبت (صبح + شب)",
+        "v2": "شستشوی صورت با شوینده در ۱ نوبت (شب)",
+        "v3": "فقط آب‌زدن ساده به صورت با آب خالی"
+    },
+    "mb": {
+        "v1": "مرتب کردن کامل ملحفه، بالش‌ها و پتو بلافاصله بعد بیداری",
+        "v2": "صاف کردن پتوی روی تخت و مرتب‌سازی کلی",
+        "v3": "جمع کردن حداقلی پتو روی تخت"
+    },
+    "ex": {
+        "v1": "۴۵ تا ۶۰ دقیقه تمرین سنگین / باشگاه / فوتبال",
+        "v2": "۲۰ تا ۳۰ دقیقه پیاده‌روی سریع / ورزش خانگی",
+        "v3": "۵ تا ۱۰ دقیقه کشش یا چند حرکت سبک"
+    },
+    "md": {
+        "v1": "۱۵ تا ۲۰ دقیقه بادی‌اسکن / تمرکز بر نفس",
+        "v2": "۵ تا ۱۰ دقیقه تمرکز روی تنفس",
+        "v3": "۱ تا ۲ دقیقه (۳ نفس عمیق و آگاهانه)"
+    },
+    "gr": {
+        "v1": "ثبت ۳ تا ۵ مورد با جزئیات در دفترچه",
+        "v2": "ثبت ۱ تا ۲ مورد مشخص در دفترچه",
+        "v3": "۱ مورد شکرگزاری قلبی و توجه ذهنی"
+    },
+    "rq": {
+        "v1": "۱ صفحه با ترجمه و تدبر",
+        "v2": "۱ صفحه عربی روان (یا نصف صفحه)",
+        "v3": "۱ سوره کوتاه (کوثر / توحید / عصر)"
+    },
+    "sl": {
+        "v1": "سلام و احوال‌پرسی پرانرژی و گرم روزانه",
+        "v2": "سلام و احوال‌پرسی معمولی و مثبت",
+        "v3": "پاسخ دادن به سلام"
+    },
+    "es": {
+        "v1": "۷۰ مرتبه استغفار",
+        "v2": "۳۰ مرتبه استغفار",
+        "v3": "۱۰ یا ۳ مرتبه استغفار"
+    },
+    "ps": {
+        "v1": "تسبیحات حضرت زهرا (س) + آیت‌الکرسی + دعا",
+        "v2": "تسبیحات حضرت زهرا (س)",
+        "v3": "۱ صلوات و دعای کوتاه"
+    },
+    "bp": {
+        "v1": "وضو + آیت‌الکرسی + ۳ قل (یا ادعیه)",
+        "v2": "آیت‌الکرسی",
+        "v3": "۱ صلوات قلبی یا سوره توحید"
+    },
+    "sg": {
+        "v1": "۲ رکعت نماز نشسته/مستحبی + ۱۰ صلوات + قدر",
+        "v2": "۱۰ صلوات + ۱ آیت‌الکرسی",
+        "v3": "۳ صلوات قلبی"
+    }
+}
+
 HABIT_LEVELS: Dict[str, str] = {
     "1": "1-💪 کامل",
     "2": "2-🏃‍♂️ نیمه‌کامل",
@@ -592,7 +656,7 @@ HABIT_LEVELS: Dict[str, str] = {
 
 LEVEL_BADGES: Dict[str, str] = {
     "1-💪 کامل": "💪 کامل",
-    "2-🏃‍♂️ نیمه‌کامل": "🏃‍♂️ نیمه‌کامل",
+    "2-🏃‍♂️ نیمه‌کامل": "🏃 معمول",
     "3-🐢 سبک": "🐢 سبک",
     "4-❌ با دلیل": "❌ با دلیل",
     "5-⛔ بدون دلیل": "⛔ بدون دلیل"
@@ -613,6 +677,31 @@ def get_persian_cheerleader(progress_float: float) -> str:
         return "🌱 هنوز وقت هست؛ یه حرکت کوچیک بزن که زنجیره قطع نشه."
     else:
         return "☕ روز هنوز شروع نشده؛ برو جلو که امروز مال خودته!"
+
+def parse_existing_gratitude_log(raw_log: str) -> List[Dict[str, Any]]:
+    """Extracts existing gratitude bullet points from Notion's Gratitude Log string."""
+    if not raw_log or not raw_log.strip():
+        return []
+
+    items: List[Dict[str, Any]] = []
+    current_tag: Optional[str] = None
+
+    for line in raw_log.split("\n"):
+        clean = line.strip()
+        if not clean or clean.startswith("🌸") or clean.startswith("📅") or clean.startswith("━") or clean.startswith("🤍"):
+            continue
+
+        if clean.startswith("🏷 [") and clean.endswith("]:"):
+            current_tag = clean.replace("🏷 [", "").replace("]:", "").strip()
+            continue
+
+        if clean.startswith("🌿"):
+            text = clean.replace("🌿", "").replace("خدایا شکرت بابت", "").replace("خدایا شکرت", "").replace("خدایا ممنونم بابت", "").strip()
+            if text:
+                items.append({"tag": current_tag, "text": text})
+
+    return items
+
 
 _cached_habits_ds_id: Optional[str] = None
 
@@ -730,7 +819,7 @@ def update_habit_entry(page_id: str, habit_prop_name: str, select_val: Optional[
 
 
 def bulk_update_all_habits(page_id: str, select_val: Optional[str]) -> bool:
-    """Updates all 12 habits at once (e.g. mark all complete or reset)."""
+    """Updates all 12 habits at once."""
     try:
         val_payload = {"name": select_val} if select_val else None
         update_props = {
@@ -745,7 +834,7 @@ def bulk_update_all_habits(page_id: str, select_val: Optional[str]) -> bool:
 
 
 def batch_update_habit_dict(page_id: str, habit_dict: Dict[str, Optional[str]]) -> bool:
-    """Updates multiple specific habits in a single API call (used by Quick-Run Wizard)."""
+    """Updates multiple specific habits in a single API call."""
     try:
         update_props: Dict[str, Any] = {}
         for h_key, sel_val in habit_dict.items():
