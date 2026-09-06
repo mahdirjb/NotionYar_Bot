@@ -5,8 +5,10 @@ import logging
 from aiogram import Bot, Dispatcher
 from app.config import BOT_TOKEN
 from app.handlers import common, time_tracker, reports, admin, life_tracker, habits
+from app.services.scheduler_service import start_scheduler, shutdown_scheduler
 
 logging.basicConfig(level=logging.INFO)
+
 
 async def main():
     if BOT_TOKEN is None:
@@ -23,8 +25,15 @@ async def main():
     dp.include_router(life_tracker.router)
     dp.include_router(habits.router)
 
-    print("Bot is starting polling...")
-    await dp.start_polling(bot)
+    # Start Nightly Scheduler
+    start_scheduler(bot)
+
+    try:
+        print("Bot is starting polling...")
+        await dp.start_polling(bot)
+    finally:
+        shutdown_scheduler()
+
 
 if __name__ == "__main__":
     asyncio.run(main())

@@ -1428,3 +1428,48 @@ def get_habit_freeze_keyboard(offset_days: int) -> InlineKeyboardMarkup:
             ],
         ]
     )
+
+def build_nightly_checkin_keyboard(is_completed: bool = False) -> InlineKeyboardMarkup:
+    """Action keyboard for Nightly Check-in Reminder."""
+    if is_completed:
+        return InlineKeyboardMarkup(
+            inline_keyboard=[
+                [
+                    InlineKeyboardButton(
+                        text="🎯 باز کردن هاب عادات",
+                        callback_data="hb_nav:0",
+                    )
+                ]
+            ]
+        )
+
+    return InlineKeyboardMarkup(
+        inline_keyboard=[
+            [
+                InlineKeyboardButton(
+                    text="⚡ ثبت سریع زنجیره‌ای",
+                    callback_data="hb_qr_start:0",
+                ),
+                InlineKeyboardButton(
+                    text="⚡ ثبت همه به عنوان معمول",
+                    callback_data="hb_ask_fill:0",
+                ),
+            ],
+            [
+                InlineKeyboardButton(
+                    text="🌸 دفترچه شکرگزاری",
+                    callback_data="hb_grat:0",
+                ),
+                InlineKeyboardButton(
+                    text="🧊 فریز کردن روز",
+                    callback_data="hb_ask_frz:0",
+                ),
+            ],
+            [
+                InlineKeyboardButton(
+                    text="🎯 باز کردن هاب کامل عادات",
+                    callback_data="hb_nav:0",
+                )
+            ],
+        ]
+    )

@@ -1860,3 +1860,17 @@ async def msg_receive_custom_freeze(
             pass
 
     await message.answer(text, reply_markup=kb, parse_mode="HTML")
+
+# افزودن به انتهای handlers/habits.py:
+
+@router.message(F.text == "/checkin", HasPermission(PERM_ADMIN))
+async def cmd_manual_checkin_test(message: Message, bot: Bot) -> None:
+    """Manual trigger to test nightly check-in notification immediately."""
+    from app.services.scheduler_service import send_nightly_habit_checkin
+
+    status_msg = await message.answer("🔄 در حال اجرای تست چک‌این شبانه...")
+    await send_nightly_habit_checkin(bot)
+    try:
+        await status_msg.delete()
+    except Exception:
+        pass
