@@ -13,6 +13,7 @@ from app.keyboards.inline import (
     build_habit_detailed_keyboard,
     build_habit_streaks_keyboard,
     build_habit_matrix_keyboard,
+    get_habit_freeze_keyboard,
     get_habit_level_picker_keyboard,
     get_quick_run_keyboard,
     get_gratitude_accumulator_keyboard,
@@ -46,7 +47,11 @@ from app.services.notion_service import (
     update_habit_quran_detail,
     reset_habit_day,
 )
-from app.services.habit_analytics_service import calculate_habit_streaks
+from app.services.habit_analytics_service import (
+    calculate_habit_streaks,
+    calculate_consistency_matrix,
+    is_day_frozen,
+)
 
 router = Router()
 
@@ -95,8 +100,9 @@ def _format_hub_text(
     stealth: bool = False,
     streaks_data: Optional[Dict[str, Any]] = None,
 ) -> str:
-    """Formats clean Hub landing message with streak integration."""
+    """Formats clean Hub landing message with streak and freeze integration."""
     pct_int = int(round(max(0.0, min(1.0, float(page_data.get("progress", 0.0)))) * 100))
+    frozen = is_day_frozen(page_data)
 
     if stealth:
         return (
@@ -128,7 +134,9 @@ def _format_hub_text(
         f"📣 <b>وضعیت:</b> <i>{cheerleader}</i>",
     ]
 
-    if streaks_data:
+    if frozen:
+        lines.append("🧊 <b>یخ‌بند تداوم:</b> <i>فعال (زنجیره شما محافظت شد 🛡️)</i>")
+    elif streaks_data:
         ov = streaks_data.get("overall", {})
         c_ov = ov.get("current", 0)
         b_ov = ov.get("best", 0)
@@ -157,7 +165,6 @@ def _format_hub_text(
     lines.append("⚡ برای ثبت سریع یا مشاهده جزئیات، گزینه‌های زیر را لمس کنید:")
 
     return "\n".join(lines)
-
 
 def _format_detailed_text(
     page_data: Dict[str, Any],
@@ -1650,3 +1657,206 @@ def _format_matrix_dashboard_text(
 
     return "\n".join(lines)
 
+# ==========================================
+# 🧊 STREAK FREEZE CONTROLLER
+# ==========================================
+
+
+@router.callback_query(F.data.startswith("hb_ask_frz:"), HasPermission(PERM_ADMIN))
+async def cb_ask_freeze_day(call: CallbackQuery, state: FSMContext) -> None:
+    """Opens Freeze reason selection menu."""
+    if not call.data or not isinstance(call.message, Message):
+        await call.answer()
+        return
+
+    offset_days = int(call.data.split(":")[1])
+    _, full_jalali, _ = _calculate_date_from_offset(offset_days)
+
+    text = (
+        f"🧊 <b>یخ‌بند تداوم و روز استراحت (Streak Freeze)</b>\n"
+        f"📅 تاریخ: <code>{full_jalali}</code>\n\n"
+        f"🛡️ با فریز کردن روز، استمرار و زنجیره شما نسوخته و حفظ می‌شود.\n"
+        f"لطفاً دلیل استراحت یا عدم ثبت عادات را انتخاب کنید:"
+    )
+    kb = get_habit_freeze_keyboard(offset_days)
+    await call.message.edit_text(text, reply_markup=kb, parse_mode="HTML")
+    await call.answer()
+
+
+@router.callback_query(F.data.startswith("hb_do_frz:"), HasPermission(PERM_ADMIN))
+async def cb_apply_freeze(call: CallbackQuery, state: FSMContext) -> None:
+    """Applies preset reason freeze to the day."""
+    if not call.data or not isinstance(call.message, Message):
+        await call.answer()
+        return
+
+    _, reason_key, offset_str = call.data.split(":")
+    offset_days = int(offset_str)
+
+    reason_map = {
+        "بیماری": "بیماری و ناخوشی",
+        "سفر": "سفر و جابجایی",
+        "استراحت": "استراحت و ریکاوری مجاز",
+        "اضطرار": "شرایط اضطراری و مشغله",
+    }
+    reason_label = reason_map.get(reason_key, reason_key)
+
+    g_iso, full_jalali, rel_label = _calculate_date_from_offset(offset_days)
+    page_data = get_or_create_habit_day(g_iso, day_title=full_jalali)
+
+    existing_notes = str(page_data.get("notes") or "").strip()
+    # Clean previous freeze tags if any
+    clean_notes = "\n".join(
+        [l for l in existing_notes.split("\n") if not l.startswith("[❄️")]
+    ).strip()
+    freeze_tag = f"[❄️ روز فریز: {reason_label}]"
+    new_notes = f"{freeze_tag}\n{clean_notes}".strip() if clean_notes else freeze_tag
+
+    update_habit_notes(page_data["id"], new_notes)
+
+    # Reload page & update hub
+    updated_page = get_or_create_habit_day(g_iso, day_title=full_jalali)
+    streaks_data = calculate_habit_streaks()
+
+    data = await state.get_data()
+    stealth = data.get("stealth", False)
+
+    text = _format_hub_text(
+        updated_page, full_jalali, rel_label, stealth=stealth, streaks_data=streaks_data
+    )
+    kb = build_habit_hub_keyboard(
+        offset_days=offset_days,
+        stealth_mode=stealth,
+        is_frozen=True,
+    )
+
+    await call.message.edit_text(text, reply_markup=kb, parse_mode="HTML")
+    await call.answer(f"🧊 روز با موفقیت فریز شد ({reason_label})")
+
+
+@router.callback_query(F.data.startswith("hb_unfrz:"), HasPermission(PERM_ADMIN))
+async def cb_unfreeze_day(call: CallbackQuery, state: FSMContext) -> None:
+    """Removes Streak Freeze from the day."""
+    if not call.data or not isinstance(call.message, Message):
+        await call.answer()
+        return
+
+    offset_days = int(call.data.split(":")[1])
+    g_iso, full_jalali, rel_label = _calculate_date_from_offset(offset_days)
+    page_data = get_or_create_habit_day(g_iso, day_title=full_jalali)
+
+    existing_notes = str(page_data.get("notes") or "").strip()
+    clean_notes = "\n".join(
+        [l for l in existing_notes.split("\n") if not l.startswith("[❄️")]
+    ).strip()
+
+    update_habit_notes(page_data["id"], clean_notes)
+
+    updated_page = get_or_create_habit_day(g_iso, day_title=full_jalali)
+    streaks_data = calculate_habit_streaks()
+
+    data = await state.get_data()
+    stealth = data.get("stealth", False)
+
+    text = _format_hub_text(
+        updated_page, full_jalali, rel_label, stealth=stealth, streaks_data=streaks_data
+    )
+    kb = build_habit_hub_keyboard(
+        offset_days=offset_days,
+        stealth_mode=stealth,
+        is_frozen=False,
+    )
+
+    await call.message.edit_text(text, reply_markup=kb, parse_mode="HTML")
+    await call.answer("🔥 فریز روز لغو شد و به وضعیت عادی بازگشت.")
+
+
+@router.callback_query(F.data.startswith("hb_cust_frz:"), HasPermission(PERM_ADMIN))
+async def cb_prompt_custom_freeze(call: CallbackQuery, state: FSMContext) -> None:
+    """Prompts for manual custom freeze reason."""
+    if not call.data or not isinstance(call.message, Message):
+        await call.answer()
+        return
+
+    offset_days = int(call.data.split(":")[1])
+    g_iso, full_jalali, _ = _calculate_date_from_offset(offset_days)
+    page_data = get_or_create_habit_day(g_iso, day_title=full_jalali)
+
+    await state.update_data(
+        offset_days=offset_days,
+        page_id=page_data["id"],
+        dash_msg_id=call.message.message_id,
+    )
+    await state.set_state(HabitState.waiting_for_freeze_custom_reason)
+
+    text = (
+        f"✍️ <b>ثبت دلیل دلخواه برای فریز روز</b>\n"
+        f"📅 تاریخ: <code>{full_jalali}</code>\n\n"
+        f"لطفاً دلیل استراحت یا عدم ثبت را کوتاه بنویسید:"
+    )
+    kb = get_habit_custom_date_cancel_keyboard(offset_days)
+    await call.message.edit_text(text, reply_markup=kb, parse_mode="HTML")
+    await call.answer()
+
+
+@router.message(HabitState.waiting_for_freeze_custom_reason, HasPermission(PERM_ADMIN))
+async def msg_receive_custom_freeze(
+    message: Message, state: FSMContext, bot: Bot
+) -> None:
+    """Applies custom freeze reason."""
+    if not message.text:
+        return
+
+    data = await state.get_data()
+    offset_days = data.get("offset_days", 0)
+    page_id = str(data.get("page_id", ""))
+    dash_msg_id = data.get("dash_msg_id")
+    stealth = data.get("stealth", False)
+
+    try:
+        await message.delete()
+    except Exception:
+        pass
+
+    g_iso, full_jalali, rel_label = _calculate_date_from_offset(offset_days)
+    page_data = get_or_create_habit_day(g_iso, day_title=full_jalali)
+
+    existing_notes = str(page_data.get("notes") or "").strip()
+    clean_notes = "\n".join(
+        [l for l in existing_notes.split("\n") if not l.startswith("[❄️")]
+    ).strip()
+    freeze_tag = f"[❄️ روز فریز: {message.text.strip()}]"
+    new_notes = f"{freeze_tag}\n{clean_notes}".strip() if clean_notes else freeze_tag
+
+    if page_id:
+        update_habit_notes(page_id, new_notes)
+
+    await state.clear()
+    await state.update_data(stealth=stealth)
+
+    updated_page = get_or_create_habit_day(g_iso, day_title=full_jalali)
+    streaks_data = calculate_habit_streaks()
+
+    text = _format_hub_text(
+        updated_page, full_jalali, rel_label, stealth=stealth, streaks_data=streaks_data
+    )
+    kb = build_habit_hub_keyboard(
+        offset_days=offset_days,
+        stealth_mode=stealth,
+        is_frozen=True,
+    )
+
+    if dash_msg_id:
+        try:
+            await bot.edit_message_text(
+                chat_id=message.chat.id,
+                message_id=dash_msg_id,
+                text=text,
+                reply_markup=kb,
+                parse_mode="HTML",
+            )
+            return
+        except Exception:
+            pass
+
+    await message.answer(text, reply_markup=kb, parse_mode="HTML")

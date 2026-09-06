@@ -10,3 +10,4 @@ class HabitState(StatesGroup):
     waiting_for_gratitude_edit = State()
     waiting_for_quran_detail = State()
     quick_run_active = State()
+    waiting_for_freeze_custom_reason = State()

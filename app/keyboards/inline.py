@@ -798,12 +798,15 @@ HABIT_STATUS_ICONS = {
     "5-⛔ بدون دلیل": "⛔",
 }
 
-
 def build_habit_hub_keyboard(
     offset_days: int,
     stealth_mode: bool = False,
+    is_frozen: bool = False,
 ) -> InlineKeyboardMarkup:
-    """Clean, decluttered Hub landing keyboard with Streaks and Matrix analytics."""
+    """Clean, decluttered Hub landing keyboard with Streaks, Matrix, and Freeze."""
+    freeze_btn_text = "🔥 لغو فریز روز" if is_frozen else "🧊 فریز تداوم (استراحت)"
+    freeze_cb = f"hb_unfrz:{offset_days}" if is_frozen else f"hb_ask_frz:{offset_days}"
+
     keyboard = [
         # Primary Action 1: Standard Fill
         [
@@ -834,15 +837,26 @@ def build_habit_hub_keyboard(
                 callback_data=f"hb_mat:7d:{offset_days}",
             ),
         ],
-        # Journals & Notes Row
+        # Freeze & Journals Row
         [
+            InlineKeyboardButton(
+                text=freeze_btn_text,
+                callback_data=freeze_cb,
+            ),
             InlineKeyboardButton(
                 text="🌸 دفترچه شکرگزاری",
                 callback_data=f"hb_grat:{offset_days}",
             ),
+        ],
+        # Journals & Notes Row
+        [
             InlineKeyboardButton(
                 text="📝 یادداشت روز",
                 callback_data=f"hb_notes:{offset_days}",
+            ),
+            InlineKeyboardButton(
+                text="📅 تقویم",
+                callback_data=f"hb_cdate:{offset_days}",
             ),
         ],
         # Navigation Row
@@ -860,9 +874,6 @@ def build_habit_hub_keyboard(
             InlineKeyboardButton(
                 text="🕶️ مخفی: روشن" if stealth_mode else "🕶️ مخفی: خاموش",
                 callback_data=f"hb_tog_stl:{offset_days}",
-            ),
-            InlineKeyboardButton(
-                text="📅 تقویم", callback_data=f"hb_cdate:{offset_days}"
             ),
             InlineKeyboardButton(
                 text="🗑️ ریست روز",
@@ -1373,6 +1384,45 @@ def build_habit_matrix_keyboard(
             [
                 InlineKeyboardButton(
                     text="🔙 بازگشت به هاب عادات",
+                    callback_data=f"hb_back:{offset_days}",
+                )
+            ],
+        ]
+    )
+    
+def get_habit_freeze_keyboard(offset_days: int) -> InlineKeyboardMarkup:
+    """Keyboard for selecting Streak Freeze reason."""
+    return InlineKeyboardMarkup(
+        inline_keyboard=[
+            [
+                InlineKeyboardButton(
+                    text="🤒 بیماری و ناخوشی",
+                    callback_data=f"hb_do_frz:بیماری:{offset_days}",
+                ),
+                InlineKeyboardButton(
+                    text="✈️ سفر و جابجایی",
+                    callback_data=f"hb_do_frz:سفر:{offset_days}",
+                ),
+            ],
+            [
+                InlineKeyboardButton(
+                    text="🛋️ استراحت و ریکاوری مجاز",
+                    callback_data=f"hb_do_frz:استراحت:{offset_days}",
+                ),
+                InlineKeyboardButton(
+                    text="⚡ شرایط اضطراری و مشغله",
+                    callback_data=f"hb_do_frz:اضطرار:{offset_days}",
+                ),
+            ],
+            [
+                InlineKeyboardButton(
+                    text="✍️ تایپ دلیل دلخواه...",
+                    callback_data=f"hb_cust_frz:{offset_days}",
+                )
+            ],
+            [
+                InlineKeyboardButton(
+                    text="🔙 انصراف و بازگشت",
                     callback_data=f"hb_back:{offset_days}",
                 )
             ],
