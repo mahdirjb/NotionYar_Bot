@@ -1872,19 +1872,44 @@ async def msg_receive_custom_freeze(
 
     await message.answer(text, reply_markup=kb, parse_mode="HTML")
 
-# افزودن به انتهای handlers/habits.py:
-
 @router.message(F.text == "/checkin", HasPermission(PERM_ADMIN))
 async def cmd_manual_checkin_test(message: Message, bot: Bot) -> None:
     """Manual trigger to test nightly check-in notification immediately."""
     from app.services.scheduler_service import send_nightly_habit_checkin
 
     status_msg = await message.answer("🔄 در حال اجرای تست چک‌این شبانه...")
-    await send_nightly_habit_checkin(bot)
+    success = await send_nightly_habit_checkin(bot, target_user_id=message.from_user.id)
     try:
         await status_msg.delete()
     except Exception:
         pass
+
+    if not success:
+        await message.answer("❌ خطا در اجرای چک‌این! لطفاً لاگ سرور را بررسی کنید.")
+
+@router.callback_query(F.data.startswith("hb_mat:"), HasPermission(PERM_ADMIN))
+async def cb_view_matrix(call: CallbackQuery, state: FSMContext) -> None:
+    """Opens and updates Consistency Matrix Dashboard with error handling."""
+    if not call.data or not isinstance(call.message, Message):
+        await call.answer()
+        return
+
+    try:
+        parts = call.data.split(":")
+        period_key = parts[1] if len(parts) > 1 else "7d"
+        offset_days = int(parts[2]) if len(parts) > 2 else 0
+
+        _, full_jalali, _ = _calculate_date_from_offset(offset_days)
+        matrix_data = calculate_consistency_matrix(period_key=period_key)
+
+        text = _format_matrix_dashboard_text(matrix_data, full_jalali)
+        kb = build_habit_matrix_keyboard(period_key=period_key, offset_days=offset_days)
+
+        await call.message.edit_text(text, reply_markup=kb, parse_mode="HTML")
+        await call.answer()
+    except Exception as e:
+        print(f"Error rendering consistency matrix: {e}")
+        await call.answer("❌ خطا در بارگذاری ماتریس پایبندی!", show_alert=True)
 
 # ==========================================
 # 📚 BOOK DETAIL PROMPT & HANDLER

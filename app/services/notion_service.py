@@ -932,20 +932,27 @@ def query_habit_history(limit_count: int = 60) -> List[Dict[str, Any]]:
         raise ValueError("NOTION_DBID_HABITS is not defined in environment variables.")
 
     ds_id = get_habits_data_source_id()
+    filter_payload: Dict[str, Any] = {}
+
     kwargs: Dict[str, Any] = {
         "page_size": min(100, max(1, limit_count)),
         "sorts": [{"property": "Date_", "direction": "descending"}],
     }
 
-    if hasattr(notion, "data_sources") and hasattr(notion.data_sources, "query"):
-        kwargs["data_source_id"] = ds_id
-        query_res = notion.data_sources.query(**kwargs)
-    else:
-        kwargs["database_id"] = NOTION_DBID_HABITS
-        query_res = notion.databases.query(**kwargs)  # type: ignore
+    try:
+        if hasattr(notion, "data_sources") and hasattr(notion.data_sources, "query"):
+            kwargs["data_source_id"] = ds_id
+            query_res = notion.data_sources.query(**kwargs)
+        else:
+            kwargs.pop("data_source_id", None)
+            kwargs["database_id"] = NOTION_DBID_HABITS
+            query_res = notion.databases.query(**kwargs)  # type: ignore
 
-    results = query_res.get("results", []) if isinstance(query_res, dict) else []
-    return [parse_habit_page(page) for page in results]
+        results = query_res.get("results", []) if isinstance(query_res, dict) else []
+        return [parse_habit_page(page) for page in results]
+    except Exception as e:
+        print(f"Error querying habit history from Notion: {e}")
+        return []
 
 def update_habit_book_detail(page_id: str, detail_text: str) -> bool:
     """Updates the rich_text Book Detail property for a habit day."""

@@ -45,78 +45,98 @@ def _build_progress_bar(percent_float: float) -> str:
     return f"[{bar}] <b>{pct_int}%</b>"
 
 
-async def send_nightly_habit_checkin(bot: Bot) -> None:
-    """
-    Executes nightly check-in scan and dispatches personalized reminders to admin users.
-    """
-    g_iso, full_jalali = _get_tehran_date_info()
-    page_data = get_or_create_habit_day(g_iso, day_title=full_jalali)
-
-    habits = page_data.get("habits", {})
-    prog_float = float(page_data.get("progress", 0.0))
-    prog_bar = _build_progress_bar(prog_float)
-    prog_pct = int(round(prog_float * 100))
-    frozen = is_day_frozen(page_data)
-    gratitude_done = bool(str(page_data.get("gratitude_log", "")).strip())
-
-    # Find uncompleted habits
-    uncompleted: List[str] = []
-    for h_key, h_info in HABIT_ITEMS.items():
-        val = habits.get(h_key)
-        if val not in ["1-💪 کامل", "2-🏃‍♂️ نیمه‌کامل", "3-🐢 سبک"]:
-            uncompleted.append(f"{h_info['emoji']} {h_info['fa']}")
-
-    # Craft personalized message based on state
-    if frozen:
-        text = (
-            "🌙 <b>چک‌این شبانه عادات روزانه</b>\n"
-            f"📅 <code>{full_jalali}</code>\n"
-            "━━━━━━━━━━━━━━━━━━━━━━\n"
-            "🧊 <b>امروز برای شما فریز (استراحت) ثبت شده است.</b>\n"
-            "🛡️ <i>زنجیره و تداوم شما در امان است. شبتون پر از آرامش و ریکاوری! ✨</i>"
-        )
-        kb = build_nightly_checkin_keyboard(is_completed=True)
-    elif prog_pct >= 100:
-        text = (
-            "👑 <b>ماشاءالله! کارنامه بی‌نقص امروز</b>\n"
-            f"📅 <code>{full_jalali}</code>\n"
-            "━━━━━━━━━━━━━━━━━━━━━━\n"
-            f"📊 <b>پیشرفت:</b> {prog_bar}\n\n"
-            "🎉 <i>تمام ۱۲ عادت امروزت با موفقیت ثبت شده! دمت گرم بابت این پایبندی، شبت آروم و پر ستاره ✨</i>"
-        )
-        kb = build_nightly_checkin_keyboard(is_completed=True)
+def _get_target_admin_ids() -> List[int]:
+    """Parses ADMIN_USERS into a clean list of integer user IDs."""
+    admin_ids: List[int] = []
+    if isinstance(ADMIN_USERS, list):
+        raw_list = ADMIN_USERS
+    elif isinstance(ADMIN_USERS, str):
+        raw_list = ADMIN_USERS.replace(";", ",").split(",")
     else:
-        pending_list_str = "\n".join([f"  ▫️ {item}" for item in uncompleted])
-        grat_status = "✅ ثبت شده" if gratitude_done else "▫️ ثبت‌نشده"
+        raw_list = [ADMIN_USERS]
 
-        text = (
-            "⏰ <b>وقت چک‌این و بستن پرونده امروز!</b>\n"
-            f"📅 <code>{full_jalali}</code>\n"
-            "━━━━━━━━━━━━━━━━━━━━━━\n"
-            f"📊 <b>پیشرفت تا این لحظه:</b> {prog_bar}\n"
-            f"🌸 <b>شکرگزاری:</b> {grat_status}\n\n"
-            f"📋 <b>عادات باقی‌مانده ({len(uncompleted)} مورد):</b>\n"
-            f"{pending_list_str}\n"
-            "━━━━━━━━━━━━━━━━━━━━━━\n"
-            "💡 <i>حتی ثبت سریع با سطح ۳ (سبک) یا فریز کردن، زنجیره شما را زنده نگه می‌دارد!</i>"
-        )
-        kb = build_nightly_checkin_keyboard(is_completed=False)
+    for item in raw_list:
+        clean = str(item).strip()
+        if clean.isdigit():
+            admin_ids.append(int(clean))
+    return admin_ids
 
-    # Broadcast to admin users
-    for uid_str in ADMIN_USERS:
-        if not uid_str.strip():
-            continue
-        try:
-            uid = int(uid_str.strip())
-            await bot.send_message(chat_id=uid, text=text, reply_markup=kb, parse_mode="HTML")
-            logger.info(f"Nightly check-in sent to user {uid}")
-        except Exception as e:
-            logger.error(f"Failed to send nightly check-in to {uid_str}: {e}")
+
+async def send_nightly_habit_checkin(bot: Bot, target_user_id: int | None = None) -> bool:
+    """
+    Executes nightly check-in scan and dispatches reminders.
+    If target_user_id is provided, sends directly to that user (for test command).
+    """
+    try:
+        g_iso, full_jalali = _get_tehran_date_info()
+        page_data = get_or_create_habit_day(g_iso, day_title=full_jalali)
+
+        habits = page_data.get("habits", {})
+        prog_float = float(page_data.get("progress", 0.0))
+        prog_bar = _build_progress_bar(prog_float)
+        prog_pct = int(round(prog_float * 100))
+        frozen = is_day_frozen(page_data)
+        gratitude_done = bool(str(page_data.get("gratitude_log", "")).strip())
+
+        # Find uncompleted habits
+        uncompleted: List[str] = []
+        for h_key, h_info in HABIT_ITEMS.items():
+            val = habits.get(h_key)
+            if val not in ["1-💪 کامل", "2-🏃‍♂️ نیمه‌کامل", "3-🐢 سبک"]:
+                uncompleted.append(f"{h_info['emoji']} {h_info['fa']}")
+
+        if frozen:
+            text = (
+                "🌙 <b>چک‌این شبانه عادات روزانه</b>\n"
+                f"📅 <code>{full_jalali}</code>\n"
+                "━━━━━━━━━━━━━━━━━━━━━━\n"
+                "🧊 <b>امروز برای شما فریز (استراحت) ثبت شده است.</b>\n"
+                "🛡️ <i>زنجیره و تداوم شما در امان است. شبتون پر از آرامش و ریکاوری! ✨</i>"
+            )
+            kb = build_nightly_checkin_keyboard(is_completed=True)
+        elif prog_pct >= 100 or len(uncompleted) == 0:
+            text = (
+                "👑 <b>ماشاءالله! کارنامه بی‌نقص امروز</b>\n"
+                f"📅 <code>{full_jalali}</code>\n"
+                "━━━━━━━━━━━━━━━━━━━━━━\n"
+                f"📊 <b>پیشرفت:</b> {prog_bar}\n\n"
+                "🎉 <i>تمام ۱۳ عادت امروزت با موفقیت ثبت شده! دمت گرم بابت این پایبندی، شبت آروم و پر ستاره ✨</i>"
+            )
+            kb = build_nightly_checkin_keyboard(is_completed=True)
+        else:
+            pending_list_str = "\n".join([f"  ▫️ {item}" for item in uncompleted])
+            grat_status = "✅ ثبت شده" if gratitude_done else "▫️ ثبت‌نشده"
+
+            text = (
+                "⏰ <b>وقت چک‌این و بستن پرونده امروز!</b>\n"
+                f"📅 <code>{full_jalali}</code>\n"
+                "━━━━━━━━━━━━━━━━━━━━━━\n"
+                f"📊 <b>پیشرفت تا این لحظه:</b> {prog_bar}\n"
+                f"🌸 <b>شکرگزاری:</b> {grat_status}\n\n"
+                f"📋 <b>عادات باقی‌مانده ({len(uncompleted)} مورد):</b>\n"
+                f"{pending_list_str}\n"
+                "━━━━━━━━━━━━━━━━━━━━━━\n"
+                "💡 <i>حتی ثبت سریع با سطح ۳ (سبک) یا فریز کردن، زنجیره شما را زنده نگه می‌دارد!</i>"
+            )
+            kb = build_nightly_checkin_keyboard(is_completed=False)
+
+        # Dispatch
+        recipients = [target_user_id] if target_user_id else _get_target_admin_ids()
+        for uid in recipients:
+            try:
+                await bot.send_message(chat_id=uid, text=text, reply_markup=kb, parse_mode="HTML")
+                logger.info(f"Nightly check-in sent to user {uid}")
+            except Exception as e:
+                logger.error(f"Failed to send nightly check-in to {uid}: {e}")
+
+        return True
+    except Exception as e:
+        logger.error(f"Error executing nightly check-in: {e}", exc_info=True)
+        return False
 
 
 def start_scheduler(bot: Bot) -> None:
     """Configures and starts the background job scheduler."""
-    # Runs everyday at 22:30 Tehran time (UTC+3:30)
     tehran_tz = timezone(timedelta(hours=3, minutes=30))
     trigger = CronTrigger(hour=22, minute=30, timezone=tehran_tz)
 
@@ -127,8 +147,9 @@ def start_scheduler(bot: Bot) -> None:
         id="nightly_habit_checkin",
         replace_existing=True,
     )
-    scheduler.start()
-    logger.info("APScheduler started successfully (Nightly Check-in set for 22:30 Tehran Time).")
+    if not scheduler.running:
+        scheduler.start()
+        logger.info("APScheduler started successfully (Nightly Check-in set for 22:30 Tehran Time).")
 
 
 def shutdown_scheduler() -> None:
