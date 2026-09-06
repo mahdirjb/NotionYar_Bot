@@ -567,7 +567,6 @@ def update_notion_page_properties(page_id: str, properties: Dict[str, Any]) -> b
 # 🎯 HABIT TRACKER CONSTANTS & FUNCTIONS (V2.0)
 # ==========================================
 
-# 12 Habits Mapping with Persian names, emojis, and 2-3 letter Stealth Codes
 HABIT_ITEMS: Dict[str, Dict[str, str]] = {
     "bt": {"prop": "Brush Teeth", "fa": "مسواک", "emoji": "🪥", "code": "BST", "cat": "جسمی"},
     "fr": {"prop": "Face Routine", "fa": "روتین پوستی", "emoji": "🧖", "code": "SKN", "cat": "جسمی"},
@@ -632,16 +631,15 @@ def get_habits_data_source_id() -> str:
     )
     data_sources = db_info.get("data_sources", [])
     if data_sources:
-        _cached_habits_ds_id = data_sources[0]["id"]
+        _cached_habits_ds_id = str(data_sources[0]["id"])
         return _cached_habits_ds_id
 
-    return NOTION_DBID_HABITS
+    _cached_habits_ds_id = str(NOTION_DBID_HABITS)
+    return _cached_habits_ds_id
 
 
 def get_or_create_habit_day(date_iso: str, day_title: str = "New Habit") -> Dict[str, Any]:
-    """
-    Finds existing habit page for the given date, or creates a new row if none exists.
-    """
+    """Finds existing habit page for the given date, or creates a new row if none exists."""
     if not NOTION_DBID_HABITS:
         raise ValueError("NOTION_DBID_HABITS is not defined in environment variables.")
 
@@ -664,16 +662,17 @@ def get_or_create_habit_day(date_iso: str, day_title: str = "New Habit") -> Dict
     results = query_res.get("results", []) if isinstance(query_res, dict) else []
 
     if results:
-        page = results[0]
+        page = cast(Dict[str, Any], results[0])
     else:
         create_props: Dict[str, Any] = {
             "Day": {"title": [{"text": {"content": day_title}}]},
             "Date_": {"date": {"start": date_iso}}
         }
-        page = notion.pages.create(
+        raw_created = notion.pages.create(
             parent={"database_id": NOTION_DBID_HABITS},
             properties=create_props
         )
+        page = cast(Dict[str, Any], raw_created)
 
     return parse_habit_page(page)
 
@@ -686,29 +685,25 @@ def parse_habit_page(page: Dict[str, Any]) -> Dict[str, Any]:
     day_name = title_list[0].get("plain_text", "New Habit") if title_list else "New Habit"
 
     date_prop = props.get("Date_", {}).get("date") or {}
-    raw_date = date_prop.get("start", "")
+    raw_date = str(date_prop.get("start") or "")
 
-    # Progress formula
     prog_prop = props.get("Progress", {}).get("formula", {})
-    progress_val = prog_prop.get("number", 0.0) if prog_prop.get("type") == "number" else 0.0
+    progress_val = float(prog_prop.get("number", 0.0)) if prog_prop.get("type") == "number" else 0.0
 
-    # Notes
     notes_list = props.get("Notes", {}).get("rich_text", [])
     notes = notes_list[0].get("plain_text", "") if notes_list else ""
 
-    # Gratitude Log (Rich Text)
     grat_list = props.get("Gratitude Log", {}).get("rich_text", [])
     gratitude_log = grat_list[0].get("plain_text", "") if grat_list else ""
 
-    # 12 Habits values
-    habits_status = {}
+    habits_status: Dict[str, Optional[str]] = {}
     for h_key, h_info in HABIT_ITEMS.items():
         prop_name = h_info["prop"]
         sel_val = (props.get(prop_name, {}).get("select") or {}).get("name")
         habits_status[h_key] = sel_val
 
     return {
-        "id": page.get("id"),
+        "id": str(page.get("id")),
         "day_name": day_name,
         "date_iso": raw_date,
         "progress": progress_val,
@@ -716,7 +711,7 @@ def parse_habit_page(page: Dict[str, Any]) -> Dict[str, Any]:
         "notes": notes,
         "gratitude_log": gratitude_log,
         "habits": habits_status,
-        "url": page.get("url", "")
+        "url": str(page.get("url", ""))
     }
 
 
@@ -752,7 +747,7 @@ def bulk_update_all_habits(page_id: str, select_val: Optional[str]) -> bool:
 def batch_update_habit_dict(page_id: str, habit_dict: Dict[str, Optional[str]]) -> bool:
     """Updates multiple specific habits in a single API call (used by Quick-Run Wizard)."""
     try:
-        update_props = {}
+        update_props: Dict[str, Any] = {}
         for h_key, sel_val in habit_dict.items():
             if h_key in HABIT_ITEMS:
                 prop_name = HABIT_ITEMS[h_key]["prop"]

@@ -2,7 +2,7 @@
 
 import asyncio
 from datetime import datetime, date, timedelta, timezone
-from typing import Dict, Any, Optional
+from typing import Dict, Any, Optional, List
 from aiogram import Router, F, Bot
 from aiogram.types import Message, CallbackQuery
 from aiogram.fsm.context import FSMContext
@@ -11,16 +11,18 @@ from app.keyboards.reply import BTN_HABITS
 from app.keyboards.inline import (
     build_habit_day_keyboard,
     get_habit_level_picker_keyboard,
+    get_quick_run_keyboard,
+    get_gratitude_accumulator_keyboard,
+    get_habit_reset_confirm_keyboard,
     get_habit_bulk_fill_confirm_keyboard,
     get_habit_notes_keyboard,
     get_habit_custom_date_cancel_keyboard,
+    HABIT_STATUS_ICONS,
 )
-
+from app.states.habit_state import HabitState
 from app.filters.permissions import HasPermission
 from app.services.auth_service import PERM_ADMIN
-from app.states.habit_state import HabitState
 from app.services.date_helper import (
-    get_jalali_date_info,
     format_jalali_full_display,
     parse_user_date_input,
 )
@@ -31,17 +33,17 @@ from app.services.notion_service import (
     get_or_create_habit_day,
     update_habit_entry,
     bulk_update_all_habits,
+    batch_update_habit_dict,
     update_habit_notes,
+    update_habit_gratitude,
+    reset_habit_day,
 )
 
 router = Router()
 
 
 def _calculate_date_from_offset(offset_days: int) -> tuple[str, str, str]:
-    """
-    Returns (gregorian_iso, full_jalali_title, relative_label).
-    offset_days: 0 = Today, 1 = Yesterday, 2 = 2 days ago, -1 = Tomorrow, etc.
-    """
+    """Returns (gregorian_iso, full_jalali_title, relative_label)."""
     tz = timezone(timedelta(hours=3, minutes=30))
     g_target = datetime.now(tz).date() - timedelta(days=offset_days)
     g_iso = g_target.isoformat()
@@ -62,7 +64,7 @@ def _calculate_date_from_offset(offset_days: int) -> tuple[str, str, str]:
 
 
 def _build_progress_bar(percent_float: float) -> str:
-    """Generates a visual 10-block progress bar (e.g. [🟩🟩🟩🟩🟨⬜⬜⬜⬜⬜] 45%)."""
+    """Generates visual progress bar."""
     pct = max(0.0, min(1.0, percent_float))
     pct_int = int(round(pct * 100))
     filled_count = int(round(pct * 10))
@@ -78,51 +80,84 @@ def _build_progress_bar(percent_float: float) -> str:
 
 
 def _format_habit_dashboard_text(
-    page_data: Dict[str, Any], full_jalali: str, rel_label: str
+    page_data: Dict[str, Any], full_jalali: str, rel_label: str, stealth: bool = False
 ) -> str:
-    """Formats the comprehensive Habit Dashboard message in clean Persian HTML."""
-    prog_bar = _build_progress_bar(page_data.get("progress", 0.0))
-    cheerleader = page_data.get("cheerleader", "").strip()
-    notes = page_data.get("notes", "").strip()
+    """Formats the Dashboard text supporting both Categorized Normal and Stealth modes."""
+    pct_int = int(round(max(0.0, min(1.0, float(page_data.get("progress", 0.0)))) * 100))
+    habits: Dict[str, Optional[str]] = page_data.get("habits", {})
+
+    if stealth:
+        lines = [
+            "🕶️ <b>[STEALTH MODE - PRIVACY]</b>",
+            f"📅 <code>{full_jalali}</code> | 📊 <b>{pct_int}%</b>",
+            "━━━━━━━━━━━━━━━━━━━━━━",
+        ]
+        grid_items: List[str] = []
+        for h_key, h_info in HABIT_ITEMS.items():
+            val = habits.get(h_key)
+            icon = HABIT_STATUS_ICONS.get(val or "", "▫️")
+            grid_items.append(f"[{h_info['code']}]: {icon}")
+
+        for i in range(0, len(grid_items), 3):
+            lines.append("   ".join(grid_items[i : i + 3]))
+
+        lines.append("━━━━━━━━━━━━━━━━━━━━━━")
+        lines.append("🔒 <i>جزئیات و یادداشت‌ها پنهان شده‌اند.</i>")
+        return "\n".join(lines)
+
+    prog_bar = _build_progress_bar(float(page_data.get("progress", 0.0)))
+    cheerleader = str(page_data.get("cheerleader", "")).strip()
+    notes = str(page_data.get("notes", "")).strip()
+    gratitude = str(page_data.get("gratitude_log", "")).strip()
 
     lines = [
         "🎯 <b>کارنامه عادات روزانه</b>",
         f"📅 <b>تاریخ:</b> <code>{full_jalali}</code> ({rel_label})",
         "",
         f"📊 <b>پیشرفت:</b> {prog_bar}",
+        f"📣 <b>روحیه:</b> <i>{cheerleader}</i>",
+        "━━━━━━━━━━━━━━━━━━━━━━",
     ]
 
-    if cheerleader:
-        lines.append(f"📣 <b>وضعیت:</b> <i>{cheerleader}</i>")
+    categories = {
+        "💪 جسم و سلامت": ["bt", "fr", "ex"],
+        "🏡 نظم و محیط": ["mb"],
+        "🧘 ذهن و آرامش": ["md", "gr"],
+        "✨ معنویت و درون": ["rq", "sl", "es", "ps", "bp", "sg"],
+    }
 
-    lines.append("\n━━━━━━━━━━━━━━━━━━━━━━")
-
-    habits = page_data.get("habits", {})
-    for h_key, h_info in HABIT_ITEMS.items():
-        val = habits.get(h_key)
-        badge = LEVEL_BADGES.get(val, "▫️ ثبت‌نشده") if val else "▫️ ثبت‌نشده"
-        lines.append(f"{h_info['emoji']} {h_info['fa']}: <b>{badge}</b>")
+    for cat_title, keys in categories.items():
+        lines.append(f"<b>{cat_title}:</b>")
+        for k in keys:
+            h_info = HABIT_ITEMS[k]
+            val = habits.get(k)
+            badge = LEVEL_BADGES.get(val or "", "▫️ ثبت‌نشده")
+            lines.append(f"  {h_info['emoji']} {h_info['fa']}: <b>{badge}</b>")
+        lines.append("")
 
     lines.append("━━━━━━━━━━━━━━━━━━━━━━")
 
-    if notes:
-        lines.append(f"\n📝 <b>یادداشت روز:</b>\n<i>«{notes}»</i>")
+    if gratitude:
+        lines.append("🌸 <b>شکرگزاری روز:</b> <i>ثبت شده ✅</i>")
     else:
-        lines.append("\n📝 <b>یادداشت روز:</b> <i>(ثبت نشده)</i>")
+        lines.append("🌸 <b>شکرگزاری روز:</b> <i>(ثبت نشده)</i>")
+
+    if notes:
+        lines.append(f"📝 <b>یادداشت روز:</b>\n<i>«{notes}»</i>")
+    else:
+        lines.append("📝 <b>یادداشت روز:</b> <i>(ثبت نشده)</i>")
 
     return "\n".join(lines)
 
 
 # ==========================================
-# 🚀 MAIN ENTRY & REFRESH HANDLERS
+# 🚀 MAIN ENTRY & REFRESH
 # ==========================================
 
 
 @router.message(F.text == BTN_HABITS, HasPermission(PERM_ADMIN))
 @router.message(F.text == "/habits", HasPermission(PERM_ADMIN))
-async def cmd_habits_dashboard(
-    message: Message, state: FSMContext, bot: Bot
-) -> None:
+async def cmd_habits_dashboard(message: Message, state: FSMContext, bot: Bot) -> None:
     """Main landing handler for Habit Tracker."""
     await state.clear()
     wait_msg = await message.answer("🔄 در حال بارگذاری کارنامه عادات...")
@@ -130,23 +165,31 @@ async def cmd_habits_dashboard(
     g_iso, full_jalali, rel_label = _calculate_date_from_offset(0)
     page_data = get_or_create_habit_day(g_iso, day_title=full_jalali)
 
-    text = _format_habit_dashboard_text(page_data, full_jalali, rel_label)
-    kb = build_habit_day_keyboard(page_data.get("habits", {}), offset_days=0)
+    text = _format_habit_dashboard_text(page_data, full_jalali, rel_label, stealth=False)
+    kb = build_habit_day_keyboard(page_data.get("habits", {}), offset_days=0, stealth_mode=False)
 
     await wait_msg.edit_text(text, reply_markup=kb, parse_mode="HTML")
 
 
 @router.callback_query(F.data.startswith("hb_ref:"), HasPermission(PERM_ADMIN))
-async def cb_refresh_habits(call: CallbackQuery) -> None:
-    """Refreshes the current habit day card directly from Notion."""
+async def cb_refresh_habits(call: CallbackQuery, state: FSMContext) -> None:
+    """Refreshes the current habit day card from Notion."""
+    if not call.data or not isinstance(call.message, Message):
+        await call.answer()
+        return
+
+    data = await state.get_data()
+    stealth = data.get("stealth", False)
     parts = call.data.split(":")
     offset_days = int(parts[1]) if len(parts) > 1 else 0
 
     g_iso, full_jalali, rel_label = _calculate_date_from_offset(offset_days)
     page_data = get_or_create_habit_day(g_iso, day_title=full_jalali)
 
-    text = _format_habit_dashboard_text(page_data, full_jalali, rel_label)
-    kb = build_habit_day_keyboard(page_data.get("habits", {}), offset_days=offset_days)
+    text = _format_habit_dashboard_text(page_data, full_jalali, rel_label, stealth=stealth)
+    kb = build_habit_day_keyboard(
+        page_data.get("habits", {}), offset_days=offset_days, stealth_mode=stealth
+    )
 
     try:
         await call.message.edit_text(text, reply_markup=kb, parse_mode="HTML")
@@ -156,22 +199,56 @@ async def cb_refresh_habits(call: CallbackQuery) -> None:
 
 
 # ==========================================
-# 🗓 NAVIGATION & PICKERS
+# 🕶️ STEALTH & NAVIGATION
 # ==========================================
 
 
-@router.callback_query(F.data.startswith("hb_nav:"), HasPermission(PERM_ADMIN))
-async def cb_navigate_days(call: CallbackQuery, state: FSMContext) -> None:
-    """Navigates to another day (Yesterday, Today, Tomorrow, etc.)."""
-    await state.clear()
+@router.callback_query(F.data.startswith("hb_tog_stl:"), HasPermission(PERM_ADMIN))
+async def cb_toggle_stealth(call: CallbackQuery, state: FSMContext) -> None:
+    """Toggles Stealth (Privacy) mode on/off."""
+    if not call.data or not isinstance(call.message, Message):
+        await call.answer()
+        return
+
+    data = await state.get_data()
+    stealth = not data.get("stealth", False)
+    await state.update_data(stealth=stealth)
+
     parts = call.data.split(":")
     offset_days = int(parts[1])
 
     g_iso, full_jalali, rel_label = _calculate_date_from_offset(offset_days)
     page_data = get_or_create_habit_day(g_iso, day_title=full_jalali)
 
-    text = _format_habit_dashboard_text(page_data, full_jalali, rel_label)
-    kb = build_habit_day_keyboard(page_data.get("habits", {}), offset_days=offset_days)
+    text = _format_habit_dashboard_text(page_data, full_jalali, rel_label, stealth=stealth)
+    kb = build_habit_day_keyboard(
+        page_data.get("habits", {}), offset_days=offset_days, stealth_mode=stealth
+    )
+
+    await call.message.edit_text(text, reply_markup=kb, parse_mode="HTML")
+    mode_text = "روشن شد 🕶️" if stealth else "خاموش شد ☀️"
+    await call.answer(f"حالت حریم خصوصی {mode_text}")
+
+
+@router.callback_query(F.data.startswith("hb_nav:"), HasPermission(PERM_ADMIN))
+async def cb_navigate_days(call: CallbackQuery, state: FSMContext) -> None:
+    """Navigates to another day."""
+    if not call.data or not isinstance(call.message, Message):
+        await call.answer()
+        return
+
+    data = await state.get_data()
+    stealth = data.get("stealth", False)
+    parts = call.data.split(":")
+    offset_days = int(parts[1])
+
+    g_iso, full_jalali, rel_label = _calculate_date_from_offset(offset_days)
+    page_data = get_or_create_habit_day(g_iso, day_title=full_jalali)
+
+    text = _format_habit_dashboard_text(page_data, full_jalali, rel_label, stealth=stealth)
+    kb = build_habit_day_keyboard(
+        page_data.get("habits", {}), offset_days=offset_days, stealth_mode=stealth
+    )
 
     await call.message.edit_text(text, reply_markup=kb, parse_mode="HTML")
     await call.answer()
@@ -179,184 +256,300 @@ async def cb_navigate_days(call: CallbackQuery, state: FSMContext) -> None:
 
 @router.callback_query(F.data.startswith("hb_back:"), HasPermission(PERM_ADMIN))
 async def cb_back_to_dashboard(call: CallbackQuery, state: FSMContext) -> None:
-    """Returns back to the main habit dashboard for the given offset."""
+    """Returns back to the main habit dashboard."""
+    if not call.data or not isinstance(call.message, Message):
+        await call.answer()
+        return
+
+    data = await state.get_data()
+    stealth = data.get("stealth", False)
     await state.clear()
+    await state.update_data(stealth=stealth)
+
     parts = call.data.split(":")
     offset_days = int(parts[1]) if len(parts) > 1 else 0
 
     g_iso, full_jalali, rel_label = _calculate_date_from_offset(offset_days)
     page_data = get_or_create_habit_day(g_iso, day_title=full_jalali)
 
-    text = _format_habit_dashboard_text(page_data, full_jalali, rel_label)
-    kb = build_habit_day_keyboard(page_data.get("habits", {}), offset_days=offset_days)
-
-    await call.message.edit_text(text, reply_markup=kb, parse_mode="HTML")
-    await call.answer()
-
-
-@router.callback_query(F.data.startswith("hb_pk:"), HasPermission(PERM_ADMIN))
-async def cb_pick_habit_level(call: CallbackQuery) -> None:
-    """Opens the 5-level selector sub-menu for a specific habit."""
-    _, h_key, offset_str = call.data.split(":")
-    offset_days = int(offset_str)
-
-    h_info = HABIT_ITEMS.get(h_key, {"fa": "عادت", "emoji": "🎯"})
-    _, full_jalali, _ = _calculate_date_from_offset(offset_days)
-
-    text = (
-        f"🎯 <b>تنظیم وضعیت: {h_info['emoji']} {h_info['fa']}</b>\n"
-        f"📅 <code>{full_jalali}</code>\n\n"
-        f"یکی از سطوح کیفیت زیر را انتخاب کنید:"
+    text = _format_habit_dashboard_text(page_data, full_jalali, rel_label, stealth=stealth)
+    kb = build_habit_day_keyboard(
+        page_data.get("habits", {}), offset_days=offset_days, stealth_mode=stealth
     )
-    kb = get_habit_level_picker_keyboard(h_key, offset_days)
 
     await call.message.edit_text(text, reply_markup=kb, parse_mode="HTML")
     await call.answer()
 
 
-@router.callback_query(F.data.startswith("hb_set:"), HasPermission(PERM_ADMIN))
-async def cb_set_habit_level(call: CallbackQuery) -> None:
-    """Sets the chosen level for a habit in Notion and returns to the dashboard."""
-    _, h_key, lvl_str, offset_str = call.data.split(":")
-    offset_days = int(offset_str)
+# ==========================================
+# ⚡ QUICK-RUN WIZARD
+# ==========================================
 
-    h_info = HABIT_ITEMS.get(h_key)
-    if not h_info:
-        await call.answer("❌ عادت نامعتبر است.", show_alert=True)
+
+@router.callback_query(F.data.startswith("hb_qr_start:"), HasPermission(PERM_ADMIN))
+async def cb_start_quick_run(call: CallbackQuery, state: FSMContext) -> None:
+    """Starts the ultra-fast Quick-Run Wizard."""
+    if not call.data or not isinstance(call.message, Message):
+        await call.answer()
         return
 
-    g_iso, full_jalali, rel_label = _calculate_date_from_offset(offset_days)
-    page_data = get_or_create_habit_day(g_iso, day_title=full_jalali)
-    page_id = page_data["id"]
-
-    # lvl_str: '0' means clear, '1'..'5' maps to HABIT_LEVELS
-    select_val = HABIT_LEVELS.get(lvl_str) if lvl_str != "0" else None
-    update_habit_entry(page_id, h_info["prop"], select_val)
-
-    # Fetch updated state with formulas
-    updated_page = get_or_create_habit_day(g_iso, day_title=full_jalali)
-
-    text = _format_habit_dashboard_text(updated_page, full_jalali, rel_label)
-    kb = build_habit_day_keyboard(updated_page.get("habits", {}), offset_days=offset_days)
-
-    await call.message.edit_text(text, reply_markup=kb, parse_mode="HTML")
-
-    status_name = select_val or "پاک شد 🗑"
-    await call.answer(f"✅ {h_info['fa']}: {status_name}")
-
-
-# ==========================================
-# ⚡ BULK ACTIONS & NOTES
-# ==========================================
-
-
-@router.callback_query(F.data.startswith("hb_ask_fill:"), HasPermission(PERM_ADMIN))
-async def cb_ask_bulk_fill(call: CallbackQuery) -> None:
-    """Asks confirmation before marking all 12 habits as Complete."""
     parts = call.data.split(":")
     offset_days = int(parts[1])
-    _, full_jalali, _ = _calculate_date_from_offset(offset_days)
+
+    g_iso, full_jalali, _ = _calculate_date_from_offset(offset_days)
+    page_data = get_or_create_habit_day(g_iso, day_title=full_jalali)
+
+    keys = list(HABIT_ITEMS.keys())
+    await state.update_data(
+        offset_days=offset_days,
+        page_id=page_data["id"],
+        qr_keys=keys,
+        qr_idx=0,
+        qr_collected={},
+    )
+    await state.set_state(HabitState.quick_run_active)
+
+    first_key = keys[0]
+    h_info = HABIT_ITEMS[first_key]
 
     text = (
-        f"⚡ <b>تکمیل سریع همه عادات</b>\n\n"
-        f"آیا مطمئنید که می‌خواهید تمام ۱۲ عادت برای تاریخ <code>{full_jalali}</code> روی <b>💪 کامل (۱۰۰٪)</b> تنظیم شوند؟"
+        f"⚡ <b>ثبت سریع زنجیره‌ای (گام ۱ از ۱۲)</b>\n"
+        f"📅 <code>{full_jalali}</code>\n\n"
+        f"🎯 عادت: <b>{h_info['emoji']} {h_info['fa']}</b>\n"
+        f"وضعیت را انتخاب کنید:"
     )
-    kb = get_habit_bulk_fill_confirm_keyboard(offset_days)
+    kb = get_quick_run_keyboard(first_key, offset_days)
     await call.message.edit_text(text, reply_markup=kb, parse_mode="HTML")
     await call.answer()
 
 
-@router.callback_query(F.data.startswith("hb_do_fill:"), HasPermission(PERM_ADMIN))
-async def cb_do_bulk_fill(call: CallbackQuery) -> None:
-    """Executes bulk update for all habits to '1-💪 کامل'."""
+@router.callback_query(
+    F.data.startswith("hb_qr_val:") | F.data.startswith("hb_qr_skip:"),
+    HasPermission(PERM_ADMIN),
+)
+async def cb_quick_run_step(call: CallbackQuery, state: FSMContext) -> None:
+    """Processes each step in the Quick-Run Wizard in memory."""
+    if not call.data or not isinstance(call.message, Message):
+        await call.answer()
+        return
+
+    data = await state.get_data()
+    keys: List[str] = data.get("qr_keys", list(HABIT_ITEMS.keys()))
+    idx: int = data.get("qr_idx", 0)
+    collected: Dict[str, Optional[str]] = data.get("qr_collected", {})
+    offset_days: int = data.get("offset_days", 0)
+    page_id: str = data.get("page_id", "")
+    stealth: bool = data.get("stealth", False)
+
+    current_key = keys[idx]
+
+    if call.data.startswith("hb_qr_val:"):
+        _, _, lvl_str, _ = call.data.split(":")
+        select_val = HABIT_LEVELS.get(lvl_str)
+        collected[current_key] = select_val
+
+    next_idx = idx + 1
+    if next_idx < len(keys):
+        await state.update_data(qr_idx=next_idx, qr_collected=collected)
+        next_key = keys[next_idx]
+        h_info = HABIT_ITEMS[next_key]
+        _, full_jalali, _ = _calculate_date_from_offset(offset_days)
+
+        text = (
+            f"⚡ <b>ثبت سریع زنجیره‌ای (گام {next_idx + 1} از {len(keys)})</b>\n"
+            f"📅 <code>{full_jalali}</code>\n\n"
+            f"🎯 عادت: <b>{h_info['emoji']} {h_info['fa']}</b>\n"
+            f"وضعیت را انتخاب کنید:"
+        )
+        kb = get_quick_run_keyboard(next_key, offset_days)
+        await call.message.edit_text(text, reply_markup=kb, parse_mode="HTML")
+        await call.answer()
+    else:
+        await call.message.edit_text("⏳ در حال ذخیره یکپارچه تمام عادات در نوشن...")
+        if page_id and collected:
+            batch_update_habit_dict(page_id, collected)
+
+        await state.clear()
+        await state.update_data(stealth=stealth)
+
+        g_iso, full_jalali, rel_label = _calculate_date_from_offset(offset_days)
+        updated_page = get_or_create_habit_day(g_iso, day_title=full_jalali)
+
+        text = _format_habit_dashboard_text(
+            updated_page, full_jalali, rel_label, stealth=stealth
+        )
+        kb = build_habit_day_keyboard(
+            updated_page.get("habits", {}),
+            offset_days=offset_days,
+            stealth_mode=stealth,
+        )
+
+        await call.message.edit_text(text, reply_markup=kb, parse_mode="HTML")
+        await call.answer("⚡ تمام ۱۲ عادت با موفقیت ثبت شدند! 🎉")
+
+
+# ==========================================
+# 🌸 GRATITUDE JOURNAL BUILDER
+# ==========================================
+
+
+def _compile_gratitude_journal(
+    items: List[Dict[str, Any]], full_jalali: str
+) -> str:
+    """Compiles individual gratitude entries into the finalized template."""
+    lines = [
+        "🌸 دفتر شکرگزاری روزانه",
+        f"📅 {full_jalali}",
+        "━━━━━━━━━━━━━━━━━━━━━━",
+    ]
+
+    has_tags = any(item.get("tag") for item in items)
+    if has_tags:
+        tagged_groups: Dict[str, List[str]] = {}
+        for item in items:
+            tag = str(item.get("tag") or "سایر نعمات")
+            tagged_groups.setdefault(tag, []).append(str(item["text"]))
+
+        for tag, texts in tagged_groups.items():
+            lines.append(f"🏷 [{tag}]:")
+            for t in texts:
+                lines.append(f"🌿 خدایا شکرت بابت {t}")
+            lines.append("")
+    else:
+        for item in items:
+            lines.append(f"🌿 خدایا شکرت بابت {item['text']}")
+
+    lines.append("━━━━━━━━━━━━━━━━━━━━━━")
+    lines.append("🤍 «الحمدلله ربّ العالمین علی کلّ حال»")
+    return "\n".join(lines)
+
+
+@router.callback_query(F.data.startswith("hb_grat:"), HasPermission(PERM_ADMIN))
+async def cb_open_gratitude_hub(call: CallbackQuery, state: FSMContext) -> None:
+    """Opens the Gratitude Journal Builder."""
+    if not call.data or not isinstance(call.message, Message):
+        await call.answer()
+        return
+
     parts = call.data.split(":")
     offset_days = int(parts[1])
 
-    g_iso, full_jalali, rel_label = _calculate_date_from_offset(offset_days)
-    page_data = get_or_create_habit_day(g_iso, day_title=full_jalali)
-
-    bulk_update_all_habits(page_data["id"], "1-💪 کامل")
-
-    updated_page = get_or_create_habit_day(g_iso, day_title=full_jalali)
-    text = _format_habit_dashboard_text(updated_page, full_jalali, rel_label)
-    kb = build_habit_day_keyboard(updated_page.get("habits", {}), offset_days=offset_days)
-
-    await call.message.edit_text(text, reply_markup=kb, parse_mode="HTML")
-    await call.answer("⚡ تمام ۱۲ عادت با موفقیت کامل شدند! 🎉")
-
-
-@router.callback_query(F.data.startswith("hb_notes:"), HasPermission(PERM_ADMIN))
-async def cb_prompt_notes(call: CallbackQuery, state: FSMContext) -> None:
-    """Prompts the user to enter notes for the current day."""
-    parts = call.data.split(":")
-    offset_days = int(parts[1])
     g_iso, full_jalali, _ = _calculate_date_from_offset(offset_days)
     page_data = get_or_create_habit_day(g_iso, day_title=full_jalali)
 
     await state.update_data(
         offset_days=offset_days,
         page_id=page_data["id"],
+        grat_items=[],
+        active_tag=None,
         dash_msg_id=call.message.message_id,
     )
-    await state.set_state(HabitState.waiting_for_notes)
+    await state.set_state(HabitState.waiting_for_gratitude_item)
 
-    current_note = page_data.get("notes") or "ثبت نشده"
-    text = (
-        f"📝 <b>یادداشت روزانه</b>\n"
-        f"📅 تاریخ: <code>{full_jalali}</code>\n\n"
-        f"📌 <b>یادداشت فعلی:</b>\n<i>«{current_note}»</i>\n\n"
-        f"✍️ متن یادداشت جدید خود را تایپ و ارسال کنید:"
+    current_log = str(page_data.get("gratitude_log", "")).strip()
+    log_preview = (
+        f"📌 <b>شکرگزاری فعلی:</b>\n<i>«{current_log}»</i>\n\n"
+        if current_log
+        else ""
     )
-    kb = get_habit_notes_keyboard(offset_days)
+
+    text = (
+        f"🌸 <b>دفترچه شکرگزاری روزانه</b>\n"
+        f"📅 <code>{full_jalali}</code>\n\n"
+        f"{log_preview}"
+        f"✍️ <b>نحوه ثبت:</b>\n"
+        f"• می‌توانید مستقیماً متن شکرگزاری را تایپ و ارسال کنید.\n"
+        f"• یا یکی از دکمه‌های حوزه‌های زیر را انتخاب کرده و سپس متن را بفرستید.\n"
+        f"• بعد از ثبت موارد، دکمه <b>«💾 تایید و ذخیره نهایی»</b> را بزنید."
+    )
+    kb = get_gratitude_accumulator_keyboard(offset_days, has_items=False)
     await call.message.edit_text(text, reply_markup=kb, parse_mode="HTML")
     await call.answer()
 
 
-@router.callback_query(F.data.startswith("hb_clr_notes:"), HasPermission(PERM_ADMIN))
-async def cb_clear_notes(call: CallbackQuery, state: FSMContext) -> None:
-    """Clears the notes for the given habit day."""
-    await state.clear()
-    parts = call.data.split(":")
-    offset_days = int(parts[1])
+@router.callback_query(
+    F.data.startswith("hb_gr_tag:"), HasPermission(PERM_ADMIN)
+)
+async def cb_pick_gratitude_tag(call: CallbackQuery, state: FSMContext) -> None:
+    """Sets the active category tag for the next gratitude sentence."""
+    if not call.data or not isinstance(call.message, Message):
+        await call.answer()
+        return
 
-    g_iso, full_jalali, rel_label = _calculate_date_from_offset(offset_days)
-    page_data = get_or_create_habit_day(g_iso, day_title=full_jalali)
+    _, tag_name, offset_str = call.data.split(":")
+    offset_days = int(offset_str)
+    await state.update_data(active_tag=tag_name)
 
-    update_habit_notes(page_data["id"], "")
-
-    updated_page = get_or_create_habit_day(g_iso, day_title=full_jalali)
-    text = _format_habit_dashboard_text(updated_page, full_jalali, rel_label)
-    kb = build_habit_day_keyboard(updated_page.get("habits", {}), offset_days=offset_days)
-
-    await call.message.edit_text(text, reply_markup=kb, parse_mode="HTML")
-    await call.answer("🗑 یادداشت روز پاک شد.")
-
-
-@router.message(HabitState.waiting_for_notes, HasPermission(PERM_ADMIN))
-async def msg_receive_notes(message: Message, state: FSMContext, bot: Bot) -> None:
-    """Receives new notes text and cleanly updates the habit card."""
     data = await state.get_data()
+    items: List[Dict[str, Any]] = data.get("grat_items", [])
+    _, full_jalali, _ = _calculate_date_from_offset(offset_days)
+
+    items_list_str = ""
+    if items:
+        lines_buf: List[str] = []
+        for i, item in enumerate(items):
+            tag_label = f"[{item.get('tag')}] " if item.get("tag") else ""
+            lines_buf.append(f"{i + 1}. 🌿 {tag_label}{item['text']}")
+        items_list_str = "\n📋 <b>موارد ثبت‌شده تا الان:</b>\n" + "\n".join(lines_buf) + "\n"
+
+    text = (
+        f"🌸 <b>دفترچه شکرگزاری روزانه</b>\n"
+        f"📅 <code>{full_jalali}</code>\n\n"
+        f"🏷 حوزه انتخاب‌شده: <b>{tag_name}</b>\n"
+        f"{items_list_str}\n"
+        f"✍️ حالا متن شکرگزاری خود بابت این حوزه را بنویسید و بفرستید:"
+    )
+    kb = get_gratitude_accumulator_keyboard(offset_days, has_items=bool(items))
+    await call.message.edit_text(text, reply_markup=kb, parse_mode="HTML")
+    await call.answer(f"حوزه {tag_name} انتخاب شد.")
+
+
+@router.message(HabitState.waiting_for_gratitude_item, HasPermission(PERM_ADMIN))
+async def msg_receive_gratitude_item(
+    message: Message, state: FSMContext, bot: Bot
+) -> None:
+    """Receives a gratitude text line and updates the interactive builder."""
+    if not message.text:
+        return
+
+    data = await state.get_data()
+    items: List[Dict[str, Any]] = data.get("grat_items", [])
+    active_tag = data.get("active_tag")
     offset_days = data.get("offset_days", 0)
-    page_id = data.get("page_id")
     dash_msg_id = data.get("dash_msg_id")
 
-    # Clean up user message immediately (Zero-Clutter Chat Hygiene)
     try:
         await message.delete()
     except Exception:
         pass
 
-    note_text = message.text.strip()
-    if page_id:
-        update_habit_notes(page_id, note_text)
+    raw_text = message.text.strip()
+    lines = [l.strip() for l in raw_text.split("\n") if l.strip()]
+    for line in lines:
+        cleaned = (
+            line.replace("خدایا شکرت بابت", "")
+            .replace("خدایا شکرت", "")
+            .replace("خدایا ممنونم", "")
+            .strip()
+        )
+        items.append({"tag": active_tag, "text": cleaned or line})
 
-    await state.clear()
+    await state.update_data(grat_items=items, active_tag=None)
 
-    g_iso, full_jalali, rel_label = _calculate_date_from_offset(offset_days)
-    updated_page = get_or_create_habit_day(g_iso, day_title=full_jalali)
+    _, full_jalali, _ = _calculate_date_from_offset(offset_days)
+    lines_buf: List[str] = []
+    for i, it in enumerate(items):
+        tag_label = f"[{it.get('tag')}] " if it.get("tag") else ""
+        lines_buf.append(f"{i + 1}. 🌿 {tag_label}{it['text']}")
+    items_list_str = "\n📋 <b>موارد ثبت‌شده تا الان:</b>\n" + "\n".join(lines_buf)
 
-    text = _format_habit_dashboard_text(updated_page, full_jalali, rel_label)
-    kb = build_habit_day_keyboard(updated_page.get("habits", {}), offset_days=offset_days)
+    text = (
+        f"🌸 <b>دفترچه شکرگزاری روزانه</b>\n"
+        f"📅 <code>{full_jalali}</code>\n\n"
+        f"{items_list_str}\n\n"
+        f"✍️ مورد بعدی را بفرستید یا دکمه <b>«💾 تایید و ذخیره نهایی»</b> را بزنید:"
+    )
+    kb = get_gratitude_accumulator_keyboard(offset_days, has_items=True)
 
     if dash_msg_id:
         try:
@@ -374,17 +567,437 @@ async def msg_receive_notes(message: Message, state: FSMContext, bot: Bot) -> No
     await message.answer(text, reply_markup=kb, parse_mode="HTML")
 
 
+@router.callback_query(
+    F.data.startswith("hb_gr_pop:"), HasPermission(PERM_ADMIN)
+)
+async def cb_pop_gratitude_item(
+    call: CallbackQuery, state: FSMContext
+) -> None:
+    """Removes the last entered gratitude item."""
+    if not call.data or not isinstance(call.message, Message):
+        await call.answer()
+        return
+
+    data = await state.get_data()
+    items: List[Dict[str, Any]] = data.get("grat_items", [])
+    offset_days = int(call.data.split(":")[1])
+
+    if items:
+        items.pop()
+        await state.update_data(grat_items=items)
+
+    _, full_jalali, _ = _calculate_date_from_offset(offset_days)
+    items_list_str = ""
+    if items:
+        lines_buf: List[str] = []
+        for i, item in enumerate(items):
+            tag_label = f"[{item.get('tag')}] " if item.get("tag") else ""
+            lines_buf.append(f"{i + 1}. 🌿 {tag_label}{item['text']}")
+        items_list_str = "\n📋 <b>موارد ثبت‌شده تا الان:</b>\n" + "\n".join(lines_buf) + "\n"
+
+    text = (
+        f"🌸 <b>دفترچه شکرگزاری روزانه</b>\n"
+        f"📅 <code>{full_jalali}</code>\n\n"
+        f"{items_list_str}\n"
+        f"✍️ مورد جدیدی بفرستید یا ذخیره کنید:"
+    )
+    kb = get_gratitude_accumulator_keyboard(offset_days, has_items=bool(items))
+    await call.message.edit_text(text, reply_markup=kb, parse_mode="HTML")
+    await call.answer("آخرین مورد حذف شد.")
+
+
+@router.callback_query(
+    F.data.startswith("hb_gr_save:"), HasPermission(PERM_ADMIN)
+)
+async def cb_save_gratitude_journal(
+    call: CallbackQuery, state: FSMContext
+) -> None:
+    """Compiles and saves the gratitude journal to Notion."""
+    if not call.data or not isinstance(call.message, Message):
+        await call.answer()
+        return
+
+    data = await state.get_data()
+    items: List[Dict[str, Any]] = data.get("grat_items", [])
+    offset_days = int(call.data.split(":")[1])
+    page_id = str(data.get("page_id", ""))
+    stealth = data.get("stealth", False)
+
+    if items and page_id:
+        _, full_jalali, _ = _calculate_date_from_offset(offset_days)
+        compiled_text = _compile_gratitude_journal(items, full_jalali)
+        update_habit_gratitude(page_id, compiled_text)
+
+    await state.clear()
+    await state.update_data(stealth=stealth)
+
+    g_iso, full_jalali, rel_label = _calculate_date_from_offset(offset_days)
+    updated_page = get_or_create_habit_day(g_iso, day_title=full_jalali)
+
+    text = _format_habit_dashboard_text(
+        updated_page, full_jalali, rel_label, stealth=stealth
+    )
+    kb = build_habit_day_keyboard(
+        updated_page.get("habits", {}),
+        offset_days=offset_days,
+        stealth_mode=stealth,
+    )
+
+    await call.message.edit_text(text, reply_markup=kb, parse_mode="HTML")
+    await call.answer(
+        f"🌸 دفترچه شکرگزاری با {len(items)} مورد در نوشن ذخیره شد! ✨"
+    )
+
+
+@router.callback_query(
+    F.data.startswith("hb_gr_clr_all:"), HasPermission(PERM_ADMIN)
+)
+async def cb_clear_all_gratitude(
+    call: CallbackQuery, state: FSMContext
+) -> None:
+    """Clears the gratitude log from Notion."""
+    if not call.data or not isinstance(call.message, Message):
+        await call.answer()
+        return
+
+    data = await state.get_data()
+    offset_days = int(call.data.split(":")[1])
+    page_id = str(data.get("page_id", ""))
+    stealth = data.get("stealth", False)
+
+    if page_id:
+        update_habit_gratitude(page_id, "")
+
+    await state.clear()
+    await state.update_data(stealth=stealth)
+
+    g_iso, full_jalali, rel_label = _calculate_date_from_offset(offset_days)
+    updated_page = get_or_create_habit_day(g_iso, day_title=full_jalali)
+
+    text = _format_habit_dashboard_text(
+        updated_page, full_jalali, rel_label, stealth=stealth
+    )
+    kb = build_habit_day_keyboard(
+        updated_page.get("habits", {}),
+        offset_days=offset_days,
+        stealth_mode=stealth,
+    )
+
+    await call.message.edit_text(text, reply_markup=kb, parse_mode="HTML")
+    await call.answer("🗑 شکرگزاری روز پاک شد.")
+
+
 # ==========================================
-# 📅 CUSTOM DATE NAVIGATOR
+# 🗑️ RESET & BULK FILL HANDLERS
 # ==========================================
 
 
-@router.callback_query(F.data.startswith("hb_cdate:"), HasPermission(PERM_ADMIN))
+@router.callback_query(
+    F.data.startswith("hb_ask_reset:"), HasPermission(PERM_ADMIN)
+)
+async def cb_ask_reset(call: CallbackQuery) -> None:
+    """Asks confirmation before resetting all day entries."""
+    if not call.data or not isinstance(call.message, Message):
+        await call.answer()
+        return
+
+    offset_days = int(call.data.split(":")[1])
+    _, full_jalali, _ = _calculate_date_from_offset(offset_days)
+
+    text = (
+        f"⚠️ <b>ریست کردن کامل عادات روز</b>\n\n"
+        f"آیا مطمئنید که می‌خواهید تمام ۱۲ عادت، یادداشت و شکرگزاری تاریخ <code>{full_jalali}</code> پاک و ریست شوند؟"
+    )
+    kb = get_habit_reset_confirm_keyboard(offset_days)
+    await call.message.edit_text(text, reply_markup=kb, parse_mode="HTML")
+    await call.answer()
+
+
+@router.callback_query(
+    F.data.startswith("hb_do_reset:"), HasPermission(PERM_ADMIN)
+)
+async def cb_do_reset(call: CallbackQuery, state: FSMContext) -> None:
+    """Executes full day reset in Notion."""
+    if not call.data or not isinstance(call.message, Message):
+        await call.answer()
+        return
+
+    data = await state.get_data()
+    stealth = data.get("stealth", False)
+    offset_days = int(call.data.split(":")[1])
+
+    g_iso, full_jalali, rel_label = _calculate_date_from_offset(offset_days)
+    page_data = get_or_create_habit_day(g_iso, day_title=full_jalali)
+
+    reset_habit_day(page_data["id"])
+
+    updated_page = get_or_create_habit_day(g_iso, day_title=full_jalali)
+    text = _format_habit_dashboard_text(
+        updated_page, full_jalali, rel_label, stealth=stealth
+    )
+    kb = build_habit_day_keyboard(
+        updated_page.get("habits", {}),
+        offset_days=offset_days,
+        stealth_mode=stealth,
+    )
+
+    await call.message.edit_text(text, reply_markup=kb, parse_mode="HTML")
+    await call.answer("🗑 کارنامه روز کاملاً پاک و بازنشانی شد.")
+
+
+@router.callback_query(
+    F.data.startswith("hb_ask_fill:"), HasPermission(PERM_ADMIN)
+)
+async def cb_ask_bulk_fill(call: CallbackQuery) -> None:
+    """Asks confirmation before bulk complete."""
+    if not call.data or not isinstance(call.message, Message):
+        await call.answer()
+        return
+
+    offset_days = int(call.data.split(":")[1])
+    _, full_jalali, _ = _calculate_date_from_offset(offset_days)
+
+    text = (
+        f"⚡ <b>تکمیل سریع همه عادات</b>\n\n"
+        f"آیا مطمئنید تمام ۱۲ عادت برای <code>{full_jalali}</code> روی <b>💪 کامل (۱۰۰٪)</b> تنظیم شوند؟"
+    )
+    kb = get_habit_bulk_fill_confirm_keyboard(offset_days)
+    await call.message.edit_text(text, reply_markup=kb, parse_mode="HTML")
+    await call.answer()
+
+
+@router.callback_query(
+    F.data.startswith("hb_do_fill:"), HasPermission(PERM_ADMIN)
+)
+async def cb_do_bulk_fill(call: CallbackQuery, state: FSMContext) -> None:
+    """Executes bulk complete in Notion."""
+    if not call.data or not isinstance(call.message, Message):
+        await call.answer()
+        return
+
+    data = await state.get_data()
+    stealth = data.get("stealth", False)
+    offset_days = int(call.data.split(":")[1])
+
+    g_iso, full_jalali, rel_label = _calculate_date_from_offset(offset_days)
+    page_data = get_or_create_habit_day(g_iso, day_title=full_jalali)
+
+    bulk_update_all_habits(page_data["id"], "1-💪 کامل")
+
+    updated_page = get_or_create_habit_day(g_iso, day_title=full_jalali)
+    text = _format_habit_dashboard_text(
+        updated_page, full_jalali, rel_label, stealth=stealth
+    )
+    kb = build_habit_day_keyboard(
+        updated_page.get("habits", {}),
+        offset_days=offset_days,
+        stealth_mode=stealth,
+    )
+
+    await call.message.edit_text(text, reply_markup=kb, parse_mode="HTML")
+    await call.answer("⚡ تمام ۱۲ عادت با موفقیت کامل شدند! 🎉")
+
+
+# ==========================================
+# 🎯 SINGLE HABIT PICKER & LEVEL SELECT
+# ==========================================
+
+
+@router.callback_query(F.data.startswith("hb_pk:"), HasPermission(PERM_ADMIN))
+async def cb_pick_habit_level(call: CallbackQuery) -> None:
+    """Opens level picker for a single habit."""
+    if not call.data or not isinstance(call.message, Message):
+        await call.answer()
+        return
+
+    _, h_key, offset_str = call.data.split(":")
+    offset_days = int(offset_str)
+
+    h_info = HABIT_ITEMS.get(h_key, {"fa": "عادت", "emoji": "🎯"})
+    _, full_jalali, _ = _calculate_date_from_offset(offset_days)
+
+    text = (
+        f"🎯 <b>تنظیم وضعیت: {h_info['emoji']} {h_info['fa']}</b>\n"
+        f"📅 <code>{full_jalali}</code>\n\n"
+        f"یکی از سطوح کیفیت زیر را انتخاب کنید:"
+    )
+    kb = get_habit_level_picker_keyboard(h_key, offset_days)
+    await call.message.edit_text(text, reply_markup=kb, parse_mode="HTML")
+    await call.answer()
+
+
+@router.callback_query(F.data.startswith("hb_set:"), HasPermission(PERM_ADMIN))
+async def cb_set_habit_level(call: CallbackQuery, state: FSMContext) -> None:
+    """Sets habit level in Notion directly."""
+    if not call.data or not isinstance(call.message, Message):
+        await call.answer()
+        return
+
+    data = await state.get_data()
+    stealth = data.get("stealth", False)
+
+    _, h_key, lvl_str, offset_str = call.data.split(":")
+    offset_days = int(offset_str)
+
+    h_info = HABIT_ITEMS.get(h_key)
+    if not h_info:
+        await call.answer("❌ عادت نامعتبر است.", show_alert=True)
+        return
+
+    g_iso, full_jalali, rel_label = _calculate_date_from_offset(offset_days)
+    page_data = get_or_create_habit_day(g_iso, day_title=full_jalali)
+
+    select_val = HABIT_LEVELS.get(lvl_str) if lvl_str != "0" else None
+    update_habit_entry(page_data["id"], h_info["prop"], select_val)
+
+    updated_page = get_or_create_habit_day(g_iso, day_title=full_jalali)
+    text = _format_habit_dashboard_text(
+        updated_page, full_jalali, rel_label, stealth=stealth
+    )
+    kb = build_habit_day_keyboard(
+        updated_page.get("habits", {}),
+        offset_days=offset_days,
+        stealth_mode=stealth,
+    )
+
+    await call.message.edit_text(text, reply_markup=kb, parse_mode="HTML")
+    status_name = select_val or "پاک شد 🗑"
+    await call.answer(f"✅ {h_info['fa']}: {status_name}")
+
+
+# ==========================================
+# 📝 NOTES & CUSTOM DATE
+# ==========================================
+
+
+@router.callback_query(
+    F.data.startswith("hb_notes:"), HasPermission(PERM_ADMIN)
+)
+async def cb_prompt_notes(call: CallbackQuery, state: FSMContext) -> None:
+    """Prompts for daily notes."""
+    if not call.data or not isinstance(call.message, Message):
+        await call.answer()
+        return
+
+    offset_days = int(call.data.split(":")[1])
+    g_iso, full_jalali, _ = _calculate_date_from_offset(offset_days)
+    page_data = get_or_create_habit_day(g_iso, day_title=full_jalali)
+
+    await state.update_data(
+        offset_days=offset_days,
+        page_id=page_data["id"],
+        dash_msg_id=call.message.message_id,
+    )
+    await state.set_state(HabitState.waiting_for_notes)
+
+    current_note = str(page_data.get("notes") or "ثبت نشده")
+    text = (
+        f"📝 <b>یادداشت روزانه</b>\n"
+        f"📅 تاریخ: <code>{full_jalali}</code>\n\n"
+        f"📌 <b>یادداشت فعلی:</b>\n<i>«{current_note}»</i>\n\n"
+        f"✍️ متن یادداشت جدید خود را تایپ و ارسال کنید:"
+    )
+    kb = get_habit_notes_keyboard(offset_days)
+    await call.message.edit_text(text, reply_markup=kb, parse_mode="HTML")
+    await call.answer()
+
+
+@router.callback_query(
+    F.data.startswith("hb_clr_notes:"), HasPermission(PERM_ADMIN)
+)
+async def cb_clear_notes(call: CallbackQuery, state: FSMContext) -> None:
+    """Clears daily notes."""
+    if not call.data or not isinstance(call.message, Message):
+        await call.answer()
+        return
+
+    data = await state.get_data()
+    stealth = data.get("stealth", False)
+    offset_days = int(call.data.split(":")[1])
+
+    g_iso, full_jalali, rel_label = _calculate_date_from_offset(offset_days)
+    page_data = get_or_create_habit_day(g_iso, day_title=full_jalali)
+
+    update_habit_notes(page_data["id"], "")
+
+    updated_page = get_or_create_habit_day(g_iso, day_title=full_jalali)
+    text = _format_habit_dashboard_text(
+        updated_page, full_jalali, rel_label, stealth=stealth
+    )
+    kb = build_habit_day_keyboard(
+        updated_page.get("habits", {}),
+        offset_days=offset_days,
+        stealth_mode=stealth,
+    )
+
+    await call.message.edit_text(text, reply_markup=kb, parse_mode="HTML")
+    await call.answer("🗑 یادداشت روز پاک شد.")
+
+
+@router.message(HabitState.waiting_for_notes, HasPermission(PERM_ADMIN))
+async def msg_receive_notes(
+    message: Message, state: FSMContext, bot: Bot
+) -> None:
+    """Receives notes text with zero clutter chat hygiene."""
+    if not message.text:
+        return
+
+    data = await state.get_data()
+    offset_days = data.get("offset_days", 0)
+    page_id = str(data.get("page_id", ""))
+    dash_msg_id = data.get("dash_msg_id")
+    stealth = data.get("stealth", False)
+
+    try:
+        await message.delete()
+    except Exception:
+        pass
+
+    note_text = message.text.strip()
+    if page_id:
+        update_habit_notes(page_id, note_text)
+
+    await state.clear()
+    await state.update_data(stealth=stealth)
+
+    g_iso, full_jalali, rel_label = _calculate_date_from_offset(offset_days)
+    updated_page = get_or_create_habit_day(g_iso, day_title=full_jalali)
+
+    text = _format_habit_dashboard_text(
+        updated_page, full_jalali, rel_label, stealth=stealth
+    )
+    kb = build_habit_day_keyboard(
+        updated_page.get("habits", {}),
+        offset_days=offset_days,
+        stealth_mode=stealth,
+    )
+
+    if dash_msg_id:
+        try:
+            await bot.edit_message_text(
+                chat_id=message.chat.id,
+                message_id=dash_msg_id,
+                text=text,
+                reply_markup=kb,
+                parse_mode="HTML",
+            )
+            return
+        except Exception:
+            pass
+
+    await message.answer(text, reply_markup=kb, parse_mode="HTML")
+
+
+@router.callback_query(
+    F.data.startswith("hb_cdate:"), HasPermission(PERM_ADMIN)
+)
 async def cb_prompt_custom_date(call: CallbackQuery, state: FSMContext) -> None:
-    """Prompts the user to enter a custom Jalali date."""
-    parts = call.data.split(":")
-    offset_days = int(parts[1])
+    """Prompts for custom Jalali date."""
+    if not call.data or not isinstance(call.message, Message):
+        await call.answer()
+        return
 
+    offset_days = int(call.data.split(":")[1])
     await state.update_data(
         offset_days=offset_days, dash_msg_id=call.message.message_id
     )
@@ -405,9 +1018,12 @@ async def msg_receive_custom_date(
     message: Message, state: FSMContext, bot: Bot
 ) -> None:
     """Processes user entered custom Jalali date."""
+    if not message.text:
+        return
+
     data = await state.get_data()
     dash_msg_id = data.get("dash_msg_id")
-    old_offset = data.get("offset_days", 0)
+    stealth = data.get("stealth", False)
 
     try:
         await message.delete()
@@ -426,21 +1042,26 @@ async def msg_receive_custom_date(
             pass
         return
 
-    g_target_iso, j_str = parsed
-
-    # Calculate offset relative to today
+    g_target_iso, _ = parsed
     tz = timezone(timedelta(hours=3, minutes=30))
     g_today = datetime.now(tz).date()
     g_target_date = date.fromisoformat(g_target_iso)
     offset_days = (g_today - g_target_date).days
 
     await state.clear()
+    await state.update_data(stealth=stealth)
 
     g_iso, full_jalali, rel_label = _calculate_date_from_offset(offset_days)
     page_data = get_or_create_habit_day(g_iso, day_title=full_jalali)
 
-    text = _format_habit_dashboard_text(page_data, full_jalali, rel_label)
-    kb = build_habit_day_keyboard(page_data.get("habits", {}), offset_days=offset_days)
+    text = _format_habit_dashboard_text(
+        page_data, full_jalali, rel_label, stealth=stealth
+    )
+    kb = build_habit_day_keyboard(
+        page_data.get("habits", {}),
+        offset_days=offset_days,
+        stealth_mode=stealth,
+    )
 
     if dash_msg_id:
         try:
@@ -461,6 +1082,10 @@ async def msg_receive_custom_date(
 @router.callback_query(F.data == "hb_close", HasPermission(PERM_ADMIN))
 async def cb_close_habits(call: CallbackQuery, state: FSMContext) -> None:
     """Closes the habit tracker dashboard."""
+    if not isinstance(call.message, Message):
+        await call.answer()
+        return
+
     await state.clear()
     try:
         await call.message.delete()
