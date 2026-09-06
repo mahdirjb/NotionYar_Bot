@@ -822,7 +822,7 @@ def build_habit_hub_keyboard(
                 callback_data=f"hb_qr_start:{offset_days}",
             ),
             InlineKeyboardButton(
-                text="📋 نمای تفصیلی ۱۲ عادت",
+                text="📋 نمای تفصیلی عادت‌ها",
                 callback_data=f"hb_view_det:{offset_days}",
             ),
         ],
