@@ -564,25 +564,25 @@ def update_notion_page_properties(page_id: str, properties: Dict[str, Any]) -> b
         return False
     
 # ==========================================
-# 🎯 HABIT TRACKER CONSTANTS & FUNCTIONS (V2.1)
+# 🎯 HABIT TRACKER CONSTANTS & FUNCTIONS (V2.2)
 # ==========================================
 
-HABIT_ITEMS: Dict[str, Dict[str, str]] = {
-    "bt": {"prop": "Brush Teeth", "fa": "مسواک", "emoji": "🪥", "code": "BST", "cat": "جسمی"},
-    "fr": {"prop": "Face Routine", "fa": "روتین پوستی", "emoji": "🧖", "code": "SKN", "cat": "جسمی"},
-    "mb": {"prop": "Make the Bed", "fa": "مرتب‌کردن تخت", "emoji": "🛏️", "code": "BDM", "cat": "نظم"},
-    "ex": {"prop": "Exercise", "fa": "ورزش", "emoji": "🏃", "code": "WKO", "cat": "جسمی"},
-    "md": {"prop": "Meditation", "fa": "مدیتیشن", "emoji": "🧘", "code": "MDT", "cat": "ذهنی"},
-    "gr": {"prop": "Gratitude", "fa": "شکرگزاری", "emoji": "🌸", "code": "THG", "cat": "ذهنی"},
-    "rq": {"prop": "Read Holy Quran", "fa": "تلاوت قرآن", "emoji": "📖", "code": "QRN", "cat": "معنوی"},
-    "sl": {"prop": "Salam", "fa": "سلام", "emoji": "🕊️", "code": "SLM", "cat": "معنوی"},
-    "es": {"prop": "Esteghfar", "fa": "استغفار", "emoji": "📿", "code": "EST", "cat": "معنوی"},
-    "ps": {"prop": "Pray After Salah", "fa": "تعقیبات نماز", "emoji": "🤲", "code": "PAS", "cat": "معنوی"},
-    "bp": {"prop": "Bedtime Prayer", "fa": "دعای قبل خواب", "emoji": "🌙", "code": "BDP", "cat": "معنوی"},
-    "sg": {"prop": "Spritual Gift", "fa": "هدیه معنوی", "emoji": "🎁", "code": "SPG", "cat": "معنوی"}
+HABIT_ITEMS: Dict[str, Dict[str, Any]] = {
+    "bt": {"prop": "Brush Teeth", "fa": "مسواک", "emoji": "🪥", "code": "BST", "cat": "جسمی", "binary": False},
+    "fr": {"prop": "Face Routine", "fa": "روتین پوستی", "emoji": "🧖", "code": "SKN", "cat": "جسمی", "binary": False},
+    "mb": {"prop": "Make the Bed", "fa": "مرتب‌کردن تخت", "emoji": "🛏️", "code": "BDM", "cat": "نظم", "binary": True},
+    "ex": {"prop": "Exercise", "fa": "ورزش", "emoji": "🏃", "code": "WKO", "cat": "جسمی", "binary": False},
+    "md": {"prop": "Meditation", "fa": "مدیتیشن", "emoji": "🧘", "code": "MDT", "cat": "ذهنی", "binary": False},
+    "gr": {"prop": "Gratitude", "fa": "شکرگزاری", "emoji": "🌸", "code": "THG", "cat": "ذهنی", "binary": False},
+    "rq": {"prop": "Read Holy Quran", "fa": "تلاوت قرآن", "emoji": "📖", "code": "QRN", "cat": "معنوی", "binary": False},
+    "sl": {"prop": "Salam", "fa": "سلام", "emoji": "🕊️", "code": "SLM", "cat": "معنوی", "binary": True},
+    "es": {"prop": "Esteghfar", "fa": "استغفار", "emoji": "📿", "code": "EST", "cat": "معنوی", "binary": False},
+    "ps": {"prop": "Pray After Salah", "fa": "تعقیبات نماز", "emoji": "🤲", "code": "PAS", "cat": "معنوی", "binary": False},
+    "bp": {"prop": "Bedtime Prayer", "fa": "دعای قبل خواب", "emoji": "🌙", "code": "BDP", "cat": "معنوی", "binary": False},
+    "sg": {"prop": "Spritual Gift", "fa": "هدیه معنوی", "emoji": "🎁", "code": "SPG", "cat": "معنوی", "binary": False}
 }
 
-# Detailed definitions for V1, V2, V3 for each habit
+# Accurate Habit Tier Descriptions
 HABIT_DESCRIPTIONS: Dict[str, Dict[str, str]] = {
     "bt": {
         "v1": "مسواک زدن کامل + نخ دندان",
@@ -595,9 +595,9 @@ HABIT_DESCRIPTIONS: Dict[str, Dict[str, str]] = {
         "v3": "فقط آب‌زدن ساده به صورت با آب خالی"
     },
     "mb": {
-        "v1": "مرتب کردن کامل ملحفه، بالش‌ها و پتو بلافاصله بعد بیداری",
-        "v2": "صاف کردن پتوی روی تخت و مرتب‌سازی کلی",
-        "v3": "جمع کردن حداقلی پتو روی تخت"
+        "v1": "مرتب کردن تخت و صاف کردن پتو و بالش‌ها",
+        "v2": "مرتب کردن تخت",
+        "v3": "جمع کردن حداقل پتو"
     },
     "ex": {
         "v1": "۴۵ تا ۶۰ دقیقه تمرین سنگین / باشگاه / فوتبال",
@@ -615,13 +615,13 @@ HABIT_DESCRIPTIONS: Dict[str, Dict[str, str]] = {
         "v3": "۱ مورد شکرگزاری قلبی و توجه ذهنی"
     },
     "rq": {
-        "v1": "۱ صفحه با ترجمه و تدبر",
-        "v2": "۱ صفحه عربی روان (یا نصف صفحه)",
-        "v3": "۱ سوره کوتاه (کوثر / توحید / عصر)"
+        "v1": "۱ صفحه قرآن با معنی و تفسیرش",
+        "v2": "۱ صفحه قرآن بدون تفسیر",
+        "v3": "فقط سوره عادیات یا هر سوره راحت‌تر"
     },
     "sl": {
-        "v1": "سلام و احوال‌پرسی پرانرژی و گرم روزانه",
-        "v2": "سلام و احوال‌پرسی معمولی و مثبت",
+        "v1": "سلام و احوال‌پرسی پرانرژی روزانه",
+        "v2": "سلام معمولی",
         "v3": "پاسخ دادن به سلام"
     },
     "es": {
@@ -630,9 +630,9 @@ HABIT_DESCRIPTIONS: Dict[str, Dict[str, str]] = {
         "v3": "۱۰ یا ۳ مرتبه استغفار"
     },
     "ps": {
-        "v1": "تسبیحات حضرت زهرا (س) + آیت‌الکرسی + دعا",
-        "v2": "تسبیحات حضرت زهرا (س)",
-        "v3": "۱ صلوات و دعای کوتاه"
+        "v1": "خواندن هر ۵ دعا + دعاهای دیگر (اختیاری)",
+        "v2": "خواندن ۳ دعا",
+        "v3": "خواندن دعای سلامتی امام زمان (عج)"
     },
     "bp": {
         "v1": "وضو + آیت‌الکرسی + ۳ قل (یا ادعیه)",
@@ -640,9 +640,9 @@ HABIT_DESCRIPTIONS: Dict[str, Dict[str, str]] = {
         "v3": "۱ صلوات قلبی یا سوره توحید"
     },
     "sg": {
-        "v1": "۲ رکعت نماز نشسته/مستحبی + ۱۰ صلوات + قدر",
-        "v2": "۱۰ صلوات + ۱ آیت‌الکرسی",
-        "v3": "۳ صلوات قلبی"
+        "v1": "۱۰ صلوات + ۲ قدر یا/و ۱ آیت‌الکرسی + ۲ رکعت نماز نشسته (اختیاری)",
+        "v2": "۱۰ صلوات یا/و ۲ سوره قدر",
+        "v3": "فقط آیت‌الکرسی"
     }
 }
 
@@ -696,7 +696,7 @@ def parse_existing_gratitude_log(raw_log: str) -> List[Dict[str, Any]]:
             continue
 
         if clean.startswith("🌿"):
-            text = clean.replace("🌿", "").replace("خدایا شکرت بابت", "").replace("خدایا شکرت", "").replace("خدایا ممنونم بابت", "").strip()
+            text = clean.replace("🌿", "").replace("خدایا شکرت بابت", "").replace("خدایا شکرت", "").replace("خدایا ممنونم بابت", "").replace("خدایا ممنونم", "").strip()
             if text:
                 items.append({"tag": current_tag, "text": text})
 
@@ -785,6 +785,9 @@ def parse_habit_page(page: Dict[str, Any]) -> Dict[str, Any]:
     grat_list = props.get("Gratitude Log", {}).get("rich_text", [])
     gratitude_log = grat_list[0].get("plain_text", "") if grat_list else ""
 
+    quran_list = props.get("Quran Detail", {}).get("rich_text", [])
+    quran_detail = quran_list[0].get("plain_text", "") if quran_list else ""
+
     habits_status: Dict[str, Optional[str]] = {}
     for h_key, h_info in HABIT_ITEMS.items():
         prop_name = h_info["prop"]
@@ -799,6 +802,7 @@ def parse_habit_page(page: Dict[str, Any]) -> Dict[str, Any]:
         "cheerleader": get_persian_cheerleader(progress_val),
         "notes": notes,
         "gratitude_log": gratitude_log,
+        "quran_detail": quran_detail,
         "habits": habits_status,
         "url": str(page.get("url", ""))
     }
@@ -879,8 +883,22 @@ def update_habit_gratitude(page_id: str, gratitude_text: str) -> bool:
         return False
 
 
+def update_habit_quran_detail(page_id: str, detail_text: str) -> bool:
+    """Updates the rich_text Quran Detail property for a habit day."""
+    try:
+        payload = [{"text": {"content": detail_text}}] if detail_text else []
+        notion.pages.update(
+            page_id=page_id,
+            properties={"Quran Detail": {"rich_text": payload}}
+        )
+        return True
+    except Exception as e:
+        print(f"Error updating habit quran detail: {e}")
+        return False
+
+
 def reset_habit_day(page_id: str) -> bool:
-    """Safely resets all 12 habits, notes, and gratitude log for a day."""
+    """Safely resets all 12 habits, notes, gratitude log, and quran detail for a day."""
     try:
         reset_props: Dict[str, Any] = {
             h_info["prop"]: {"select": None}
@@ -888,6 +906,7 @@ def reset_habit_day(page_id: str) -> bool:
         }
         reset_props["Notes"] = {"rich_text": []}
         reset_props["Gratitude Log"] = {"rich_text": []}
+        reset_props["Quran Detail"] = {"rich_text": []}
 
         notion.pages.update(page_id=page_id, properties=reset_props)
         return True
