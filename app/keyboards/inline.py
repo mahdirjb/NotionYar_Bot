@@ -787,10 +787,9 @@ def get_insights_settings_keyboard(enabled_types: List[str]) -> InlineKeyboardMa
     return InlineKeyboardMarkup(inline_keyboard=keyboard)
 
 # ==========================================
-# 🎯 HABIT TRACKER KEYBOARDS
+# 🎯 HABIT TRACKER KEYBOARDS (V2.0)
 # ==========================================
 
-# Compact emoji badges for inline buttons
 HABIT_STATUS_ICONS = {
     "1-💪 کامل": "💪",
     "2-🏃‍♂️ نیمه‌کامل": "🏃",
@@ -801,60 +800,91 @@ HABIT_STATUS_ICONS = {
 
 
 def build_habit_day_keyboard(
-    habits_data: Dict[str, Optional[str]], offset_days: int
+    habits_data: Dict[str, Optional[str]],
+    offset_days: int,
+    stealth_mode: bool = False,
 ) -> InlineKeyboardMarkup:
     """
-    Builds a 2-column grid of 12 habits with their current status icon,
-    plus quick fill, notes, date navigation, and refresh controls.
+    Builds the Habit Dashboard inline keyboard supporting both Normal & Stealth (Privacy) modes.
     """
     keyboard = []
     row = []
 
+    # Habit items grid (3 columns in stealth, 2 columns in normal mode)
+    cols = 3 if stealth_mode else 2
+
     for h_key, h_info in HABIT_ITEMS.items():
         val = habits_data.get(h_key)
         icon = HABIT_STATUS_ICONS.get(val or "", "▫️")
-        btn_text = f"{icon} {h_info['emoji']} {h_info['fa']}"
+
+        if stealth_mode:
+            btn_text = f"[{h_info['code']}]: {icon}"
+        else:
+            btn_text = f"{icon} {h_info['emoji']} {h_info['fa']}"
+
         row.append(
             InlineKeyboardButton(
                 text=btn_text, callback_data=f"hb_pk:{h_key}:{offset_days}"
             )
         )
 
-        if len(row) == 2:
+        if len(row) == cols:
             keyboard.append(row)
             row = []
 
     if row:
         keyboard.append(row)
 
-    # Quick Actions Row
+    # Fast Logging Row
     keyboard.append([
         InlineKeyboardButton(
-            text="⚡ ثبت همه (کامل)", callback_data=f"hb_ask_fill:{offset_days}"
+            text="⚡ ثبت سریع زنجیره‌ای",
+            callback_data=f"hb_qr_start:{offset_days}",
         ),
         InlineKeyboardButton(
-            text="📝 یادداشت روز", callback_data=f"hb_notes:{offset_days}"
+            text="⚡ همه (کامل)", callback_data=f"hb_ask_fill:{offset_days}"
         ),
     ])
 
-    # Date Navigation Row (Offset: 0=Today, 1=Yesterday, 2=2 days ago, -1=Tomorrow)
+    # Journaling & Privacy Row
+    stealth_label = (
+        "🕶️ حالت مخفی: روشن" if stealth_mode else "🕶️ حالت مخفی: خاموش"
+    )
+    keyboard.append([
+        InlineKeyboardButton(
+            text="🌸 شکرگزاری روز", callback_data=f"hb_grat:{offset_days}"
+        ),
+        InlineKeyboardButton(
+            text="📝 یادداشت", callback_data=f"hb_notes:{offset_days}"
+        ),
+    ])
+
+    # Privacy Toggle & Navigation Row
     keyboard.append([
         InlineKeyboardButton(
             text="◀️ دیروز", callback_data=f"hb_nav:{offset_days + 1}"
         ),
-        InlineKeyboardButton(
-            text="🔄 امروز", callback_data="hb_nav:0"
-        ),
+        InlineKeyboardButton(text="🔄 امروز", callback_data="hb_nav:0"),
         InlineKeyboardButton(
             text="فردا ▶️", callback_data=f"hb_nav:{offset_days - 1}"
         ),
     ])
 
-    # Utility Row
+    # Utilities Row
     keyboard.append([
         InlineKeyboardButton(
-            text="📅 تاریخ دلخواه", callback_data=f"hb_cdate:{offset_days}"
+            text=stealth_label, callback_data=f"hb_tog_stl:{offset_days}"
         ),
+        InlineKeyboardButton(
+            text="📅 تقویم", callback_data=f"hb_cdate:{offset_days}"
+        ),
+        InlineKeyboardButton(
+            text="🗑️ ریست روز", callback_data=f"hb_ask_reset:{offset_days}"
+        ),
+    ])
+
+    # Refresh & Close
+    keyboard.append([
         InlineKeyboardButton(
             text="🔄 بروزرسانی", callback_data=f"hb_ref:{offset_days}"
         ),
@@ -867,25 +897,21 @@ def build_habit_day_keyboard(
 def get_habit_level_picker_keyboard(
     habit_key: str, offset_days: int
 ) -> InlineKeyboardMarkup:
-    """
-    Submenu displaying the 5 completion levels for a selected habit.
-    """
-    h_info = HABIT_ITEMS.get(habit_key, {"fa": "عادت", "emoji": "🎯"})
-
+    """Submenu for choosing habit completion level."""
     keyboard = [
         [
             InlineKeyboardButton(
-                text="💪 ۱. کامل (۱۰۰٪)",
+                text="💪 ۱. کامل (بونوس / ۱۰۰٪)",
                 callback_data=f"hb_set:{habit_key}:1:{offset_days}",
             )
         ],
         [
             InlineKeyboardButton(
-                text="🏃‍♂️ ۲. نیمه‌کامل",
+                text="🏃‍♂️ ۲. معمول (استاندارد)",
                 callback_data=f"hb_set:{habit_key}:2:{offset_days}",
             ),
             InlineKeyboardButton(
-                text="🐢 ۳. سبک (حداقل)",
+                text="🐢 ۳. سبک (حداقلی)",
                 callback_data=f"hb_set:{habit_key}:3:{offset_days}",
             ),
         ],
@@ -915,10 +941,138 @@ def get_habit_level_picker_keyboard(
     return InlineKeyboardMarkup(inline_keyboard=keyboard)
 
 
+def get_quick_run_keyboard(
+    habit_key: str, offset_days: int
+) -> InlineKeyboardMarkup:
+    """Fast-action keyboard for the Quick-Run Wizard flow."""
+    keyboard = [
+        [
+            InlineKeyboardButton(
+                text="💪 ۱. کامل",
+                callback_data=f"hb_qr_val:{habit_key}:1:{offset_days}",
+            ),
+            InlineKeyboardButton(
+                text="🏃 ۲. معمول",
+                callback_data=f"hb_qr_val:{habit_key}:2:{offset_days}",
+            ),
+            InlineKeyboardButton(
+                text="🐢 ۳. سبک",
+                callback_data=f"hb_qr_val:{habit_key}:3:{offset_days}",
+            ),
+        ],
+        [
+            InlineKeyboardButton(
+                text="❌ ۴. با دلیل",
+                callback_data=f"hb_qr_val:{habit_key}:4:{offset_days}",
+            ),
+            InlineKeyboardButton(
+                text="⛔ ۵. بدون دلیل",
+                callback_data=f"hb_qr_val:{habit_key}:5:{offset_days}",
+            ),
+            InlineKeyboardButton(
+                text="⏭ رد شدن",
+                callback_data=f"hb_qr_skip:{habit_key}:{offset_days}",
+            ),
+        ],
+        [
+            InlineKeyboardButton(
+                text="🔙 انصراف و خروج از ثبت سریع",
+                callback_data=f"hb_back:{offset_days}",
+            )
+        ],
+    ]
+    return InlineKeyboardMarkup(inline_keyboard=keyboard)
+
+
+def get_gratitude_accumulator_keyboard(
+    offset_days: int, has_items: bool = False
+) -> InlineKeyboardMarkup:
+    """Interactive builder keyboard for the Gratitude Journal."""
+    keyboard = [
+        # Domain Tag Pickers (Optional quick helpers)
+        [
+            InlineKeyboardButton(
+                text="👤 سلامتی و جسم",
+                callback_data=f"hb_gr_tag:جسم:{offset_days}",
+            ),
+            InlineKeyboardButton(
+                text="🤝 روابط و دوستان",
+                callback_data=f"hb_gr_tag:روابط:{offset_days}",
+            ),
+        ],
+        [
+            InlineKeyboardButton(
+                text="💼 کار و دستاورد",
+                callback_data=f"hb_gr_tag:کار:{offset_days}",
+            ),
+            InlineKeyboardButton(
+                text="🌍 نعمات روزمره",
+                callback_data=f"hb_gr_tag:نعمات:{offset_days}",
+            ),
+        ],
+        [
+            InlineKeyboardButton(
+                text="🧘 ذهن و آرامش",
+                callback_data=f"hb_gr_tag:آرامش:{offset_days}",
+            ),
+            InlineKeyboardButton(
+                text="✨ اتفاقات خرد",
+                callback_data=f"hb_gr_tag:اتفاقات:{offset_days}",
+            ),
+        ],
+    ]
+
+    action_row = []
+    if has_items:
+        action_row.append(
+            InlineKeyboardButton(
+                text="💾 تایید و ذخیره نهایی",
+                callback_data=f"hb_gr_save:{offset_days}",
+            )
+        )
+        action_row.append(
+            InlineKeyboardButton(
+                text="↩️ حذف آخرین مورد",
+                callback_data=f"hb_gr_pop:{offset_days}",
+            )
+        )
+        keyboard.append(action_row)
+
+    keyboard.append([
+        InlineKeyboardButton(
+            text="🗑 پاک‌کردن کل شکرگزاری",
+            callback_data=f"hb_gr_clr_all:{offset_days}",
+        ),
+        InlineKeyboardButton(
+            text="🔙 بازگشت به کارنامه", callback_data=f"hb_back:{offset_days}"
+        ),
+    ])
+    return InlineKeyboardMarkup(inline_keyboard=keyboard)
+
+
+def get_habit_reset_confirm_keyboard(
+    offset_days: int,
+) -> InlineKeyboardMarkup:
+    """Security confirmation keyboard before resetting habit day."""
+    return InlineKeyboardMarkup(
+        inline_keyboard=[
+            [
+                InlineKeyboardButton(
+                    text="⚠️ بله، کل روز ریست شود",
+                    callback_data=f"hb_do_reset:{offset_days}",
+                ),
+                InlineKeyboardButton(
+                    text="❌ انصراف", callback_data=f"hb_back:{offset_days}"
+                ),
+            ]
+        ]
+    )
+
+
 def get_habit_bulk_fill_confirm_keyboard(
     offset_days: int,
 ) -> InlineKeyboardMarkup:
-    """Confirmation keyboard before marking all 12 habits as Complete."""
+    """Confirmation before marking all habits as Complete."""
     return InlineKeyboardMarkup(
         inline_keyboard=[
             [
@@ -935,7 +1089,7 @@ def get_habit_bulk_fill_confirm_keyboard(
 
 
 def get_habit_notes_keyboard(offset_days: int) -> InlineKeyboardMarkup:
-    """Action keyboard when editing daily notes."""
+    """Action keyboard for editing daily notes."""
     return InlineKeyboardMarkup(
         inline_keyboard=[
             [
