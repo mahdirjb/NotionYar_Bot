@@ -11,6 +11,7 @@ from app.keyboards.reply import BTN_HABITS
 from app.keyboards.inline import (
     build_habit_hub_keyboard,
     build_habit_detailed_keyboard,
+    build_habit_streaks_keyboard,
     get_habit_level_picker_keyboard,
     get_quick_run_keyboard,
     get_gratitude_accumulator_keyboard,
@@ -44,6 +45,7 @@ from app.services.notion_service import (
     update_habit_quran_detail,
     reset_habit_day,
 )
+from app.services.habit_analytics_service import calculate_habit_streaks
 
 router = Router()
 
@@ -86,9 +88,13 @@ def _build_progress_bar(percent_float: float) -> str:
 
 
 def _format_hub_text(
-    page_data: Dict[str, Any], full_jalali: str, rel_label: str, stealth: bool = False
+    page_data: Dict[str, Any],
+    full_jalali: str,
+    rel_label: str,
+    stealth: bool = False,
+    streaks_data: Optional[Dict[str, Any]] = None,
 ) -> str:
-    """Formats clean, decluttered Hub landing message."""
+    """Formats clean Hub landing message with streak integration."""
     pct_int = int(round(max(0.0, min(1.0, float(page_data.get("progress", 0.0)))) * 100))
 
     if stealth:
@@ -107,7 +113,11 @@ def _format_hub_text(
     quran_detail = str(page_data.get("quran_detail", "")).strip()
 
     habits = page_data.get("habits", {})
-    completed_count = sum(1 for v in habits.values() if v in ["1-💪 کامل", "2-🏃‍♂️ نیمه‌کامل", "3-🐢 سبک"])
+    completed_count = sum(
+        1
+        for v in habits.values()
+        if v in ["1-💪 کامل", "2-🏃‍♂️ نیمه‌کامل", "3-🐢 سبک"]
+    )
 
     lines = [
         "🎯 <b>هاب مدیریت عادات روزانه</b>",
@@ -115,8 +125,15 @@ def _format_hub_text(
         "",
         f"📊 <b>پیشرفت:</b> {prog_bar} ({completed_count} از ۱۲ عادت)",
         f"📣 <b>وضعیت:</b> <i>{cheerleader}</i>",
-        "━━━━━━━━━━━━━━━━━━━━━━",
     ]
+
+    if streaks_data:
+        ov = streaks_data.get("overall", {})
+        c_ov = ov.get("current", 0)
+        b_ov = ov.get("best", 0)
+        lines.append(f"🔥 <b>زنجیره پیوستگی:</b> <b>{c_ov} روز متوالی</b> (رکورد: {b_ov} روز)")
+
+    lines.append("━━━━━━━━━━━━━━━━━━━━━━")
 
     if quran_detail:
         lines.append(f"📖 <b>قرآن:</b> <code>{quran_detail}</code> ✨")
@@ -127,7 +144,11 @@ def _format_hub_text(
         lines.append("🌸 <b>شکرگزاری روز:</b> <i>(ثبت نشده ▫️)</i>")
 
     if notes:
-        lines.append(f"📝 <b>یادداشت روز:</b> <i>«{notes[:35]}...»</i>" if len(notes) > 35 else f"📝 <b>یادداشت روز:</b> <i>«{notes}»</i>")
+        lines.append(
+            f"📝 <b>یادداشت روز:</b> <i>«{notes[:35]}...»</i>"
+            if len(notes) > 35
+            else f"📝 <b>یادداشت روز:</b> <i>«{notes}»</i>"
+        )
     else:
         lines.append("📝 <b>یادداشت روز:</b> <i>(ثبت نشده ▫️)</i>")
 
@@ -138,12 +159,17 @@ def _format_hub_text(
 
 
 def _format_detailed_text(
-    page_data: Dict[str, Any], full_jalali: str, rel_label: str, stealth: bool = False
+    page_data: Dict[str, Any],
+    full_jalali: str,
+    rel_label: str,
+    stealth: bool = False,
+    streaks_data: Optional[Dict[str, Any]] = None,
 ) -> str:
-    """Formats the 12-habit detailed overview text."""
+    """Formats the 12-habit detailed overview text with individual streak badges."""
     pct_int = int(round(max(0.0, min(1.0, float(page_data.get("progress", 0.0)))) * 100))
     habits: Dict[str, Optional[str]] = page_data.get("habits", {})
     quran_detail = str(page_data.get("quran_detail", "")).strip()
+    h_streaks = streaks_data.get("habit_streaks", {}) if streaks_data else {}
 
     if stealth:
         lines = [
@@ -184,12 +210,57 @@ def _format_detailed_text(
             h_info = HABIT_ITEMS[k]
             val = habits.get(k)
             badge = LEVEL_BADGES.get(val or "", "▫️ ثبت‌نشده")
+            streak_num = h_streaks.get(k, {}).get("current", 0)
+            streak_badge = f" 🔥 <code>{streak_num}d</code>" if streak_num > 0 else ""
             extra = f" (<code>{quran_detail}</code>)" if k == "rq" and quran_detail else ""
-            lines.append(f"  {h_info['emoji']} {h_info['fa']}: <b>{badge}</b>{extra}")
+            lines.append(f"  {h_info['emoji']} {h_info['fa']}: <b>{badge}</b>{streak_badge}{extra}")
         lines.append("")
 
     lines.append("━━━━━━━━━━━━━━━━━━━━━━")
     lines.append("👆 روی هر عادت بزنید تا وضعیت و سطوح آن را تنظیم کنید:")
+    return "\n".join(lines)
+
+
+def _format_streaks_dashboard_text(
+    streaks_data: Dict[str, Any], full_jalali: str
+) -> str:
+    """Formats full leaderboard dashboard of Habit Streaks and historical records."""
+    ov = streaks_data.get("overall", {})
+    h_streaks = streaks_data.get("habit_streaks", {})
+    total_days = streaks_data.get("total_days_analyzed", 0)
+
+    lines = [
+        "🔥 <b>داشبورد تداوم و رکوردهای تاریخی</b>",
+        f"📅 <code>{full_jalali}</code>",
+        f"📈 <i>تحلیل بر پایه {total_days} روز ثبت‌شده در نوشن</i>",
+        "━━━━━━━━━━━━━━━━━━━━━━",
+        f"🏆 <b>تداوم روزانه کل (پیشرفت بالای ۵۰٪):</b>",
+        f"  ⚡ زنجیره فعال فعلی: <b>{ov.get('current', 0)} روز متوالی</b>",
+        f"  👑 بیشترین رکورد تاریخی: <b>{ov.get('best', 0)} روز</b>",
+        "━━━━━━━━━━━━━━━━━━━━━━",
+        "📊 <b>وضعیت زنجیره ۱۲ عادت هدف:</b>\n",
+    ]
+
+    # Sort habits by current streak descending
+    sorted_habits = sorted(
+        HABIT_ITEMS.items(),
+        key=lambda item: (h_streaks.get(item[0], {}).get("current", 0), h_streaks.get(item[0], {}).get("best", 0)),
+        reverse=True,
+    )
+
+    for h_key, h_info in sorted_habits:
+        s_info = h_streaks.get(h_key, {"current": 0, "best": 0})
+        cur = s_info["current"]
+        best = s_info["best"]
+
+        flame = "🔥" if cur >= 7 else ("✨" if cur > 0 else "▫️")
+        lines.append(
+            f"{flame} <b>{h_info['emoji']} {h_info['fa']}</b>:\n"
+            f"   └ 🏃 فعلی: <b>{cur} روز</b> | 👑 بهترین: <b>{best} روز</b>"
+        )
+
+    lines.append("━━━━━━━━━━━━━━━━━━━━━━")
+    lines.append("💡 <i>استمرار حتی در سطح ۳ (سبک)، زنجیره شما را زنده نگه می‌دارد!</i>")
     return "\n".join(lines)
 
 
@@ -203,12 +274,13 @@ def _format_detailed_text(
 async def cmd_habits_dashboard(message: Message, state: FSMContext, bot: Bot) -> None:
     """Main landing handler: Opens clean Habit Hub."""
     await state.clear()
-    wait_msg = await message.answer("🔄 در حال بارگذاری هاب عادات...")
+    wait_msg = await message.answer("🔄 در حال بارگذاری هاب عادات و محاسبه تداوم...")
 
     g_iso, full_jalali, rel_label = _calculate_date_from_offset(0)
     page_data = get_or_create_habit_day(g_iso, day_title=full_jalali)
+    streaks_data = calculate_habit_streaks()
 
-    text = _format_hub_text(page_data, full_jalali, rel_label, stealth=False)
+    text = _format_hub_text(page_data, full_jalali, rel_label, stealth=False, streaks_data=streaks_data)
     kb = build_habit_hub_keyboard(offset_days=0, stealth_mode=False)
 
     await wait_msg.edit_text(text, reply_markup=kb, parse_mode="HTML")
@@ -228,15 +300,41 @@ async def cb_refresh_habits(call: CallbackQuery, state: FSMContext) -> None:
 
     g_iso, full_jalali, rel_label = _calculate_date_from_offset(offset_days)
     page_data = get_or_create_habit_day(g_iso, day_title=full_jalali)
+    streaks_data = calculate_habit_streaks()
 
-    text = _format_hub_text(page_data, full_jalali, rel_label, stealth=stealth)
+    text = _format_hub_text(page_data, full_jalali, rel_label, stealth=stealth, streaks_data=streaks_data)
     kb = build_habit_hub_keyboard(offset_days=offset_days, stealth_mode=stealth)
 
     try:
         await call.message.edit_text(text, reply_markup=kb, parse_mode="HTML")
-        await call.answer("🔄 کارنامه به‌روزرسانی شد.")
+        await call.answer("🔄 کارنامه و تداوم به‌روزرسانی شدند.")
     except Exception:
         await call.answer("اطلاعات از قبل به‌روز است.")
+
+
+# ==========================================
+# 🔥 STREAKS & CONSISTENCY LEADERBOARD
+# ==========================================
+
+
+@router.callback_query(F.data.startswith("hb_streaks:"), HasPermission(PERM_ADMIN))
+async def cb_view_streaks(call: CallbackQuery, state: FSMContext) -> None:
+    """Opens dedicated Streaks & Records Dashboard."""
+    if not call.data or not isinstance(call.message, Message):
+        await call.answer()
+        return
+
+    parts = call.data.split(":")
+    offset_days = int(parts[1]) if len(parts) > 1 else 0
+
+    _, full_jalali, _ = _calculate_date_from_offset(offset_days)
+    streaks_data = calculate_habit_streaks()
+
+    text = _format_streaks_dashboard_text(streaks_data, full_jalali)
+    kb = build_habit_streaks_keyboard(offset_days=offset_days)
+
+    await call.message.edit_text(text, reply_markup=kb, parse_mode="HTML")
+    await call.answer()
 
 
 # ==========================================
@@ -258,8 +356,9 @@ async def cb_view_detailed(call: CallbackQuery, state: FSMContext) -> None:
 
     g_iso, full_jalali, rel_label = _calculate_date_from_offset(offset_days)
     page_data = get_or_create_habit_day(g_iso, day_title=full_jalali)
+    streaks_data = calculate_habit_streaks()
 
-    text = _format_detailed_text(page_data, full_jalali, rel_label, stealth=stealth)
+    text = _format_detailed_text(page_data, full_jalali, rel_label, stealth=stealth, streaks_data=streaks_data)
     kb = build_habit_detailed_keyboard(
         page_data.get("habits", {}), offset_days=offset_days, stealth_mode=stealth
     )
@@ -281,8 +380,9 @@ async def cb_view_hub(call: CallbackQuery, state: FSMContext) -> None:
 
     g_iso, full_jalali, rel_label = _calculate_date_from_offset(offset_days)
     page_data = get_or_create_habit_day(g_iso, day_title=full_jalali)
+    streaks_data = calculate_habit_streaks()
 
-    text = _format_hub_text(page_data, full_jalali, rel_label, stealth=stealth)
+    text = _format_hub_text(page_data, full_jalali, rel_label, stealth=stealth, streaks_data=streaks_data)
     kb = build_habit_hub_keyboard(offset_days=offset_days, stealth_mode=stealth)
     await call.message.edit_text(text, reply_markup=kb, parse_mode="HTML")
     await call.answer()
@@ -305,8 +405,9 @@ async def cb_back_to_hub(call: CallbackQuery, state: FSMContext) -> None:
 
     g_iso, full_jalali, rel_label = _calculate_date_from_offset(offset_days)
     page_data = get_or_create_habit_day(g_iso, day_title=full_jalali)
+    streaks_data = calculate_habit_streaks()
 
-    text = _format_hub_text(page_data, full_jalali, rel_label, stealth=stealth)
+    text = _format_hub_text(page_data, full_jalali, rel_label, stealth=stealth, streaks_data=streaks_data)
     kb = build_habit_hub_keyboard(offset_days=offset_days, stealth_mode=stealth)
 
     await call.message.edit_text(text, reply_markup=kb, parse_mode="HTML")
@@ -334,8 +435,9 @@ async def cb_toggle_stealth(call: CallbackQuery, state: FSMContext) -> None:
 
     g_iso, full_jalali, rel_label = _calculate_date_from_offset(offset_days)
     page_data = get_or_create_habit_day(g_iso, day_title=full_jalali)
+    streaks_data = calculate_habit_streaks()
 
-    text = _format_hub_text(page_data, full_jalali, rel_label, stealth=stealth)
+    text = _format_hub_text(page_data, full_jalali, rel_label, stealth=stealth, streaks_data=streaks_data)
     kb = build_habit_hub_keyboard(offset_days=offset_days, stealth_mode=stealth)
 
     await call.message.edit_text(text, reply_markup=kb, parse_mode="HTML")
@@ -357,8 +459,9 @@ async def cb_navigate_days(call: CallbackQuery, state: FSMContext) -> None:
 
     g_iso, full_jalali, rel_label = _calculate_date_from_offset(offset_days)
     page_data = get_or_create_habit_day(g_iso, day_title=full_jalali)
+    streaks_data = calculate_habit_streaks()
 
-    text = _format_hub_text(page_data, full_jalali, rel_label, stealth=stealth)
+    text = _format_hub_text(page_data, full_jalali, rel_label, stealth=stealth, streaks_data=streaks_data)
     kb = build_habit_hub_keyboard(offset_days=offset_days, stealth_mode=stealth)
 
     await call.message.edit_text(text, reply_markup=kb, parse_mode="HTML")
@@ -501,8 +604,9 @@ async def cb_quick_run_step(call: CallbackQuery, state: FSMContext) -> None:
 
         g_iso, full_jalali, rel_label = _calculate_date_from_offset(offset_days)
         updated_page = get_or_create_habit_day(g_iso, day_title=full_jalali)
+        streaks_data = calculate_habit_streaks()
 
-        text = _format_hub_text(updated_page, full_jalali, rel_label, stealth=stealth)
+        text = _format_hub_text(updated_page, full_jalali, rel_label, stealth=stealth, streaks_data=streaks_data)
         kb = build_habit_hub_keyboard(offset_days=offset_days, stealth_mode=stealth)
 
         await call.message.edit_text(text, reply_markup=kb, parse_mode="HTML")
@@ -585,7 +689,9 @@ async def cb_set_habit_level(call: CallbackQuery, state: FSMContext) -> None:
     update_habit_entry(page_data["id"], h_info["prop"], select_val)
 
     updated_page = get_or_create_habit_day(g_iso, day_title=full_jalali)
-    text = _format_detailed_text(updated_page, full_jalali, rel_label, stealth=stealth)
+    streaks_data = calculate_habit_streaks()
+
+    text = _format_detailed_text(updated_page, full_jalali, rel_label, stealth=stealth, streaks_data=streaks_data)
     kb = build_habit_detailed_keyboard(
         updated_page.get("habits", {}),
         offset_days=offset_days,
@@ -650,7 +756,9 @@ async def cb_clear_quran_detail(call: CallbackQuery, state: FSMContext) -> None:
     update_habit_quran_detail(page_data["id"], "")
 
     updated_page = get_or_create_habit_day(g_iso, day_title=full_jalali)
-    text = _format_detailed_text(updated_page, full_jalali, rel_label, stealth=stealth)
+    streaks_data = calculate_habit_streaks()
+
+    text = _format_detailed_text(updated_page, full_jalali, rel_label, stealth=stealth, streaks_data=streaks_data)
     kb = build_habit_detailed_keyboard(
         updated_page.get("habits", {}),
         offset_days=offset_days,
@@ -689,8 +797,9 @@ async def msg_receive_quran_detail(
 
     g_iso, full_jalali, rel_label = _calculate_date_from_offset(offset_days)
     updated_page = get_or_create_habit_day(g_iso, day_title=full_jalali)
+    streaks_data = calculate_habit_streaks()
 
-    text = _format_detailed_text(updated_page, full_jalali, rel_label, stealth=stealth)
+    text = _format_detailed_text(updated_page, full_jalali, rel_label, stealth=stealth, streaks_data=streaks_data)
     kb = build_habit_detailed_keyboard(
         updated_page.get("habits", {}),
         offset_days=offset_days,
@@ -1145,8 +1254,9 @@ async def cb_clear_all_gratitude(
 
     g_iso, full_jalali, rel_label = _calculate_date_from_offset(offset_days)
     updated_page = get_or_create_habit_day(g_iso, day_title=full_jalali)
+    streaks_data = calculate_habit_streaks()
 
-    text = _format_hub_text(updated_page, full_jalali, rel_label, stealth=stealth)
+    text = _format_hub_text(updated_page, full_jalali, rel_label, stealth=stealth, streaks_data=streaks_data)
     kb = build_habit_hub_keyboard(offset_days=offset_days, stealth_mode=stealth)
 
     await call.message.edit_text(text, reply_markup=kb, parse_mode="HTML")
@@ -1198,7 +1308,9 @@ async def cb_do_bulk_fill(call: CallbackQuery, state: FSMContext) -> None:
     bulk_update_all_habits(page_data["id"], "2-🏃‍♂️ نیمه‌کامل")
 
     updated_page = get_or_create_habit_day(g_iso, day_title=full_jalali)
-    text = _format_hub_text(updated_page, full_jalali, rel_label, stealth=stealth)
+    streaks_data = calculate_habit_streaks()
+
+    text = _format_hub_text(updated_page, full_jalali, rel_label, stealth=stealth, streaks_data=streaks_data)
     kb = build_habit_hub_keyboard(offset_days=offset_days, stealth_mode=stealth)
 
     await call.message.edit_text(text, reply_markup=kb, parse_mode="HTML")
@@ -1245,7 +1357,9 @@ async def cb_do_reset(call: CallbackQuery, state: FSMContext) -> None:
     reset_habit_day(page_data["id"])
 
     updated_page = get_or_create_habit_day(g_iso, day_title=full_jalali)
-    text = _format_hub_text(updated_page, full_jalali, rel_label, stealth=stealth)
+    streaks_data = calculate_habit_streaks()
+
+    text = _format_hub_text(updated_page, full_jalali, rel_label, stealth=stealth, streaks_data=streaks_data)
     kb = build_habit_hub_keyboard(offset_days=offset_days, stealth_mode=stealth)
 
     await call.message.edit_text(text, reply_markup=kb, parse_mode="HTML")
@@ -1308,7 +1422,9 @@ async def cb_clear_notes(call: CallbackQuery, state: FSMContext) -> None:
     update_habit_notes(page_data["id"], "")
 
     updated_page = get_or_create_habit_day(g_iso, day_title=full_jalali)
-    text = _format_hub_text(updated_page, full_jalali, rel_label, stealth=stealth)
+    streaks_data = calculate_habit_streaks()
+
+    text = _format_hub_text(updated_page, full_jalali, rel_label, stealth=stealth, streaks_data=streaks_data)
     kb = build_habit_hub_keyboard(offset_days=offset_days, stealth_mode=stealth)
 
     await call.message.edit_text(text, reply_markup=kb, parse_mode="HTML")
@@ -1343,8 +1459,9 @@ async def msg_receive_notes(
 
     g_iso, full_jalali, rel_label = _calculate_date_from_offset(offset_days)
     updated_page = get_or_create_habit_day(g_iso, day_title=full_jalali)
+    streaks_data = calculate_habit_streaks()
 
-    text = _format_hub_text(updated_page, full_jalali, rel_label, stealth=stealth)
+    text = _format_hub_text(updated_page, full_jalali, rel_label, stealth=stealth, streaks_data=streaks_data)
     kb = build_habit_hub_keyboard(offset_days=offset_days, stealth_mode=stealth)
 
     if dash_msg_id:
@@ -1428,8 +1545,9 @@ async def msg_receive_custom_date(
 
     g_iso, full_jalali, rel_label = _calculate_date_from_offset(offset_days)
     page_data = get_or_create_habit_day(g_iso, day_title=full_jalali)
+    streaks_data = calculate_habit_streaks()
 
-    text = _format_hub_text(page_data, full_jalali, rel_label, stealth=stealth)
+    text = _format_hub_text(page_data, full_jalali, rel_label, stealth=stealth, streaks_data=streaks_data)
     kb = build_habit_hub_keyboard(offset_days=offset_days, stealth_mode=stealth)
 
     if dash_msg_id:

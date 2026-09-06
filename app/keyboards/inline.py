@@ -803,7 +803,7 @@ def build_habit_hub_keyboard(
     offset_days: int,
     stealth_mode: bool = False,
 ) -> InlineKeyboardMarkup:
-    """Clean, decluttered Hub landing keyboard with 3 primary logging entry modes."""
+    """Clean, decluttered Hub landing keyboard with Streaks and primary logging entry modes."""
     keyboard = [
         # Primary Action 1: Standard Fill
         [
@@ -823,15 +823,26 @@ def build_habit_hub_keyboard(
                 callback_data=f"hb_view_det:{offset_days}",
             ),
         ],
-        # Journals Row
+        # Analytics & Streaks Row
         [
+            InlineKeyboardButton(
+                text="🔥 تداوم و رکوردها (Streaks)",
+                callback_data=f"hb_streaks:{offset_days}",
+            ),
             InlineKeyboardButton(
                 text="🌸 دفترچه شکرگزاری",
                 callback_data=f"hb_grat:{offset_days}",
             ),
+        ],
+        # Journals & Notes Row
+        [
             InlineKeyboardButton(
                 text="📝 یادداشت روز",
                 callback_data=f"hb_notes:{offset_days}",
+            ),
+            InlineKeyboardButton(
+                text="📅 تقویم",
+                callback_data=f"hb_cdate:{offset_days}",
             ),
         ],
         # Navigation Row
@@ -851,9 +862,6 @@ def build_habit_hub_keyboard(
                 callback_data=f"hb_tog_stl:{offset_days}",
             ),
             InlineKeyboardButton(
-                text="📅 تقویم", callback_data=f"hb_cdate:{offset_days}"
-            ),
-            InlineKeyboardButton(
                 text="🗑️ ریست روز",
                 callback_data=f"hb_ask_reset:{offset_days}",
             ),
@@ -867,7 +875,6 @@ def build_habit_hub_keyboard(
         ],
     ]
     return InlineKeyboardMarkup(inline_keyboard=keyboard)
-
 
 def build_habit_detailed_keyboard(
     habits_data: Dict[str, Optional[str]],
@@ -1310,5 +1317,24 @@ def get_habit_custom_date_cancel_keyboard(
                     callback_data=f"hb_back:{offset_days}",
                 )
             ]
+        ]
+    )
+
+def build_habit_streaks_keyboard(offset_days: int) -> InlineKeyboardMarkup:
+    """Keyboard for Streaks & Consistency Leaderboard."""
+    return InlineKeyboardMarkup(
+        inline_keyboard=[
+            [
+                InlineKeyboardButton(
+                    text="🔄 بروزرسانی آمار",
+                    callback_data=f"hb_streaks:{offset_days}",
+                )
+            ],
+            [
+                InlineKeyboardButton(
+                    text="🔙 بازگشت به هاب عادات",
+                    callback_data=f"hb_back:{offset_days}",
+                )
+            ],
         ]
     )

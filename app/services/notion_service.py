@@ -620,7 +620,7 @@ HABIT_DESCRIPTIONS: Dict[str, Dict[str, str]] = {
         "v3": "فقط سوره عادیات یا هر سوره راحت‌تر"
     },
     "sl": {
-        "v1": "سلام و احوال‌پرسی پرانرژی روزانه",
+        "v1": "سلام به اهل بیت (علیهم‌السلام)",
         "v2": "سلام معمولی",
         "v3": "پاسخ دادن به سلام"
     },
@@ -913,3 +913,26 @@ def reset_habit_day(page_id: str) -> bool:
     except Exception as e:
         print(f"Error resetting habit day: {e}")
         return False
+    
+def query_habit_history(limit_count: int = 60) -> List[Dict[str, Any]]:
+    """
+    Fetches recent historical habit days sorted descending by Date_ for analytics & streaks.
+    """
+    if not NOTION_DBID_HABITS:
+        raise ValueError("NOTION_DBID_HABITS is not defined in environment variables.")
+
+    ds_id = get_habits_data_source_id()
+    kwargs: Dict[str, Any] = {
+        "page_size": min(100, max(1, limit_count)),
+        "sorts": [{"property": "Date_", "direction": "descending"}],
+    }
+
+    if hasattr(notion, "data_sources") and hasattr(notion.data_sources, "query"):
+        kwargs["data_source_id"] = ds_id
+        query_res = notion.data_sources.query(**kwargs)
+    else:
+        kwargs["database_id"] = NOTION_DBID_HABITS
+        query_res = notion.databases.query(**kwargs)  # type: ignore
+
+    results = query_res.get("results", []) if isinstance(query_res, dict) else []
+    return [parse_habit_page(page) for page in results]
