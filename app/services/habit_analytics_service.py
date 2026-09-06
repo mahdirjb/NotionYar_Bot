@@ -2,6 +2,7 @@
 
 from datetime import datetime, date, timedelta, timezone
 from typing import Dict, Any, List, Optional
+import jdatetime
 from app.services.notion_service import (
     HABIT_ITEMS,
     query_habit_history,
@@ -30,7 +31,6 @@ def calculate_habit_streaks(
 
     today = _get_tehran_today()
 
-    # Map dates to habit records: {date_obj: page_dict}
     records_by_date: Dict[date, Dict[str, Any]] = {}
     for page in history_pages:
         raw_date = page.get("date_iso")
@@ -42,17 +42,13 @@ def calculate_habit_streaks(
         except Exception:
             continue
 
-    # -------------------------------------------------------------
-    # 1. Calculate Habit-by-Habit Streaks (Current & Best)
-    # -------------------------------------------------------------
+    # 1. Calculate Habit-by-Habit Streaks
     habit_streaks: Dict[str, Dict[str, int]] = {}
 
     for h_key in HABIT_ITEMS.keys():
-        # --- Current Streak Calculation ---
         current_streak = 0
         check_date = today
 
-        # Check if today is logged and valid
         today_record = records_by_date.get(today)
         today_val = today_record.get("habits", {}).get(h_key) if today_record else None
 
@@ -60,7 +56,6 @@ def calculate_habit_streaks(
             current_streak = 1
             check_date = today - timedelta(days=1)
         else:
-            # If today is not done yet, check if yesterday was done (active streak)
             yesterday = today - timedelta(days=1)
             yest_record = records_by_date.get(yesterday)
             yest_val = yest_record.get("habits", {}).get(h_key) if yest_record else None
@@ -83,7 +78,6 @@ def calculate_habit_streaks(
                 else:
                     break
 
-        # --- Best Streak Calculation Across History ---
         sorted_dates = sorted(records_by_date.keys())
         best_streak = 0
         temp_streak = 0
@@ -105,7 +99,6 @@ def calculate_habit_streaks(
                 temp_streak = 0
                 last_date = None
 
-        # Best streak cannot be less than current streak
         best_streak = max(best_streak, current_streak)
 
         habit_streaks[h_key] = {
@@ -113,9 +106,7 @@ def calculate_habit_streaks(
             "best": best_streak,
         }
 
-    # -------------------------------------------------------------
-    # 2. Overall Day Streaks (Days with Progress >= 50%)
-    # -------------------------------------------------------------
+    # 2. Overall Day Streaks
     overall_current = 0
     today_rec = records_by_date.get(today)
     today_prog = float(today_rec.get("progress", 0.0)) if today_rec else 0.0
@@ -174,4 +165,157 @@ def calculate_habit_streaks(
             "best": overall_best,
         },
         "total_days_analyzed": len(records_by_date),
+    }
+
+
+def calculate_consistency_matrix(
+    period_key: str = "7d",
+    history_pages: Optional[List[Dict[str, Any]]] = None,
+) -> Dict[str, Any]:
+    """
+    Calculates detailed quality breakdown, habit ranking, and timeline for a given period.
+    Supported period_key:
+    - '7d': Last 7 days
+    - 'month': Current Jalali Month
+    - '30d': Last 30 days
+    """
+    if history_pages is None:
+        history_pages = query_habit_history(limit_count=100)
+
+    today = _get_tehran_today()
+    j_today = jdatetime.date.fromgregorian(date=today)
+
+    # Determine start date and period label
+    if period_key == "month":
+        j_start = jdatetime.date(j_today.year, j_today.month, 1)
+        start_date = j_start.togregorian()
+        period_label = f"ماه جاری ({j_today.strftime('%B %Y')})"
+        days_in_period = (today - start_date).days + 1
+    elif period_key == "30d":
+        start_date = today - timedelta(days=29)
+        period_label = "۳۰ روز اخیر"
+        days_in_period = 30
+    else:  # Default to '7d'
+        period_key = "7d"
+        start_date = today - timedelta(days=6)
+        period_label = "۷ روز اخیر"
+        days_in_period = 7
+
+    # Filter and index pages within period
+    records_by_date: Dict[date, Dict[str, Any]] = {}
+    for page in history_pages:
+        raw_date = page.get("date_iso")
+        if not raw_date:
+            continue
+        try:
+            d_obj = date.fromisoformat(raw_date)
+            if start_date <= d_obj <= today:
+                records_by_date[d_obj] = page
+        except Exception:
+            continue
+
+    total_possible_checks = days_in_period * len(HABIT_ITEMS)
+    quality_counts = {
+        "v1": 0,  # 1-💪 کامل
+        "v2": 0,  # 2-🏃‍♂️ نیمه‌کامل
+        "v3": 0,  # 3-🐢 سبک
+        "v4": 0,  # 4-❌ با دلیل
+        "v5": 0,  # 5-⛔ بدون دلیل
+        "none": 0,  # ثبت‌نشده
+    }
+
+    per_habit_counts: Dict[str, Dict[str, int]] = {
+        h: {"completed": 0, "v1": 0, "v2": 0, "v3": 0, "v4": 0, "v5": 0, "none": 0}
+        for h in HABIT_ITEMS.keys()
+    }
+
+    daily_timeline: List[Dict[str, Any]] = []
+
+    # Iterate day by day in range
+    cur_date = start_date
+    while cur_date <= today:
+        page = records_by_date.get(cur_date)
+        j_cur = jdatetime.date.fromgregorian(date=cur_date)
+        day_prog = float(page.get("progress", 0.0)) if page else 0.0
+
+        daily_timeline.append({
+            "date_iso": cur_date.isoformat(),
+            "jalali_str": j_cur.strftime("%m/%d"),
+            "weekday": j_cur.strftime("%a"),
+            "progress": day_prog,
+            "has_data": page is not None,
+        })
+
+        if page:
+            habits_data = page.get("habits", {})
+            for h_key in HABIT_ITEMS.keys():
+                val = habits_data.get(h_key)
+                if val == "1-💪 کامل":
+                    quality_counts["v1"] += 1
+                    per_habit_counts[h_key]["v1"] += 1
+                    per_habit_counts[h_key]["completed"] += 1
+                elif val == "2-🏃‍♂️ نیمه‌کامل":
+                    quality_counts["v2"] += 1
+                    per_habit_counts[h_key]["v2"] += 1
+                    per_habit_counts[h_key]["completed"] += 1
+                elif val == "3-🐢 سبک":
+                    quality_counts["v3"] += 1
+                    per_habit_counts[h_key]["v3"] += 1
+                    per_habit_counts[h_key]["completed"] += 1
+                elif val == "4-❌ با دلیل":
+                    quality_counts["v4"] += 1
+                    per_habit_counts[h_key]["v4"] += 1
+                elif val == "5-⛔ بدون دلیل":
+                    quality_counts["v5"] += 1
+                    per_habit_counts[h_key]["v5"] += 1
+                else:
+                    quality_counts["none"] += 1
+                    per_habit_counts[h_key]["none"] += 1
+        else:
+            for h_key in HABIT_ITEMS.keys():
+                quality_counts["none"] += 1
+                per_habit_counts[h_key]["none"] += 1
+
+        cur_date += timedelta(days=1)
+
+    total_completed = (
+        quality_counts["v1"] + quality_counts["v2"] + quality_counts["v3"]
+    )
+    overall_consistency_pct = (
+        (total_completed / total_possible_checks) * 100
+        if total_possible_checks > 0
+        else 0.0
+    )
+
+    # Habit consistency ranking
+    habit_rankings: List[Dict[str, Any]] = []
+    for h_key, h_info in HABIT_ITEMS.items():
+        comp = per_habit_counts[h_key]["completed"]
+        pct = (comp / days_in_period) * 100 if days_in_period > 0 else 0.0
+        habit_rankings.append({
+            "key": h_key,
+            "info": h_info,
+            "completed_days": comp,
+            "pct": pct,
+            "breakdown": per_habit_counts[h_key],
+        })
+
+    habit_rankings.sort(key=lambda x: x["pct"], reverse=True)
+
+    top_habit = habit_rankings[0] if habit_rankings else None
+    bottom_habit = habit_rankings[-1] if habit_rankings else None
+
+    return {
+        "period_key": period_key,
+        "period_label": period_label,
+        "days_in_period": days_in_period,
+        "logged_days_count": len(records_by_date),
+        "overall_consistency_pct": overall_consistency_pct,
+        "total_completed": total_completed,
+        "total_possible": total_possible_checks,
+        "quality_counts": quality_counts,
+        "habit_rankings": habit_rankings,
+        "top_habit": top_habit,
+        "bottom_habit": bottom_habit,
+        "daily_timeline": daily_timeline,
     }

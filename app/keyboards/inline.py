@@ -803,7 +803,7 @@ def build_habit_hub_keyboard(
     offset_days: int,
     stealth_mode: bool = False,
 ) -> InlineKeyboardMarkup:
-    """Clean, decluttered Hub landing keyboard with Streaks and primary logging entry modes."""
+    """Clean, decluttered Hub landing keyboard with Streaks and Matrix analytics."""
     keyboard = [
         # Primary Action 1: Standard Fill
         [
@@ -823,26 +823,26 @@ def build_habit_hub_keyboard(
                 callback_data=f"hb_view_det:{offset_days}",
             ),
         ],
-        # Analytics & Streaks Row
+        # Analytics & Matrix Row
         [
             InlineKeyboardButton(
-                text="🔥 تداوم و رکوردها (Streaks)",
+                text="🔥 تداوم و رکوردها",
                 callback_data=f"hb_streaks:{offset_days}",
             ),
             InlineKeyboardButton(
-                text="🌸 دفترچه شکرگزاری",
-                callback_data=f"hb_grat:{offset_days}",
+                text="📊 ماتریس پایبندی",
+                callback_data=f"hb_mat:7d:{offset_days}",
             ),
         ],
         # Journals & Notes Row
         [
             InlineKeyboardButton(
-                text="📝 یادداشت روز",
-                callback_data=f"hb_notes:{offset_days}",
+                text="🌸 دفترچه شکرگزاری",
+                callback_data=f"hb_grat:{offset_days}",
             ),
             InlineKeyboardButton(
-                text="📅 تقویم",
-                callback_data=f"hb_cdate:{offset_days}",
+                text="📝 یادداشت روز",
+                callback_data=f"hb_notes:{offset_days}",
             ),
         ],
         # Navigation Row
@@ -860,6 +860,9 @@ def build_habit_hub_keyboard(
             InlineKeyboardButton(
                 text="🕶️ مخفی: روشن" if stealth_mode else "🕶️ مخفی: خاموش",
                 callback_data=f"hb_tog_stl:{offset_days}",
+            ),
+            InlineKeyboardButton(
+                text="📅 تقویم", callback_data=f"hb_cdate:{offset_days}"
             ),
             InlineKeyboardButton(
                 text="🗑️ ریست روز",
@@ -1328,6 +1331,43 @@ def build_habit_streaks_keyboard(offset_days: int) -> InlineKeyboardMarkup:
                 InlineKeyboardButton(
                     text="🔄 بروزرسانی آمار",
                     callback_data=f"hb_streaks:{offset_days}",
+                )
+            ],
+            [
+                InlineKeyboardButton(
+                    text="🔙 بازگشت به هاب عادات",
+                    callback_data=f"hb_back:{offset_days}",
+                )
+            ],
+        ]
+    )
+
+
+def build_habit_matrix_keyboard(
+    period_key: str, offset_days: int
+) -> InlineKeyboardMarkup:
+    """Keyboard for switching Consistency Matrix time ranges."""
+    btn_7d = ("✅ " if period_key == "7d" else "") + "🗓 ۷ روز اخیر"
+    btn_month = ("✅ " if period_key == "month" else "") + "🌙 ماه جاری"
+    btn_30d = ("✅ " if period_key == "30d" else "") + "🗓 ۳۰ روز اخیر"
+
+    return InlineKeyboardMarkup(
+        inline_keyboard=[
+            [
+                InlineKeyboardButton(
+                    text=btn_7d, callback_data=f"hb_mat:7d:{offset_days}"
+                ),
+                InlineKeyboardButton(
+                    text=btn_month, callback_data=f"hb_mat:month:{offset_days}"
+                ),
+                InlineKeyboardButton(
+                    text=btn_30d, callback_data=f"hb_mat:30d:{offset_days}"
+                ),
+            ],
+            [
+                InlineKeyboardButton(
+                    text="🔄 بروزرسانی تحلیل",
+                    callback_data=f"hb_mat:{period_key}:{offset_days}",
                 )
             ],
             [

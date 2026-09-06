@@ -12,6 +12,7 @@ from app.keyboards.inline import (
     build_habit_hub_keyboard,
     build_habit_detailed_keyboard,
     build_habit_streaks_keyboard,
+    build_habit_matrix_keyboard,
     get_habit_level_picker_keyboard,
     get_quick_run_keyboard,
     get_gratitude_accumulator_keyboard,
@@ -1578,3 +1579,74 @@ async def cb_close_habits(call: CallbackQuery, state: FSMContext) -> None:
         await call.message.delete()
     except Exception:
         pass
+    
+def _format_matrix_dashboard_text(
+    matrix_data: Dict[str, Any], full_jalali: str
+) -> str:
+    """Formats the comprehensive Consistency Matrix & Analytics text."""
+    p_label = matrix_data["period_label"]
+    overall_pct = matrix_data["overall_consistency_pct"]
+    prog_bar = _build_progress_bar(overall_pct / 100.0)
+    q = matrix_data["quality_counts"]
+    total_checks = matrix_data["total_possible"] or 1
+
+    lines = [
+        "📊 <b>ماتریس و داشبورد تحلیل پایبندی</b>",
+        f"📅 <code>{full_jalali}</code>",
+        f"⏱ <b>بازه تحلیلی:</b> <code>{p_label}</code> ({matrix_data['days_in_period']} روز)",
+        "━━━━━━━━━━━━━━━━━━━━━━",
+        f"📈 <b>پایبندی کلی دوره:</b> {prog_bar}",
+        f"📝 روزهای ثبت‌شده: <b>{matrix_data['logged_days_count']} از {matrix_data['days_in_period']} روز</b>",
+        "━━━━━━━━━━━━━━━━━━━━━━",
+        "🎨 <b>تفکیک کیفیت اجرای عادات:</b>",
+        f"  💪 کامل (بونوس): <b>{q['v1']} بار</b> ({int(q['v1']/total_checks*100)}%)",
+        f"  🏃 معمول (استاندارد): <b>{q['v2']} بار</b> ({int(q['v2']/total_checks*100)}%)",
+        f"  🐢 سبک (حداقلی): <b>{q['v3']} بار</b> ({int(q['v3']/total_checks*100)}%)",
+        f"  ❌ با دلیل: <b>{q['v4']} بار</b> | ⛔ بدون دلیل: <b>{q['v5']} بار</b>",
+        "━━━━━━━━━━━━━━━━━━━━━━",
+    ]
+
+    # Anchor & Growth Habits
+    top_h = matrix_data.get("top_habit")
+    bot_h = matrix_data.get("bottom_habit")
+    if top_h and bot_h:
+        lines.append(
+            f"🏆 <b>قوی‌ترین عادت:</b> {top_h['info']['emoji']} {top_h['info']['fa']} (<b>{int(top_h['pct'])}%</b>)"
+        )
+        lines.append(
+            f"🌱 <b>نیازمند توجه:</b> {bot_h['info']['emoji']} {bot_h['info']['fa']} (<b>{int(bot_h['pct'])}%</b>)"
+        )
+        lines.append("━━━━━━━━━━━━━━━━━━━━━━")
+
+    # Habit-by-Habit Ranking with mini bars
+    lines.append("📋 <b>رتبه‌بندی پایبندی ۱۲ عادت:</b>")
+    for r in matrix_data["habit_rankings"]:
+        h_info = r["info"]
+        pct_int = int(round(r["pct"]))
+        mini_filled = int(round(pct_int / 10))
+        mini_bar = ("🟩" * mini_filled) + ("⬜" * (10 - mini_filled))
+        lines.append(
+            f"{h_info['emoji']} {h_info['fa']}:\n"
+            f"   └ [{mini_bar}] <b>{pct_int}%</b> ({r['completed_days']}/{matrix_data['days_in_period']} روز)"
+        )
+
+    # Daily Sparkline
+    lines.append("\n🗓 <b>توالی روزهای بازه:</b>")
+    timeline_emojis = []
+    for d in matrix_data["daily_timeline"]:
+        p = d["progress"]
+        if not d["has_data"] or p == 0.0:
+            timeline_emojis.append("⬜")
+        elif p >= 0.80:
+            timeline_emojis.append("🟩")
+        elif p >= 0.50:
+            timeline_emojis.append("🟨")
+        else:
+            timeline_emojis.append("🟧")
+
+    lines.append(" ".join(timeline_emojis))
+    lines.append("━━━━━━━━━━━━━━━━━━━━━━")
+    lines.append("👆 بازه زمانی مورد نظر خود را از دکمه‌های زیر انتخاب کنید:")
+
+    return "\n".join(lines)
+
