@@ -787,7 +787,7 @@ def get_insights_settings_keyboard(enabled_types: List[str]) -> InlineKeyboardMa
     return InlineKeyboardMarkup(inline_keyboard=keyboard)
 
 # ==========================================
-# 🎯 HABIT TRACKER KEYBOARDS (V2.1)
+# 🎯 HABIT TRACKER KEYBOARDS (V2.2)
 # ==========================================
 
 HABIT_STATUS_ICONS = {
@@ -803,9 +803,7 @@ def build_habit_hub_keyboard(
     offset_days: int,
     stealth_mode: bool = False,
 ) -> InlineKeyboardMarkup:
-    """
-    Clean, decluttered Hub landing keyboard with 3 primary logging entry modes.
-    """
+    """Clean, decluttered Hub landing keyboard with 3 primary logging entry modes."""
     keyboard = [
         # Primary Action 1: Standard Fill
         [
@@ -876,9 +874,7 @@ def build_habit_detailed_keyboard(
     offset_days: int,
     stealth_mode: bool = False,
 ) -> InlineKeyboardMarkup:
-    """
-    Detailed 12-habit grid keyboard.
-    """
+    """Detailed 12-habit grid keyboard."""
     keyboard = []
     row = []
     cols = 3 if stealth_mode else 2
@@ -905,6 +901,15 @@ def build_habit_detailed_keyboard(
     if row:
         keyboard.append(row)
 
+    # Quran detail quick action button
+    if not stealth_mode:
+        keyboard.append([
+            InlineKeyboardButton(
+                text="📖 ثبت صفحه / سوره قرآن",
+                callback_data=f"hb_qrn_det:{offset_days}",
+            )
+        ])
+
     keyboard.append([
         InlineKeyboardButton(
             text="🔙 بازگشت به هاب عادات",
@@ -917,7 +922,45 @@ def build_habit_detailed_keyboard(
 def get_habit_level_picker_keyboard(
     habit_key: str, offset_days: int
 ) -> InlineKeyboardMarkup:
-    """Submenu for choosing habit completion level."""
+    """Submenu for choosing habit completion level (supports binary and 5-level habits)."""
+    h_info = HABIT_ITEMS.get(habit_key, {})
+    is_binary = h_info.get("binary", False)
+
+    if is_binary:
+        # Clean 3-button keyboard for binary habits
+        keyboard = [
+            [
+                InlineKeyboardButton(
+                    text="✅ انجام شد",
+                    callback_data=f"hb_set:{habit_key}:1:{offset_days}",
+                )
+            ],
+            [
+                InlineKeyboardButton(
+                    text="❌ با دلیل",
+                    callback_data=f"hb_set:{habit_key}:4:{offset_days}",
+                ),
+                InlineKeyboardButton(
+                    text="⛔ بدون دلیل",
+                    callback_data=f"hb_set:{habit_key}:5:{offset_days}",
+                ),
+            ],
+            [
+                InlineKeyboardButton(
+                    text="🗑 پاک‌کردن",
+                    callback_data=f"hb_set:{habit_key}:0:{offset_days}",
+                )
+            ],
+            [
+                InlineKeyboardButton(
+                    text="🔙 بازگشت به نمای عادات",
+                    callback_data=f"hb_view_det:{offset_days}",
+                )
+            ],
+        ]
+        return InlineKeyboardMarkup(inline_keyboard=keyboard)
+
+    # Standard 5-level picker
     keyboard = [
         [
             InlineKeyboardButton(
@@ -945,6 +988,18 @@ def get_habit_level_picker_keyboard(
                 callback_data=f"hb_set:{habit_key}:5:{offset_days}",
             ),
         ],
+    ]
+
+    # Quick button to log Quran detail if habit is Quran
+    if habit_key == "rq":
+        keyboard.append([
+            InlineKeyboardButton(
+                text="📖 ثبت شماره صفحه / سوره",
+                callback_data=f"hb_qrn_det:{offset_days}",
+            )
+        ])
+
+    keyboard.extend([
         [
             InlineKeyboardButton(
                 text="🗑 پاک‌کردن (ثبت‌نشده)",
@@ -957,14 +1012,48 @@ def get_habit_level_picker_keyboard(
                 callback_data=f"hb_view_det:{offset_days}",
             )
         ],
-    ]
+    ])
     return InlineKeyboardMarkup(inline_keyboard=keyboard)
 
 
 def get_quick_run_keyboard(
     habit_key: str, offset_days: int
 ) -> InlineKeyboardMarkup:
-    """Fast-action keyboard for the Quick-Run Wizard flow."""
+    """Fast-action keyboard for the Quick-Run Wizard flow (supports binary habits)."""
+    h_info = HABIT_ITEMS.get(habit_key, {})
+    is_binary = h_info.get("binary", False)
+
+    if is_binary:
+        keyboard = [
+            [
+                InlineKeyboardButton(
+                    text="✅ انجام شد",
+                    callback_data=f"hb_qr_val:{habit_key}:1:{offset_days}",
+                )
+            ],
+            [
+                InlineKeyboardButton(
+                    text="❌ با دلیل",
+                    callback_data=f"hb_qr_val:{habit_key}:4:{offset_days}",
+                ),
+                InlineKeyboardButton(
+                    text="⛔ بدون دلیل",
+                    callback_data=f"hb_qr_val:{habit_key}:5:{offset_days}",
+                ),
+                InlineKeyboardButton(
+                    text="⏭ رد شدن",
+                    callback_data=f"hb_qr_skip:{habit_key}:{offset_days}",
+                ),
+            ],
+            [
+                InlineKeyboardButton(
+                    text="🔙 انصراف و خروج از ثبت سریع",
+                    callback_data=f"hb_back:{offset_days}",
+                )
+            ],
+        ]
+        return InlineKeyboardMarkup(inline_keyboard=keyboard)
+
     keyboard = [
         [
             InlineKeyboardButton(
@@ -1005,9 +1094,44 @@ def get_quick_run_keyboard(
 
 
 def get_gratitude_accumulator_keyboard(
-    offset_days: int, has_items: bool = False
+    offset_days: int,
+    has_items: bool = False,
+    is_saved_preview: bool = False,
 ) -> InlineKeyboardMarkup:
-    """Interactive builder keyboard for the Gratitude Journal."""
+    """Interactive builder keyboard for Gratitude Journal."""
+    if is_saved_preview:
+        # Smooth navigation view after saving
+        return InlineKeyboardMarkup(
+            inline_keyboard=[
+                [
+                    InlineKeyboardButton(
+                        text="➕ افزودن مورد جدید به لیست",
+                        callback_data=f"hb_gr_add_more:{offset_days}",
+                    )
+                ],
+                [
+                    InlineKeyboardButton(
+                        text="✏️ ویرایش یک مورد",
+                        callback_data=f"hb_gr_ask_edit:{offset_days}",
+                    ),
+                    InlineKeyboardButton(
+                        text="🗑️ حذف یک مورد",
+                        callback_data=f"hb_gr_ask_del:{offset_days}",
+                    ),
+                ],
+                [
+                    InlineKeyboardButton(
+                        text="🗑 پاک‌کردن کل شکرگزاری",
+                        callback_data=f"hb_gr_clr_all:{offset_days}",
+                    ),
+                    InlineKeyboardButton(
+                        text="🔙 بازگشت به هاب عادات",
+                        callback_data=f"hb_back:{offset_days}",
+                    ),
+                ],
+            ]
+        )
+
     keyboard = [
         [
             InlineKeyboardButton(
@@ -1041,25 +1165,27 @@ def get_gratitude_accumulator_keyboard(
         ],
     ]
 
-    action_row = []
     if has_items:
-        action_row.append(
+        keyboard.append([
             InlineKeyboardButton(
-                text="💾 تایید و ذخیره در نوشن",
+                text="💾 ذخیره نهایی در نوشن",
                 callback_data=f"hb_gr_save:{offset_days}",
             )
-        )
-        action_row.append(
+        ])
+        keyboard.append([
             InlineKeyboardButton(
-                text="↩️ حذف آخرین مورد",
-                callback_data=f"hb_gr_pop:{offset_days}",
-            )
-        )
-        keyboard.append(action_row)
+                text="✏️ ویرایش یک مورد",
+                callback_data=f"hb_gr_ask_edit:{offset_days}",
+            ),
+            InlineKeyboardButton(
+                text="🗑️ حذف یک مورد",
+                callback_data=f"hb_gr_ask_del:{offset_days}",
+            ),
+        ])
 
     keyboard.append([
         InlineKeyboardButton(
-            text="🗑 پاک‌کردن کل شکرگزاری",
+            text="🗑 پاک‌کردن کل",
             callback_data=f"hb_gr_clr_all:{offset_days}",
         ),
         InlineKeyboardButton(
@@ -1067,6 +1193,51 @@ def get_gratitude_accumulator_keyboard(
         ),
     ])
     return InlineKeyboardMarkup(inline_keyboard=keyboard)
+
+
+def get_gratitude_item_picker_keyboard(
+    items: List[Dict[str, Any]], action: str, offset_days: int
+) -> InlineKeyboardMarkup:
+    """Picker keyboard to choose which gratitude item to edit or delete."""
+    keyboard = []
+    for idx, item in enumerate(items):
+        tag_str = f"[{item.get('tag')}] " if item.get("tag") else ""
+        text_preview = item["text"][:20] + "..." if len(item["text"]) > 20 else item["text"]
+        btn_text = f"{idx + 1}. 🌿 {tag_str}{text_preview}"
+        keyboard.append([
+            InlineKeyboardButton(
+                text=btn_text,
+                callback_data=f"hb_gr_do_{action}:{idx}:{offset_days}",
+            )
+        ])
+
+    keyboard.append([
+        InlineKeyboardButton(
+            text="🔙 انصراف و بازگشت",
+            callback_data=f"hb_grat:{offset_days}",
+        )
+    ])
+    return InlineKeyboardMarkup(inline_keyboard=keyboard)
+
+
+def get_quran_detail_keyboard(offset_days: int) -> InlineKeyboardMarkup:
+    """Action buttons when typing Quran details."""
+    return InlineKeyboardMarkup(
+        inline_keyboard=[
+            [
+                InlineKeyboardButton(
+                    text="🗑 پاک کردن صفحه/سوره",
+                    callback_data=f"hb_clr_quran:{offset_days}",
+                )
+            ],
+            [
+                InlineKeyboardButton(
+                    text="🔙 بازگشت به نمای عادات",
+                    callback_data=f"hb_view_det:{offset_days}",
+                )
+            ],
+        ]
+    )
 
 
 def get_habit_reset_confirm_keyboard(
