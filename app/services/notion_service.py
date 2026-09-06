@@ -574,6 +574,7 @@ HABIT_ITEMS: Dict[str, Dict[str, Any]] = {
     "ex": {"prop": "Exercise", "fa": "ورزش", "emoji": "🏃", "code": "WKO", "cat": "جسمی", "binary": False},
     "md": {"prop": "Meditation", "fa": "مدیتیشن", "emoji": "🧘", "code": "MDT", "cat": "ذهنی", "binary": False},
     "gr": {"prop": "Gratitude", "fa": "شکرگزاری", "emoji": "🌸", "code": "THG", "cat": "ذهنی", "binary": False},
+    "rb": {"prop": "Read Book", "fa": "کتاب‌خوانی", "emoji": "📚", "code": "BOK", "cat": "ذهنی", "binary": False},
     "rq": {"prop": "Read Holy Quran", "fa": "تلاوت قرآن", "emoji": "📖", "code": "QRN", "cat": "معنوی", "binary": False},
     "sl": {"prop": "Salam", "fa": "سلام", "emoji": "🕊️", "code": "SLM", "cat": "معنوی", "binary": True},
     "es": {"prop": "Esteghfar", "fa": "استغفار", "emoji": "📿", "code": "EST", "cat": "معنوی", "binary": False},
@@ -613,6 +614,11 @@ HABIT_DESCRIPTIONS: Dict[str, Dict[str, str]] = {
         "v1": "ثبت ۳ تا ۵ مورد با جزئیات در دفترچه",
         "v2": "ثبت ۱ تا ۲ مورد مشخص در دفترچه",
         "v3": "۱ مورد شکرگزاری قلبی و توجه ذهنی"
+    },
+    "rb": {
+        "v1": "۱۵ تا ۲۰ صفحه مطالعه عمیق (یا ۳۰ دقیقه)",
+        "v2": "۵ تا ۱۰ صفحه مطالعه (یا ۱۵ دقیقه)",
+        "v3": "حداقل ۱ صفحه یا ۱ پاراگراف"
     },
     "rq": {
         "v1": "۱ صفحه قرآن با معنی و تفسیرش",
@@ -788,6 +794,9 @@ def parse_habit_page(page: Dict[str, Any]) -> Dict[str, Any]:
     quran_list = props.get("Quran Detail", {}).get("rich_text", [])
     quran_detail = quran_list[0].get("plain_text", "") if quran_list else ""
 
+    book_list = props.get("Book Detail", {}).get("rich_text", [])
+    book_detail = book_list[0].get("plain_text", "") if book_list else ""
+
     habits_status: Dict[str, Optional[str]] = {}
     for h_key, h_info in HABIT_ITEMS.items():
         prop_name = h_info["prop"]
@@ -803,10 +812,10 @@ def parse_habit_page(page: Dict[str, Any]) -> Dict[str, Any]:
         "notes": notes,
         "gratitude_log": gratitude_log,
         "quran_detail": quran_detail,
+        "book_detail": book_detail,
         "habits": habits_status,
         "url": str(page.get("url", ""))
     }
-
 
 def update_habit_entry(page_id: str, habit_prop_name: str, select_val: Optional[str]) -> bool:
     """Updates a single habit property (or clears it if select_val is None)."""
@@ -898,7 +907,7 @@ def update_habit_quran_detail(page_id: str, detail_text: str) -> bool:
 
 
 def reset_habit_day(page_id: str) -> bool:
-    """Safely resets all 12 habits, notes, gratitude log, and quran detail for a day."""
+    """Safely resets all 13 habits, notes, gratitude log, book and quran detail for a day."""
     try:
         reset_props: Dict[str, Any] = {
             h_info["prop"]: {"select": None}
@@ -907,12 +916,13 @@ def reset_habit_day(page_id: str) -> bool:
         reset_props["Notes"] = {"rich_text": []}
         reset_props["Gratitude Log"] = {"rich_text": []}
         reset_props["Quran Detail"] = {"rich_text": []}
+        reset_props["Book Detail"] = {"rich_text": []}
 
         notion.pages.update(page_id=page_id, properties=reset_props)
         return True
     except Exception as e:
         print(f"Error resetting habit day: {e}")
-        return False
+        return False 
     
 def query_habit_history(limit_count: int = 60) -> List[Dict[str, Any]]:
     """
@@ -936,3 +946,16 @@ def query_habit_history(limit_count: int = 60) -> List[Dict[str, Any]]:
 
     results = query_res.get("results", []) if isinstance(query_res, dict) else []
     return [parse_habit_page(page) for page in results]
+
+def update_habit_book_detail(page_id: str, detail_text: str) -> bool:
+    """Updates the rich_text Book Detail property for a habit day."""
+    try:
+        payload = [{"text": {"content": detail_text}}] if detail_text else []
+        notion.pages.update(
+            page_id=page_id,
+            properties={"Book Detail": {"rich_text": payload}}
+        )
+        return True
+    except Exception as e:
+        print(f"Error updating habit book detail: {e}")
+        return False

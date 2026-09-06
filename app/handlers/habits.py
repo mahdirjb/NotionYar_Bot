@@ -19,6 +19,7 @@ from app.keyboards.inline import (
     get_gratitude_accumulator_keyboard,
     get_gratitude_item_picker_keyboard,
     get_quran_detail_keyboard,
+    get_book_detail_keyboard,
     get_habit_reset_confirm_keyboard,
     get_habit_bulk_fill_confirm_keyboard,
     get_habit_notes_keyboard,
@@ -45,6 +46,7 @@ from app.services.notion_service import (
     update_habit_notes,
     update_habit_gratitude,
     update_habit_quran_detail,
+    update_habit_book_detail,
     reset_habit_day,
 )
 from app.services.habit_analytics_service import (
@@ -100,7 +102,7 @@ def _format_hub_text(
     stealth: bool = False,
     streaks_data: Optional[Dict[str, Any]] = None,
 ) -> str:
-    """Formats clean Hub landing message with streak and freeze integration."""
+    """Formats clean Hub landing message with streak, freeze, and book integration."""
     pct_int = int(round(max(0.0, min(1.0, float(page_data.get("progress", 0.0)))) * 100))
     frozen = is_day_frozen(page_data)
 
@@ -118,6 +120,7 @@ def _format_hub_text(
     notes = str(page_data.get("notes", "")).strip()
     gratitude = str(page_data.get("gratitude_log", "")).strip()
     quran_detail = str(page_data.get("quran_detail", "")).strip()
+    book_detail = str(page_data.get("book_detail", "")).strip()
 
     habits = page_data.get("habits", {})
     completed_count = sum(
@@ -130,7 +133,7 @@ def _format_hub_text(
         "🎯 <b>هاب مدیریت عادات روزانه</b>",
         f"📅 <b>تاریخ:</b> <code>{full_jalali}</code> ({rel_label})",
         "",
-        f"📊 <b>پیشرفت:</b> {prog_bar} ({completed_count} از ۱۲ عادت)",
+        f"📊 <b>پیشرفت:</b> {prog_bar} ({completed_count} از ۱۳ عادت)",
         f"📣 <b>وضعیت:</b> <i>{cheerleader}</i>",
     ]
 
@@ -143,6 +146,9 @@ def _format_hub_text(
         lines.append(f"🔥 <b>زنجیره پیوستگی:</b> <b>{c_ov} روز متوالی</b> (رکورد: {b_ov} روز)")
 
     lines.append("━━━━━━━━━━━━━━━━━━━━━━")
+
+    if book_detail:
+        lines.append(f"📚 <b>کتاب:</b> <code>{book_detail}</code> 🔖")
 
     if quran_detail:
         lines.append(f"📖 <b>قرآن:</b> <code>{quran_detail}</code> ✨")
@@ -173,10 +179,11 @@ def _format_detailed_text(
     stealth: bool = False,
     streaks_data: Optional[Dict[str, Any]] = None,
 ) -> str:
-    """Formats the 12-habit detailed overview text with individual streak badges."""
+    """Formats the 13-habit detailed overview text with individual streak badges."""
     pct_int = int(round(max(0.0, min(1.0, float(page_data.get("progress", 0.0)))) * 100))
     habits: Dict[str, Optional[str]] = page_data.get("habits", {})
     quran_detail = str(page_data.get("quran_detail", "")).strip()
+    book_detail = str(page_data.get("book_detail", "")).strip()
     h_streaks = streaks_data.get("habit_streaks", {}) if streaks_data else {}
 
     if stealth:
@@ -199,7 +206,7 @@ def _format_detailed_text(
 
     prog_bar = _build_progress_bar(float(page_data.get("progress", 0.0)))
     lines = [
-        "📋 <b>نمای تفصیلی ۱۲ عادت روزانه</b>",
+        "📋 <b>نمای تفصیلی ۱۳ عادت روزانه</b>",
         f"📅 <b>تاریخ:</b> <code>{full_jalali}</code> ({rel_label})",
         f"📊 <b>پیشرفت:</b> {prog_bar}",
         "━━━━━━━━━━━━━━━━━━━━━━",
@@ -208,7 +215,7 @@ def _format_detailed_text(
     categories = {
         "💪 جسم و سلامت": ["bt", "fr", "ex"],
         "🏡 نظم و محیط": ["mb"],
-        "🧘 ذهن و آرامش": ["md", "gr"],
+        "🧘 ذهن و رشد فردی": ["md", "gr", "rb"],
         "✨ معنویت و درون": ["rq", "sl", "es", "ps", "bp", "sg"],
     }
 
@@ -220,15 +227,19 @@ def _format_detailed_text(
             badge = LEVEL_BADGES.get(val or "", "▫️ ثبت‌نشده")
             streak_num = h_streaks.get(k, {}).get("current", 0)
             streak_badge = f" 🔥 <code>{streak_num}d</code>" if streak_num > 0 else ""
-            extra = f" (<code>{quran_detail}</code>)" if k == "rq" and quran_detail else ""
+            
+            extra = ""
+            if k == "rq" and quran_detail:
+                extra = f" (<code>{quran_detail}</code>)"
+            elif k == "rb" and book_detail:
+                extra = f" (<code>{book_detail}</code>)"
+
             lines.append(f"  {h_info['emoji']} {h_info['fa']}: <b>{badge}</b>{streak_badge}{extra}")
         lines.append("")
 
     lines.append("━━━━━━━━━━━━━━━━━━━━━━")
     lines.append("👆 روی هر عادت بزنید تا وضعیت و سطوح آن را تنظیم کنید:")
     return "\n".join(lines)
-
-
 def _format_streaks_dashboard_text(
     streaks_data: Dict[str, Any], full_jalali: str
 ) -> str:
@@ -1874,3 +1885,121 @@ async def cmd_manual_checkin_test(message: Message, bot: Bot) -> None:
         await status_msg.delete()
     except Exception:
         pass
+
+# ==========================================
+# 📚 BOOK DETAIL PROMPT & HANDLER
+# ==========================================
+
+
+@router.callback_query(F.data.startswith("hb_bok_det:"), HasPermission(PERM_ADMIN))
+async def cb_prompt_book_detail(call: CallbackQuery, state: FSMContext) -> None:
+    """Prompts the user to enter Book title or Page range."""
+    if not call.data or not isinstance(call.message, Message):
+        await call.answer()
+        return
+
+    offset_days = int(call.data.split(":")[1])
+    g_iso, full_jalali, _ = _calculate_date_from_offset(offset_days)
+    page_data = get_or_create_habit_day(g_iso, day_title=full_jalali)
+
+    await state.update_data(
+        offset_days=offset_days,
+        page_id=page_data["id"],
+        dash_msg_id=call.message.message_id,
+    )
+    await state.set_state(HabitState.waiting_for_book_detail)
+
+    current_book = str(page_data.get("book_detail") or "ثبت نشده")
+    text = (
+        f"📚 <b>ثبت جزئیات کتاب‌خوانی و مطالعه</b>\n"
+        f"📅 تاریخ: <code>{full_jalali}</code>\n\n"
+        f"📌 <b>ثبت شده فعلی:</b> <code>{current_book}</code>\n\n"
+        f"✍️ نام کتاب و شماره صفحات خوانده‌شده را بنویسید:\n"
+        f"<i>مثال: کتاب اثر مرکب - صفحات ۲۰ تا ۳۵</i>"
+    )
+    kb = get_book_detail_keyboard(offset_days)
+    await call.message.edit_text(text, reply_markup=kb, parse_mode="HTML")
+    await call.answer()
+
+
+@router.callback_query(F.data.startswith("hb_clr_book:"), HasPermission(PERM_ADMIN))
+async def cb_clear_book_detail(call: CallbackQuery, state: FSMContext) -> None:
+    """Clears Book details."""
+    if not call.data or not isinstance(call.message, Message):
+        await call.answer()
+        return
+
+    data = await state.get_data()
+    stealth = data.get("stealth", False)
+    offset_days = int(call.data.split(":")[1])
+
+    g_iso, full_jalali, rel_label = _calculate_date_from_offset(offset_days)
+    page_data = get_or_create_habit_day(g_iso, day_title=full_jalali)
+
+    update_habit_book_detail(page_data["id"], "")
+
+    updated_page = get_or_create_habit_day(g_iso, day_title=full_jalali)
+    streaks_data = calculate_habit_streaks()
+
+    text = _format_detailed_text(updated_page, full_jalali, rel_label, stealth=stealth, streaks_data=streaks_data)
+    kb = build_habit_detailed_keyboard(
+        updated_page.get("habits", {}),
+        offset_days=offset_days,
+        stealth_mode=stealth,
+    )
+
+    await call.message.edit_text(text, reply_markup=kb, parse_mode="HTML")
+    await call.answer("🗑 جزئیات کتاب پاک شد.")
+
+
+@router.message(HabitState.waiting_for_book_detail, HasPermission(PERM_ADMIN))
+async def msg_receive_book_detail(
+    message: Message, state: FSMContext, bot: Bot
+) -> None:
+    """Receives Book detail text and cleanly updates the card."""
+    if not message.text:
+        return
+
+    data = await state.get_data()
+    offset_days = data.get("offset_days", 0)
+    page_id = str(data.get("page_id", ""))
+    dash_msg_id = data.get("dash_msg_id")
+    stealth = data.get("stealth", False)
+
+    try:
+        await message.delete()
+    except Exception:
+        pass
+
+    b_text = message.text.strip()
+    if page_id:
+        update_habit_book_detail(page_id, b_text)
+
+    await state.clear()
+    await state.update_data(stealth=stealth)
+
+    g_iso, full_jalali, rel_label = _calculate_date_from_offset(offset_days)
+    updated_page = get_or_create_habit_day(g_iso, day_title=full_jalali)
+    streaks_data = calculate_habit_streaks()
+
+    text = _format_detailed_text(updated_page, full_jalali, rel_label, stealth=stealth, streaks_data=streaks_data)
+    kb = build_habit_detailed_keyboard(
+        updated_page.get("habits", {}),
+        offset_days=offset_days,
+        stealth_mode=stealth,
+    )
+
+    if dash_msg_id:
+        try:
+            await bot.edit_message_text(
+                chat_id=message.chat.id,
+                message_id=dash_msg_id,
+                text=text,
+                reply_markup=kb,
+                parse_mode="HTML",
+            )
+            return
+        except Exception:
+            pass
+
+    await message.answer(text, reply_markup=kb, parse_mode="HTML")

@@ -895,7 +895,7 @@ def build_habit_detailed_keyboard(
     offset_days: int,
     stealth_mode: bool = False,
 ) -> InlineKeyboardMarkup:
-    """Detailed 12-habit grid keyboard."""
+    """Detailed 13-habit grid keyboard."""
     keyboard = []
     row = []
     cols = 3 if stealth_mode else 2
@@ -922,12 +922,16 @@ def build_habit_detailed_keyboard(
     if row:
         keyboard.append(row)
 
-    # Quran detail quick action button
+    # Quick action row for Quran & Book reading details
     if not stealth_mode:
         keyboard.append([
             InlineKeyboardButton(
-                text="📖 ثبت صفحه / سوره قرآن",
+                text="📖 جزئیات قرآن",
                 callback_data=f"hb_qrn_det:{offset_days}",
+            ),
+            InlineKeyboardButton(
+                text="📚 جزئیات کتاب",
+                callback_data=f"hb_bok_det:{offset_days}",
             )
         ])
 
@@ -939,7 +943,6 @@ def build_habit_detailed_keyboard(
     ])
     return InlineKeyboardMarkup(inline_keyboard=keyboard)
 
-
 def get_habit_level_picker_keyboard(
     habit_key: str, offset_days: int
 ) -> InlineKeyboardMarkup:
@@ -948,7 +951,6 @@ def get_habit_level_picker_keyboard(
     is_binary = h_info.get("binary", False)
 
     if is_binary:
-        # Clean 3-button keyboard for binary habits
         keyboard = [
             [
                 InlineKeyboardButton(
@@ -1020,6 +1022,15 @@ def get_habit_level_picker_keyboard(
             )
         ])
 
+    # Quick button to log Book detail if habit is Book
+    if habit_key == "rb":
+        keyboard.append([
+            InlineKeyboardButton(
+                text="📚 ثبت نام کتاب / شماره صفحه",
+                callback_data=f"hb_bok_det:{offset_days}",
+            )
+        ])
+
     keyboard.extend([
         [
             InlineKeyboardButton(
@@ -1035,7 +1046,6 @@ def get_habit_level_picker_keyboard(
         ],
     ])
     return InlineKeyboardMarkup(inline_keyboard=keyboard)
-
 
 def get_quick_run_keyboard(
     habit_key: str, offset_days: int
@@ -1469,6 +1479,25 @@ def build_nightly_checkin_keyboard(is_completed: bool = False) -> InlineKeyboard
                 InlineKeyboardButton(
                     text="🎯 باز کردن هاب کامل عادات",
                     callback_data="hb_nav:0",
+                )
+            ],
+        ]
+    )
+
+def get_book_detail_keyboard(offset_days: int) -> InlineKeyboardMarkup:
+    """Action buttons when typing Book reading details."""
+    return InlineKeyboardMarkup(
+        inline_keyboard=[
+            [
+                InlineKeyboardButton(
+                    text="🗑 پاک کردن نام کتاب/صفحه",
+                    callback_data=f"hb_clr_book:{offset_days}",
+                )
+            ],
+            [
+                InlineKeyboardButton(
+                    text="🔙 بازگشت به نمای عادات",
+                    callback_data=f"hb_view_det:{offset_days}",
                 )
             ],
         ]
