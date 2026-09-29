@@ -533,6 +533,47 @@
     const hoursGrid = document.getElementById("hoursChipsGrid");
     const minutesGrid = document.getElementById("minutesChipsGrid");
 
+    const manualInput = document.getElementById("timePickerManualInput");
+    const btnApplyManual = document.getElementById("btnApplyManualTime");
+
+    function parseManualTime(str) {
+      if (!str) return null;
+      let s = str.replace(/[۰-۹]/g, (d) => "۰۱۲۳۴۵۶۷۸۹".indexOf(d)).trim();
+      let parts = s.split(/[:\s-]+/);
+      if (parts.length === 2) {
+        let h = parseInt(parts[0], 10);
+        let m = parseInt(parts[1], 10);
+        if (!isNaN(h) && !isNaN(m) && h >= 0 && h <= 23 && m >= 0 && m <= 59) {
+          return { h, m };
+        }
+      } else if (s.length === 4 && /^\d+$/.test(s)) {
+        let h = parseInt(s.slice(0, 2), 10);
+        let m = parseInt(s.slice(2, 4), 10);
+        if (h >= 0 && h <= 23 && m >= 0 && m <= 59) return { h, m };
+      }
+      return null;
+    }
+
+    function applyManualTimeIfValid(showFeedback = false) {
+      const parsed = parseManualTime(manualInput?.value);
+      if (parsed) {
+        pickerSelectedHour = parsed.h;
+        pickerSelectedMinute = parsed.m;
+        updatePickerSelection(false);
+        haptic("light");
+        if (showFeedback) showToast(`ساعت ${toPersianDigits(String(parsed.h).padStart(2, "0"))}:${toPersianDigits(String(parsed.m).padStart(2, "0"))} تنظیم شد`, "info");
+        return true;
+      }
+      if (showFeedback) showToast("لطفاً ساعت را با فرمت صحیح (مثلاً ۱۸:۳۲) وارد کنید", "error");
+      return false;
+    }
+
+    btnApplyManual?.addEventListener("click", () => applyManualTimeIfValid(true));
+    manualInput?.addEventListener("change", () => applyManualTimeIfValid(false));
+    manualInput?.addEventListener("keyup", (e) => {
+      if (e.key === "Enter") applyManualTimeIfValid(true);
+    });
+
     if (hoursGrid) {
       hoursGrid.innerHTML = "";
       for (let h = 0; h < 24; h++) {
@@ -543,7 +584,7 @@
         chip.textContent = toPersianDigits(String(h).padStart(2, "0"));
         chip.addEventListener("click", () => {
           pickerSelectedHour = h;
-          updatePickerSelection();
+          updatePickerSelection(true);
         });
         hoursGrid.appendChild(chip);
       }
@@ -559,17 +600,20 @@
         chip.textContent = toPersianDigits(String(m).padStart(2, "0"));
         chip.addEventListener("click", () => {
           pickerSelectedMinute = m;
-          updatePickerSelection();
+          updatePickerSelection(true);
         });
         minutesGrid.appendChild(chip);
       }
     }
 
-    function updatePickerSelection() {
+    function updatePickerSelection(syncManualInput = true) {
       const hStr = String(pickerSelectedHour).padStart(2, "0");
       const mStr = String(pickerSelectedMinute).padStart(2, "0");
       if (display) {
         display.textContent = `${toPersianDigits(hStr)}:${toPersianDigits(mStr)}`;
+      }
+      if (syncManualInput && manualInput) {
+        manualInput.value = `${toPersianDigits(hStr)}:${toPersianDigits(mStr)}`;
       }
       hoursGrid?.querySelectorAll(".time-chip").forEach((c) => {
         c.classList.toggle("active", parseInt(c.getAttribute("data-hour"), 10) === pickerSelectedHour);
@@ -583,9 +627,8 @@
       const d = new Date();
       if (offsetMinutes) d.setMinutes(d.getMinutes() + offsetMinutes);
       pickerSelectedHour = d.getHours();
-      pickerSelectedMinute = Math.round(d.getMinutes() / 5) * 5;
-      if (pickerSelectedMinute >= 60) pickerSelectedMinute = 55;
-      updatePickerSelection();
+      pickerSelectedMinute = d.getMinutes();
+      updatePickerSelection(true);
     }
 
     document.getElementById("btnTimeQuickNow")?.addEventListener("click", () => { setTimeToNow(0); haptic("light"); });
@@ -611,6 +654,7 @@
     });
 
     document.getElementById("btnConfirmTimePicker")?.addEventListener("click", () => {
+      applyManualTimeIfValid(false);
       const hStr = String(pickerSelectedHour).padStart(2, "0");
       const mStr = String(pickerSelectedMinute).padStart(2, "0");
       const timeVal = `${hStr}:${mStr}`;
@@ -637,17 +681,15 @@
       const inputVal = (target === "start" ? document.getElementById("timeStart")?.value : document.getElementById("timeEnd")?.value) || "";
       if (inputVal && inputVal.includes(":")) {
         const [h, m] = inputVal.split(":").map(Number);
-        pickerSelectedHour = h || 0;
-        pickerSelectedMinute = Math.round((m || 0) / 5) * 5;
-        if (pickerSelectedMinute >= 60) pickerSelectedMinute = 55;
+        pickerSelectedHour = !isNaN(h) ? h : 12;
+        pickerSelectedMinute = !isNaN(m) ? m : 0;
       } else {
         const d = new Date();
         pickerSelectedHour = d.getHours();
-        pickerSelectedMinute = Math.round(d.getMinutes() / 5) * 5;
-        if (pickerSelectedMinute >= 60) pickerSelectedMinute = 55;
+        pickerSelectedMinute = d.getMinutes();
       }
 
-      updatePickerSelection();
+      updatePickerSelection(true);
       if (modal) modal.style.display = "flex";
       haptic("light");
     }
@@ -1078,11 +1120,11 @@
       loadHabitsAnalytics();
     });
 
-    // Interactive Click-to-Reveal in Stealth Mode (Item 15)
+    // Interactive Click-to-Reveal in Stealth Mode
     document.addEventListener("click", (e) => {
       if (!isStealthMode) return;
-      const target = e.target.closest(".stealth-blur-target, .grat-item-row, .streak-value");
-      if (target) {
+      const target = e.target.closest(".stealth-blur-target, .timeline-item, .life-tile, .mode-chip, .grat-item-row, .streak-value");
+      if (target && !e.target.closest(".btn-item-delete, button.btn-item-delete")) {
         target.classList.toggle("revealed");
         haptic("light");
       }
@@ -1385,51 +1427,7 @@
     { key: "sg", prop: "Spritual Gift", fa: "هدیه معنوی", emoji: "🎁", is_binary: false }
   ];
 
-  const DEFAULT_PRESETS = [
-    {
-      id: "preset_morning",
-      title: "🌅 روتین صبحگاهی",
-      desc: "تخت + سلام + مسواک (کامل)",
-      is_default: true,
-      habits: {
-        "Make the Bed": "1-💪 کامل",
-        "Salam": "1-💪 کامل",
-        "Brush Teeth": "1-💪 کامل"
-      }
-    },
-    {
-      id: "preset_focus",
-      title: "🧘 تمرکز و معنویت",
-      desc: "مدیتیشن (کامل) + قرآن (نیمه‌کامل) + استغفار (کامل)",
-      is_default: true,
-      habits: {
-        "Meditation": "1-💪 کامل",
-        "Read Holy Quran": "2-🏃‍♂️ نیمه‌کامل",
-        "Esteghfar": "1-💪 کامل"
-      }
-    },
-    {
-      id: "preset_light",
-      title: "🐢 روز سبک و خسته",
-      desc: "ثبت سطح سبک برای تمام عادات روز",
-      is_default: true,
-      habits: {
-        "Brush Teeth": "3-🐢 سبک",
-        "Face Routine": "3-🐢 سبک",
-        "Make the Bed": "1-💪 کامل",
-        "Exercise": "3-🐢 سبک",
-        "Meditation": "3-🐢 سبک",
-        "Gratitude": "3-🐢 سبک",
-        "Read Book": "3-🐢 سبک",
-        "Read Holy Quran": "3-🐢 سبک",
-        "Salam": "1-💪 کامل",
-        "Esteghfar": "3-🐢 سبک",
-        "Pray After Salah": "3-🐢 سبک",
-        "Bedtime Prayer": "3-🐢 سبک",
-        "Spritual Gift": "3-🐢 سبک"
-      }
-    }
-  ];
+  const DEFAULT_PRESETS = [];
 
   function getCustomPresets() {
     try {
@@ -1613,9 +1611,14 @@
     if (!listEl) return;
 
     const custom = getCustomPresets();
-    const allPresets = [...DEFAULT_PRESETS, ...custom];
+    const allPresets = [...custom];
 
     listEl.innerHTML = "";
+    if (allPresets.length === 0) {
+      listEl.innerHTML = '<div class="loading-state" style="padding:24px 0;">هیچ قالب سفارشی ثبت نشده است.<br><span style="font-size:11px; color:var(--hint-color); margin-top:4px; display:inline-block;">با زدن دکمه زیر می‌توانید قالب دلخواه خود را بسازید.</span></div>';
+      return;
+    }
+
     allPresets.forEach((p) => {
       const card = document.createElement("div");
       card.className = "preset-card";
@@ -1623,15 +1626,12 @@
         <div class="preset-info">
           <div class="preset-title">
             <span>${p.title}</span>
-            ${p.is_default ? '<span style="font-size:9px; background:rgba(59,130,246,0.15); color:var(--button-color); padding:1px 6px; border-radius:6px;">پیش‌فرض</span>' : ""}
           </div>
-          <div class="preset-sub">${p.desc || Object.keys(p.habits).length + " عادت"}</div>
+          <div class="preset-sub">${p.desc || Object.keys(p.habits || {}).length + " عادت"}</div>
         </div>
         <div style="display:flex; align-items:center; gap:6px;">
-          ${!p.is_default ? `
-            <button type="button" class="btn-preset-edit" title="ویرایش قالب">✏️</button>
-            <button type="button" class="btn-preset-del" title="حذف قالب">🗑️</button>
-          ` : ""}
+          <button type="button" class="btn-preset-edit" title="ویرایش قالب">✏️</button>
+          <button type="button" class="btn-preset-del" title="حذف قالب">🗑️</button>
           <button type="button" class="btn-apply-preset">اجرا ⚡</button>
         </div>
       `;
@@ -1766,9 +1766,9 @@
           if (EN_TO_FA_WEEKDAYS[weekdayStr]) weekdayStr = EN_TO_FA_WEEKDAYS[weekdayStr];
           const jDateStr = day.jalali_str ? toPersianDigits(day.jalali_str.split("/").slice(1).join("/")) : "";
           tableHtml += `
-            <th>
-              <div style="font-size:11px; font-weight:700;">${weekdayStr}</div>
-              <div style="font-size:9px; color:var(--hint-color); font-weight:normal;">${jDateStr}</div>
+            <th title="${weekdayStr}">
+              <div style="font-size:10px; font-weight:700; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">${weekdayStr}</div>
+              <div style="font-size:9px; color:var(--hint-color); font-weight:normal; white-space:nowrap;">${jDateStr}</div>
             </th>`;
         });
         tableHtml += "</tr></thead><tbody>";

@@ -705,6 +705,12 @@
             <div class="time-preview-hint">ساعت : دقیقه</div>
           </div>
 
+          <div class="time-manual-input-box" style="margin-top: 10px; display: flex; align-items: center; justify-content: center; gap: 8px; background: var(--input-bg); border: 1px solid var(--card-border); border-radius: 12px; padding: 6px 10px;">
+            <span style="font-size: 11px; color: var(--hint-color); font-weight: 600;">⌨️ نوشتن زمان دقیق:</span>
+            <input type="text" id="timePickerManualInput" placeholder="مثلاً ۱۸:۳۲" style="width: 85px; text-align: center; font-family: monospace, 'Vazirmatn'; font-size: 14px; font-weight: 700; padding: 4px 6px; border-radius: 8px; border: 1px solid var(--card-border); background: var(--bg-color); color: var(--text-color);">
+            <button type="button" class="btn-chip" id="btnApplyManualTime" style="padding: 4px 10px; font-size: 11px; font-weight: 700;">اعمال</button>
+          </div>
+
           <div style="margin-top:14px;">
             <div class="picker-section-label">ساعت (از ۰۰ تا ۲۳):</div>
             <div class="hours-chips-grid" id="hoursChipsGrid"></div>
