@@ -59,13 +59,16 @@
               </select>
             </div>
 
+            <!-- Persian Date Selector -->
             <div class="form-group">
               <label>تاریخ ثبت</label>
               <div class="date-quick-picker">
                 <button type="button" class="btn-pill active" data-date-offset="0">امروز</button>
                 <button type="button" class="btn-pill" data-date-offset="1">دیروز</button>
-                <input type="date" id="timeCustomDate" class="custom-date-input">
+                <button type="button" class="btn-pill" data-date-offset="2">پریروز</button>
+                <button type="button" class="btn-pill btn-custom-date" id="btnOpenTimePicker">📅 تقویم شمسی</button>
               </div>
+              <div class="selected-date-badge" id="timeSelectedDateBadge">📅 تاریخ انتخاب‌شده: امروز</div>
             </div>
 
             <div class="form-row">
@@ -115,7 +118,7 @@
         </div>
       </section>
 
-      <!-- ================= TAB 2: LIFE TRACKER (REVAMPED) ================= -->
+      <!-- ================= TAB 2: LIFE TRACKER ================= -->
       <section id="tab-life" class="tab-panel">
         <!-- Sub-navigation Pills -->
         <div class="segmented-control">
@@ -137,9 +140,9 @@
               <div class="loading-state">در حال بارگذاری دسته‌بندی‌ها...</div>
             </div>
 
-            <!-- Mode Selector (Dynamic Pop-up Box) -->
+            <!-- Mode Selector (Supports 0, 1, or multiple modes) -->
             <div id="lifeModesContainer" class="modes-container" style="display: none;">
-              <div class="modes-label" id="lifeModesLabel">حالت انتخابی:</div>
+              <div class="modes-label" id="lifeModesLabel">حالت‌های انتخابی (امکان انتخاب چند حالت یا بدون حالت):</div>
               <div class="modes-chips" id="lifeModesChips"></div>
             </div>
 
@@ -150,14 +153,15 @@
                 <div class="date-quick-picker">
                   <button type="button" class="btn-pill active" data-life-offset="0">امروز</button>
                   <button type="button" class="btn-pill" data-life-offset="1">دیروز</button>
-                  <button type="button" class="btn-pill" data-life-offset="2">۲ روز قبل</button>
-                  <input type="date" id="lifeCustomDate" class="custom-date-input">
+                  <button type="button" class="btn-pill" data-life-offset="2">پریروز</button>
+                  <button type="button" class="btn-pill btn-custom-date" id="btnOpenLifePicker">📅 تقویم شمسی</button>
                 </div>
+                <div class="selected-date-badge" id="lifeSelectedDateBadge">📅 تاریخ انتخاب‌شده: امروز</div>
               </div>
 
               <div class="form-group">
-                <label for="lifeNotes">توضیحات و هزینه (اختیاری)</label>
-                <input type="text" id="lifeNotes" placeholder="مثلاً: هزینه، جزئیات، علت یا توضیحات...">
+                <label for="lifeNotes">توضیحات</label>
+                <input type="text" id="lifeNotes" placeholder="مثلاً: نکات، جزئیات یا توضیحات...">
               </div>
 
               <button type="submit" class="btn-primary" id="btnSubmitLife" disabled>
@@ -221,12 +225,12 @@
         </div>
       </section>
 
-      <!-- ================= TAB 3: HABITS (REVAMPED) ================= -->
+      <!-- ================= TAB 3: HABITS ================= -->
       <section id="tab-habits" class="tab-panel">
         <!-- Sub-navigation Pills -->
         <div class="segmented-control">
           <button class="seg-btn active" data-subtab="habit-sub-today">🎯 چک‌لیست عادات</button>
-          <button class="seg-btn" data-subtab="habit-sub-analytics">📈 آمار و زنجیره مداومت</button>
+          <button class="seg-btn" data-subtab="habit-sub-analytics">📈 آمار و مداومت</button>
           <button class="seg-btn" data-subtab="habit-sub-journal">🌸 دفترچه بازتاب</button>
         </div>
 
@@ -239,10 +243,19 @@
                 <span class="hero-title">عادات روزانه</span>
                 <div class="hero-sub" id="habitDateTitle">در حال دریافت...</div>
               </div>
-              <div class="hero-date-controls">
-                <button class="btn-hero-date" id="btnHabitPrevDay">روز قبل</button>
-                <button class="btn-hero-date active" id="btnHabitToday">امروز</button>
-              </div>
+              <!-- Stealth Mode Toggle Button -->
+              <button type="button" class="btn-stealth-toggle" id="btnToggleStealth" title="حالت مخفی برای مکان‌های شلوغ">
+                <span class="stealth-icon">🕶️</span>
+                <span class="stealth-text">حالت مخفی</span>
+              </button>
+            </div>
+
+            <!-- Date Selector in Habits: امروز / دیروز / پریروز / تقویم -->
+            <div class="habit-date-selector-row">
+              <button class="btn-pill active" data-habit-offset="0">امروز</button>
+              <button class="btn-pill" data-habit-offset="1">دیروز</button>
+              <button class="btn-pill" data-habit-offset="2">پریروز</button>
+              <button class="btn-pill btn-custom-date" id="btnOpenHabitPicker">📅 تقویم شمسی</button>
             </div>
 
             <!-- Visual Progress Circle & Bar -->
@@ -260,7 +273,7 @@
             </div>
 
             <button type="button" class="btn-magic-bulk" id="btnBulkComplete">
-              <span>⚡ تکمیل سریع تمام عادات امروز</span>
+              <span>⚡ تکمیل سریع تمام عادات روز</span>
             </button>
           </div>
 
@@ -296,8 +309,21 @@
               </div>
             </div>
 
+            <!-- Actions: Freeze Day & Reset Day moved here -->
+            <div class="day-management-box">
+              <div class="management-title">⚙️ مدیریت وضعیت روز انتخابی</div>
+              <div class="management-btns">
+                <button type="button" class="btn-freeze-day" id="btnActionFreeze">
+                  <span>❄️ ثبت روز فریز (Streak Freeze)</span>
+                </button>
+                <button type="button" class="btn-reset-day" id="btnActionReset">
+                  <span>⚪ ریست و پاک‌کردن عادات امروز</span>
+                </button>
+              </div>
+            </div>
+
             <!-- Habit Rankings -->
-            <div class="analytics-section-title">📊 برترین عادات در ۷ روز اخیر</div>
+            <div class="analytics-section-title" style="margin-top: 16px;">📊 برترین عادات در ۷ روز اخیر</div>
             <div class="rankings-list" id="habitRankingsList">
               <div class="loading-state">در حال محاسبه آمار...</div>
             </div>
@@ -310,7 +336,7 @@
           </div>
         </div>
 
-        <!-- Subtab 3: Reflections & Journal -->
+        <!-- Subtab 3: Reflections & Journal (Enhanced) -->
         <div id="habit-sub-journal" class="subtab-content">
           <div class="card">
             <div class="card-title">
@@ -318,38 +344,62 @@
               <span>دفترچه شکرگزاری و بازتاب روز</span>
             </div>
 
-            <div class="journal-form">
-              <div class="form-group">
-                <label for="habitGratitude">🌸 ۳ مورد شکرگزاری امروز</label>
-                <div class="input-with-action">
-                  <textarea id="habitGratitude" rows="3" placeholder="خدایا شکرت برای..."></textarea>
-                  <button type="button" class="btn-action" data-field="gratitude">ذخیره</button>
-                </div>
+            <!-- 1. Interactive Gratitude Builder -->
+            <div class="journal-block">
+              <div class="journal-block-title">🌸 دفترچه شکرگزاری روزانه (مورد به مورد با دسته‌بندی)</div>
+              
+              <!-- Category Chips for Gratitude -->
+              <div class="grat-tags-label">حوزه نعمات را انتخاب کنید:</div>
+              <div class="grat-tags-chips" id="gratTagsChips">
+                <button type="button" class="btn-tag-chip active" data-tag="سلامتی و جسم">👤 سلامتی و جسم</button>
+                <button type="button" class="btn-tag-chip" data-tag="روابط و دوستان">🤝 روابط و دوستان</button>
+                <button type="button" class="btn-tag-chip" data-tag="کار و رشد">💼 کار و رشد</button>
+                <button type="button" class="btn-tag-chip" data-tag="نعمات روزمره">🌍 نعمات روزمره</button>
+                <button type="button" class="btn-tag-chip" data-tag="ذهن و آرامش">🧘 ذهن و آرامش</button>
+                <button type="button" class="btn-tag-chip" data-tag="اتفاقات خرد">✨ اتفاقات خرد</button>
+                <button type="button" class="btn-tag-chip" data-tag="سایر">🌸 سایر</button>
               </div>
 
-              <div class="form-group">
-                <label for="habitNotes">📝 یادداشت، احوالات و دستاوردهای امروز</label>
-                <div class="input-with-action">
-                  <textarea id="habitNotes" rows="3" placeholder="نکات مهم و حس و حال امروز..."></textarea>
-                  <button type="button" class="btn-action" data-field="notes">ذخیره</button>
-                </div>
+              <!-- Input row -->
+              <div class="grat-input-row">
+                <input type="text" id="gratitudeItemInput" placeholder="خدایا شکرت بابت...">
+                <button type="button" class="btn-add-grat" id="btnAddGratitudeItem">➕ افزودن</button>
               </div>
 
-              <div class="form-row">
-                <div class="form-group">
-                  <label for="habitBook">📚 مطالعه کتاب</label>
-                  <div class="input-with-action">
-                    <input type="text" id="habitBook" placeholder="نام کتاب و صفحات...">
-                    <button type="button" class="btn-action" data-field="book">ذخیره</button>
-                  </div>
-                </div>
-                <div class="form-group">
-                  <label for="habitQuran">📖 تلاوت قرآن</label>
-                  <div class="input-with-action">
-                    <input type="text" id="habitQuran" placeholder="سوره یا صفحه...">
-                    <button type="button" class="btn-action" data-field="quran">ذخیره</button>
-                  </div>
-                </div>
+              <!-- List of added items -->
+              <div class="grat-items-list" id="gratitudeItemsList">
+                <div class="loading-state" style="padding:10px;">هنوز موردی اضافه نشده است</div>
+              </div>
+
+              <button type="button" class="btn-save-gratitude" id="btnSaveGratitudeJournal">
+                <span>💾 ذخیره کل شکرگزاری‌ها در نوشن</span>
+              </button>
+            </div>
+
+            <!-- 2. Book Reading (Separate Row) -->
+            <div class="journal-block" style="margin-top: 18px;">
+              <div class="journal-block-title">📚 مطالعه کتاب</div>
+              <div class="input-with-action">
+                <input type="text" id="habitBook" placeholder="نام کتاب، فصل یا صفحات مطالعه‌شده...">
+                <button type="button" class="btn-action" data-field="book">ذخیره</button>
+              </div>
+            </div>
+
+            <!-- 3. Quran Reading (Separate Row) -->
+            <div class="journal-block" style="margin-top: 14px;">
+              <div class="journal-block-title">📖 تلاوت قرآن</div>
+              <div class="input-with-action">
+                <input type="text" id="habitQuran" placeholder="نام سوره، صفحه یا آیات تلاوت‌شده...">
+                <button type="button" class="btn-action" data-field="quran">ذخیره</button>
+              </div>
+            </div>
+
+            <!-- 4. Daily Notes -->
+            <div class="journal-block" style="margin-top: 14px;">
+              <div class="journal-block-title">📝 یادداشت و احوالات روز</div>
+              <div class="input-with-action">
+                <textarea id="habitNotes" rows="3" placeholder="دستاوردهای مهم، احساسات یا یادداشت‌های امروز..."></textarea>
+                <button type="button" class="btn-action" data-field="notes">ذخیره</button>
               </div>
             </div>
           </div>
@@ -398,7 +448,7 @@
       </button>
     </nav>
 
-    <!-- Modal for Habit Level Selection -->
+    <!-- Modal for Habit Level Selection (Cleaned: Freeze & Reset removed) -->
     <div id="habitLevelModal" class="modal-backdrop" style="display: none;">
       <div class="modal-card">
         <div class="modal-header">
@@ -406,6 +456,75 @@
           <button class="btn-modal-close" id="btnModalClose">&times;</button>
         </div>
         <div class="modal-body" id="modalLevelOptions"></div>
+      </div>
+    </div>
+
+    <!-- Modal for Persian Date Picker -->
+    <div id="persianDateModal" class="modal-backdrop" style="display: none;">
+      <div class="modal-card">
+        <div class="modal-header">
+          <span class="modal-title">📅 انتخاب تاریخ شمسی</span>
+          <button class="btn-modal-close" id="btnDateModalClose">&times;</button>
+        </div>
+        <div class="modal-body">
+          <div class="shamsi-picker-row">
+            <div class="picker-col">
+              <label>روز</label>
+              <select id="shamsiDaySelect"></select>
+            </div>
+            <div class="picker-col">
+              <label>ماه</label>
+              <select id="shamsiMonthSelect">
+                <option value="1">فروردین</option>
+                <option value="2">اردیبهشت</option>
+                <option value="3">خرداد</option>
+                <option value="4">تیر</option>
+                <option value="5">مرداد</option>
+                <option value="6">شهریور</option>
+                <option value="7">مهر</option>
+                <option value="8">آبان</option>
+                <option value="9">آذر</option>
+                <option value="10">دی</option>
+                <option value="11">بهمن</option>
+                <option value="12">اسفند</option>
+              </select>
+            </div>
+            <div class="picker-col">
+              <label>سال</label>
+              <select id="shamsiYearSelect">
+                <option value="1402">۱۴۰۲</option>
+                <option value="1403" selected>۱۴۰۳</option>
+                <option value="1404">۱۴۰۴</option>
+                <option value="1405">۱۴۰۵</option>
+              </select>
+            </div>
+          </div>
+          <div class="shamsi-preview" id="shamsiDatePreview">...</div>
+          <button type="button" class="btn-primary" id="btnConfirmShamsiDate" style="width:100%; margin-top:14px;">
+            تایید و ثبت تاریخ
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Modal for Streak Freeze Reason -->
+    <div id="freezeModal" class="modal-backdrop" style="display: none;">
+      <div class="modal-card">
+        <div class="modal-header">
+          <span class="modal-title">❄️ ثبت روز فریز (Streak Freeze)</span>
+          <button class="btn-modal-close" id="btnFreezeModalClose">&times;</button>
+        </div>
+        <div class="modal-body">
+          <p style="font-size:12px; color:var(--hint-color); margin-bottom:12px;">
+            با فریز کردن، زنجیره متوالی عادات شما در این روز حفظ خواهد شد. علت را انتخاب کنید:
+          </p>
+          <div id="freezeReasonOptions">
+            <button type="button" class="modal-option-btn" data-reason="استراحت و ریکاوری مجاز">🌿 استراحت و ریکاوری مجاز</button>
+            <button type="button" class="modal-option-btn" data-reason="سفر و جابجایی">✈️ سفر و جابجایی</button>
+            <button type="button" class="modal-option-btn" data-reason="بیماری و ناخوشی">🤒 بیماری و ناخوشی</button>
+            <button type="button" class="modal-option-btn" data-reason="شرایط اضطراری و مشغله">⚡ شرایط اضطراری و مشغله</button>
+          </div>
+        </div>
       </div>
     </div>
 

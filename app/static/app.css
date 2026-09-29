@@ -1,6 +1,6 @@
 /* ==========================================================
-   NotionYar Telegram Mini App Stylesheet - Version 2.0
-   Modern, Native Telegram UX with RTL, Dark Mode & Analytics
+   NotionYar Telegram Mini App Stylesheet - Version 2.5
+   Persian Typography, Stealth Mode, Gratitude Builder & Radar
    ========================================================== */
 
 :root {
@@ -44,11 +44,11 @@
   box-sizing: border-box;
   margin: 0;
   padding: 0;
+  font-family: 'Vazirmatn', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif !important;
   -webkit-tap-highlight-color: transparent;
 }
 
 body {
-  font-family: 'Vazirmatn', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
   background-color: var(--bg-color);
   color: var(--text-color);
   font-size: 14px;
@@ -199,7 +199,7 @@ body {
   margin-top: 2px;
 }
 
-/* ================= SEGMENTED CONTROLS (SUB-TABS) ================= */
+/* ================= SEGMENTED CONTROLS ================= */
 .segmented-control {
   display: flex;
   background: var(--secondary-bg-color);
@@ -217,7 +217,6 @@ body {
   color: var(--hint-color);
   padding: 8px 4px;
   border-radius: 10px;
-  font-family: inherit;
   font-size: 12px;
   font-weight: 600;
   cursor: pointer;
@@ -273,10 +272,8 @@ body {
 input[type="text"],
 input[type="number"],
 input[type="time"],
-input[type="date"],
 select,
 textarea {
-  font-family: inherit;
   font-size: 14px;
   background: var(--input-bg);
   border: 1px solid var(--input-border);
@@ -295,7 +292,9 @@ textarea:focus {
   box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.2);
 }
 
-.date-quick-picker {
+/* Date Pickers */
+.date-quick-picker,
+.habit-date-selector-row {
   display: flex;
   align-items: center;
   gap: 6px;
@@ -306,14 +305,14 @@ textarea:focus {
   background: var(--secondary-bg-color);
   border: 1px solid var(--card-border);
   color: var(--text-color);
-  padding: 8px 8px;
+  padding: 8px 6px;
   border-radius: 10px;
-  font-family: inherit;
   font-size: 12px;
   font-weight: 500;
   cursor: pointer;
   transition: all 0.2s;
   text-align: center;
+  white-space: nowrap;
 }
 
 .btn-pill.active {
@@ -323,11 +322,23 @@ textarea:focus {
   font-weight: 700;
 }
 
-.custom-date-input {
-  width: auto;
+.btn-pill.btn-custom-date {
   flex: 1.2;
-  padding: 6px 10px;
-  font-size: 12px;
+  background: rgba(59, 130, 246, 0.12);
+  color: var(--link-color);
+  border-color: rgba(59, 130, 246, 0.3);
+}
+
+.selected-date-badge {
+  font-size: 11px;
+  color: var(--link-color);
+  background: rgba(59, 130, 246, 0.08);
+  padding: 4px 10px;
+  border-radius: 8px;
+  margin-top: 4px;
+  display: inline-block;
+  align-self: flex-start;
+  font-weight: 600;
 }
 
 .quick-duration-pills {
@@ -343,7 +354,6 @@ textarea:focus {
   color: var(--hint-color);
   padding: 5px 10px;
   border-radius: 8px;
-  font-family: inherit;
   font-size: 12px;
   white-space: nowrap;
   cursor: pointer;
@@ -379,7 +389,6 @@ textarea:focus {
   border: none;
   border-radius: 14px;
   padding: 13px 18px;
-  font-family: inherit;
   font-size: 15px;
   font-weight: 700;
   cursor: pointer;
@@ -491,7 +500,6 @@ textarea:focus {
   padding: 6px 12px;
   border-radius: 8px;
   font-size: 12px;
-  font-family: inherit;
   cursor: pointer;
   display: flex;
   align-items: center;
@@ -504,6 +512,7 @@ textarea:focus {
   color: #fff;
   border-color: var(--button-color);
   font-weight: 600;
+  box-shadow: 0 2px 6px rgba(59, 130, 246, 0.35);
 }
 
 /* Routine Radar Cards */
@@ -683,7 +692,7 @@ textarea:focus {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  margin-bottom: 14px;
+  margin-bottom: 12px;
 }
 
 .hero-title {
@@ -696,26 +705,30 @@ textarea:focus {
   color: var(--hint-color);
 }
 
-.hero-date-controls {
-  display: flex;
-  gap: 4px;
-}
-
-.btn-hero-date {
+.btn-stealth-toggle {
   background: var(--secondary-bg-color);
   border: 1px solid var(--card-border);
   color: var(--hint-color);
-  padding: 4px 10px;
-  border-radius: 8px;
-  font-family: inherit;
+  padding: 5px 10px;
+  border-radius: 10px;
   font-size: 11px;
+  font-weight: 600;
   cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  transition: all 0.2s;
 }
 
-.btn-hero-date.active {
-  background: var(--button-color);
-  color: #fff;
-  border-color: var(--button-color);
+.btn-stealth-toggle.active {
+  background: rgba(245, 158, 11, 0.2);
+  color: var(--warning-color);
+  border-color: var(--warning-color);
+  box-shadow: 0 0 10px rgba(245, 158, 11, 0.3);
+}
+
+.habit-date-selector-row {
+  margin-bottom: 14px;
 }
 
 .progress-hero-container {
@@ -795,7 +808,6 @@ textarea:focus {
   color: var(--success-color);
   border-radius: 12px;
   padding: 10px;
-  font-family: inherit;
   font-size: 13px;
   font-weight: 700;
   cursor: pointer;
@@ -826,7 +838,7 @@ textarea:focus {
   background: var(--secondary-bg-color);
   border: 1px solid var(--card-border);
   border-radius: 16px;
-  padding: 12px 14px;
+  padding: 10px 14px;
   display: flex;
   align-items: center;
   gap: 12px;
@@ -868,33 +880,16 @@ textarea:focus {
   color: #fff;
 }
 
-.habit-card.frozen .habit-check-circle {
-  background: var(--info-color);
-  border-color: var(--info-color);
-  color: #fff;
-}
-
 .habit-info {
   flex: 1;
   display: flex;
-  flex-direction: column;
-  gap: 2px;
-}
-
-.habit-name-row {
-  display: flex;
   align-items: center;
-  gap: 6px;
+  gap: 8px;
 }
 
 .habit-title {
   font-size: 14px;
   font-weight: 700;
-}
-
-.habit-desc {
-  font-size: 11px;
-  color: var(--hint-color);
 }
 
 .btn-habit-level {
@@ -904,7 +899,6 @@ textarea:focus {
   padding: 5px 8px;
   border-radius: 8px;
   font-size: 11px;
-  font-family: inherit;
   font-weight: 600;
   cursor: pointer;
   white-space: nowrap;
@@ -916,11 +910,86 @@ textarea:focus {
   background: rgba(59, 130, 246, 0.15);
 }
 
+/* Stealth Mode Styles */
+.stealth-active .habit-title-normal {
+  display: none;
+}
+
+.stealth-active .habit-title-code {
+  display: inline-block;
+  font-family: monospace !important;
+  font-size: 13px;
+  color: var(--warning-color);
+  background: rgba(245, 158, 11, 0.1);
+  padding: 1px 6px;
+  border-radius: 6px;
+}
+
+.habit-title-code {
+  display: none;
+}
+
+.stealth-active .journal-block textarea,
+.stealth-active .journal-block input {
+  filter: blur(4px);
+  transition: filter 0.2s;
+}
+
+.stealth-active .journal-block textarea:focus,
+.stealth-active .journal-block input:focus {
+  filter: blur(0px);
+}
+
+/* Day Management in Streaks */
+.day-management-box {
+  background: var(--secondary-bg-color);
+  border: 1px solid var(--card-border);
+  border-radius: 14px;
+  padding: 12px;
+  margin-top: 14px;
+}
+
+.management-title {
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--hint-color);
+  margin-bottom: 8px;
+}
+
+.management-btns {
+  display: flex;
+  gap: 8px;
+}
+
+.btn-freeze-day {
+  flex: 1;
+  background: rgba(6, 182, 212, 0.15);
+  border: 1px solid var(--info-color);
+  color: var(--info-color);
+  padding: 8px 10px;
+  border-radius: 10px;
+  font-size: 12px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.btn-reset-day {
+  flex: 1;
+  background: rgba(239, 68, 68, 0.12);
+  border: 1px solid var(--danger-color);
+  color: var(--danger-color);
+  padding: 8px 10px;
+  border-radius: 10px;
+  font-size: 12px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
 /* Habit Analytics / Streaks */
 .streak-hero-box {
   display: flex;
   gap: 10px;
-  margin-bottom: 16px;
+  margin-bottom: 12px;
 }
 
 .streak-card {
@@ -1033,11 +1102,135 @@ textarea:focus {
 .heatmap-cell.frozen { background: var(--info-color); }
 .heatmap-cell.none { background: rgba(255, 255, 255, 0.08); }
 
-/* Reflections Journal Form */
-.journal-form {
+/* Reflections Journal Block */
+.journal-block {
+  background: var(--secondary-bg-color);
+  border: 1px solid var(--card-border);
+  border-radius: 16px;
+  padding: 14px;
+}
+
+.journal-block-title {
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--link-color);
+  margin-bottom: 10px;
+}
+
+.grat-tags-label {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--hint-color);
+  margin-bottom: 6px;
+}
+
+.grat-tags-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-bottom: 10px;
+}
+
+.btn-tag-chip {
+  background: var(--input-bg);
+  border: 1px solid var(--card-border);
+  color: var(--hint-color);
+  padding: 4px 10px;
+  border-radius: 8px;
+  font-size: 11px;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.btn-tag-chip.active {
+  background: rgba(59, 130, 246, 0.2);
+  color: var(--button-color);
+  border-color: var(--button-color);
+  font-weight: 700;
+}
+
+.grat-input-row {
+  display: flex;
+  gap: 6px;
+  margin-bottom: 12px;
+}
+
+.grat-input-row input {
+  flex: 1;
+}
+
+.btn-add-grat {
+  background: var(--button-color);
+  color: #fff;
+  border: none;
+  border-radius: 12px;
+  padding: 0 14px;
+  font-size: 13px;
+  font-weight: 700;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.grat-items-list {
   display: flex;
   flex-direction: column;
-  gap: 14px;
+  gap: 6px;
+  margin-bottom: 12px;
+}
+
+.grat-item-row {
+  background: var(--input-bg);
+  border: 1px solid var(--card-border);
+  border-radius: 10px;
+  padding: 8px 10px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.grat-item-content {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+}
+
+.grat-item-tag {
+  background: rgba(59, 130, 246, 0.15);
+  color: var(--button-color);
+  font-size: 10px;
+  font-weight: 700;
+  padding: 1px 6px;
+  border-radius: 6px;
+  white-space: nowrap;
+}
+
+.grat-item-actions {
+  display: flex;
+  gap: 4px;
+}
+
+.btn-grat-action {
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  font-size: 13px;
+  color: var(--hint-color);
+  padding: 2px 4px;
+}
+
+.btn-save-gratitude {
+  width: 100%;
+  background: rgba(16, 185, 129, 0.15);
+  border: 1px solid var(--success-color);
+  color: var(--success-color);
+  border-radius: 12px;
+  padding: 10px;
+  font-size: 13px;
+  font-weight: 700;
+  cursor: pointer;
 }
 
 .input-with-action {
@@ -1056,7 +1249,6 @@ textarea:focus {
   color: var(--button-color);
   border-radius: 10px;
   padding: 0 14px;
-  font-family: inherit;
   font-size: 12px;
   font-weight: 700;
   cursor: pointer;
@@ -1068,7 +1260,7 @@ textarea:focus {
   color: #fff;
 }
 
-/* ================= MODAL ================= */
+/* ================= MODAL & PERSIAN PICKER ================= */
 .modal-backdrop {
   position: fixed;
   inset: 0;
@@ -1126,7 +1318,6 @@ textarea:focus {
   border-radius: 12px;
   padding: 12px;
   margin-bottom: 8px;
-  font-family: inherit;
   font-size: 13px;
   font-weight: 600;
   display: flex;
@@ -1138,6 +1329,37 @@ textarea:focus {
 .modal-option-btn:active {
   border-color: var(--button-color);
   background: rgba(59, 130, 246, 0.15);
+}
+
+/* Shamsi Date Picker Modal Layout */
+.shamsi-picker-row {
+  display: grid;
+  grid-template-columns: 1fr 1.2fr 1fr;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+
+.picker-col {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.picker-col label {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--hint-color);
+}
+
+.shamsi-preview {
+  background: var(--input-bg);
+  border: 1px solid var(--card-border);
+  border-radius: 10px;
+  padding: 10px;
+  text-align: center;
+  font-weight: 700;
+  font-size: 13px;
+  color: var(--link-color);
 }
 
 /* ================= BOTTOM NAVIGATION ================= */
@@ -1176,8 +1398,8 @@ textarea:focus {
 
 .nav-item .nav-label {
   font-size: 11px;
-  font-family: inherit;
   font-weight: 600;
+  font-family: 'Vazirmatn', -apple-system, sans-serif !important;
 }
 
 .nav-item.active {

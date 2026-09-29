@@ -40,6 +40,8 @@ from app.services.notion_service import (
     update_habit_quran_detail,
     update_habit_book_detail,
     archive_notion_page,
+    reset_habit_day,
+    parse_existing_gratitude_log,
     HABIT_ITEMS,
     HABIT_DESCRIPTIONS,
     HABIT_LEVELS,
@@ -51,7 +53,7 @@ from app.services.habit_analytics_service import calculate_habit_streaks, calcul
 
 from aiogram.utils.web_app import safe_parse_webapp_init_data, check_webapp_signature
 
-app = FastAPI(title="NotionYar Telegram Mini App API", version="2.0.0")
+app = FastAPI(title="NotionYar Telegram Mini App API", version="2.5.0")
 
 # Enable CORS
 app.add_middleware(
@@ -139,7 +141,8 @@ class TimeTrackerCreateRequest(BaseModel):
 
 class LifeTrackerCreateRequest(BaseModel):
     event_type: str
-    mode: Optional[str] = None
+    mode_list: Optional[List[str]] = None
+    mode: Optional[str] = None  # fallback for single string
     date_iso: Optional[str] = None
     notes: Optional[str] = None
 
@@ -148,7 +151,7 @@ class HabitStatusUpdateRequest(BaseModel):
     page_id: str
     habit_key: Optional[str] = None
     habit_prop: Optional[str] = None
-    select_val: Optional[str] = None  # "1-💪 کامل", "2-🏃‍♂️ نیمه‌کامل", "3-🐢 سبک", "فریز", None
+    select_val: Optional[str] = None  # "1-💪 کامل", "2-🏃‍♂️ نیمه‌کامل", "3-🐢 سبک", "4-❌ با دلیل", "5-⛔ بدون دلیل", None
 
 
 class HabitBulkCompleteRequest(BaseModel):
@@ -156,10 +159,25 @@ class HabitBulkCompleteRequest(BaseModel):
     select_val: str = "1-💪 کامل"
 
 
+class HabitFreezeRequest(BaseModel):
+    page_id: str
+    reason: str = "استراحت و ریکاوری"
+
+
+class HabitResetRequest(BaseModel):
+    page_id: str
+
+
 class HabitTextUpdateRequest(BaseModel):
     page_id: str
     field: str  # "notes", "gratitude", "quran", "book"
     text: str
+
+
+class GratitudeSaveRequest(BaseModel):
+    page_id: str
+    date_iso: Optional[str] = None
+    items: List[Dict[str, str]]  # list of {"tag": "...", "text": "..."}
 
 
 # ==========================================
@@ -240,32 +258,32 @@ async def delete_time_tracker_entry(
 
 
 # ==========================================
-# 🌱 LIFE TRACKER ENDPOINTS (REVAMPED)
+# 🌱 LIFE TRACKER ENDPOINTS (UPDATED CATEGORIES)
 # ==========================================
 
 @app.get("/api/life-tracker/options")
 async def get_life_tracker_options(user: Dict[str, Any] = Depends(get_current_user)):
-    """Returns grouped categories and their modes for an intuitive UI."""
+    """
+    Returns updated groupings:
+    1. نظافت و آراستگی (شامل دوری)
+    2. سلامتی
+    3. رویدادها (شامل رانندگی)
+    """
     groups = [
         {
             "title": "نظافت و آراستگی",
             "emoji": "💈",
-            "types": ["آرایشگاه", "ریش و سبیل", "موپالمو", "خورشید", "آینه", "ناخن دست", "ناخن پا"]
+            "types": ["آرایشگاه", "ریش و سبیل", "موپالمو", "خورشید", "آینه", "ناخن دست", "ناخن پا", "دوری"]
         },
         {
-            "title": "سلامتی و درمان",
+            "title": "سلامتی",
             "emoji": "💊",
             "types": ["ویتامین دی", "مریضی"]
         },
         {
-            "title": "نقلیه و رفت‌وآمد",
-            "emoji": "🚗",
-            "types": ["رانندگی", "دوری"]
-        },
-        {
-            "title": "خرید و رویدادها",
-            "emoji": "🛒",
-            "types": ["خرید", "اتفاقات", "سایر"]
+            "title": "رویدادها",
+            "emoji": "⚡",
+            "types": ["رانندگی", "خرید", "اتفاقات", "سایر"]
         }
     ]
 
@@ -294,12 +312,16 @@ async def create_life_tracker_entry(
     tz = timezone(timedelta(hours=3, minutes=30))
     date_str = payload.date_iso or datetime.now(tz).strftime("%Y-%m-%d")
 
+    # Support multiple modes or empty modes list
+    modes = payload.mode_list if payload.mode_list is not None else ([payload.mode] if payload.mode else [])
+
     res = await asyncio.to_thread(
         add_life_tracker_entry,
-        event_type=payload.event_type,
-        mode=payload.mode,
-        date_str=date_str,
-        notes=payload.notes
+        name=f"{payload.event_type} - {date_str}",
+        type_val=payload.event_type,
+        date_iso=date_str,
+        mode_list=modes,
+        notes=payload.notes or ""
     )
 
     if not res:
@@ -310,7 +332,6 @@ async def create_life_tracker_entry(
 
 @app.get("/api/life-tracker/insights")
 async def get_life_tracker_insights(user: Dict[str, Any] = Depends(get_current_user)):
-    """Calculates routines, intervals, averages and overdue alerts."""
     try:
         insights = await asyncio.to_thread(calculate_habit_insights)
         return {"insights": insights}
@@ -321,25 +342,33 @@ async def get_life_tracker_insights(user: Dict[str, Any] = Depends(get_current_u
 @app.get("/api/life-tracker/history")
 async def get_life_tracker_history(
     event_type: Optional[str] = Query(None),
-    limit: int = Query(30),
     user: Dict[str, Any] = Depends(get_current_user)
 ):
-    """Returns past life tracker logs with optional type filter."""
+    """Fetches real history records from Notion with correct parameter passing."""
     try:
-        entries = await asyncio.to_thread(query_life_tracker_entries, page_size=limit)
-        if event_type:
-            entries = [e for e in entries if e.get("type") == event_type]
+        entries = await asyncio.to_thread(
+            query_life_tracker_entries,
+            start_date_iso=None,
+            end_date_iso=None,
+            type_val=event_type if event_type else None,
+            mode_val=None
+        )
 
         results = []
         for item in entries:
             t_name = item.get("type", "")
+            iso_date = item.get("date_iso") or ""
+            shamsi_date = format_jalali_full_display(iso_date) if iso_date else "—"
+            modes_list = item.get("modes", [])
+            modes_str = "، ".join(modes_list) if modes_list else ""
+
             results.append({
                 "id": item.get("id"),
                 "type": t_name,
                 "emoji": TYPE_EMOJIS.get(t_name, "🌱"),
-                "mode": item.get("mode", ""),
-                "date": item.get("date", "—"),
-                "date_iso": item.get("date_iso", ""),
+                "mode": modes_str,
+                "date": shamsi_date,
+                "date_iso": iso_date,
                 "notes": item.get("notes", "")
             })
 
@@ -360,7 +389,7 @@ async def delete_life_tracker_entry(
 
 
 # ==========================================
-# 🎯 HABITS TRACKER ENDPOINTS (REVAMPED)
+# 🎯 HABITS TRACKER ENDPOINTS (FIXED PARSING)
 # ==========================================
 
 @app.get("/api/habits/day")
@@ -368,7 +397,10 @@ async def get_habits_day(
     date_iso: Optional[str] = None,
     user: Dict[str, Any] = Depends(get_current_user)
 ):
-    """Returns habit checklist with categories, progress, and reflections."""
+    """
+    Returns habit checklist.
+    Note: get_or_create_habit_day already returns a parsed dictionary!
+    """
     tz = timezone(timedelta(hours=3, minutes=30))
     if not date_iso:
         date_iso = datetime.now(tz).strftime("%Y-%m-%d")
@@ -376,10 +408,12 @@ async def get_habits_day(
     jalali_title = format_jalali_full_display(date_iso)
 
     try:
-        page = await asyncio.to_thread(get_or_create_habit_day, date_iso, jalali_title)
-        parsed = parse_habit_page(page)
+        # get_or_create_habit_day returns parse_habit_page(page) directly!
+        parsed = await asyncio.to_thread(get_or_create_habit_day, date_iso, jalali_title)
     except Exception as e:
         parsed = {"id": "", "progress": 0.0, "habits": {}, "cheerleader": "روز خوبی بساز! 🌟"}
+
+    page_id = parsed.get("id") or ""
 
     # Group habits by category
     categories = {
@@ -405,6 +439,7 @@ async def get_habits_day(
         categories[cat]["habits"].append({
             "key": h_key,
             "prop": h_info["prop"],
+            "code": h_info.get("code", "HBT"),
             "name": h_info["fa"],
             "emoji": h_info["emoji"],
             "is_binary": h_info.get("binary", False),
@@ -414,10 +449,14 @@ async def get_habits_day(
             "is_done": is_done
         })
 
-    progress_pct = int(round(parsed.get("progress", 0.0) * 100))
+    progress_pct = int(round(float(parsed.get("progress", 0.0)) * 100))
+
+    # Parse gratitude items into structured list
+    raw_grat = parsed.get("gratitude_log", "")
+    grat_items = parse_existing_gratitude_log(raw_grat)
 
     return {
-        "page_id": parsed.get("id"),
+        "page_id": page_id,
         "date_iso": date_iso,
         "jalali_title": jalali_title,
         "progress_float": parsed.get("progress", 0.0),
@@ -427,7 +466,8 @@ async def get_habits_day(
         "cheerleader": parsed.get("cheerleader", "روز خوبی بساز! 🌟"),
         "categories": categories,
         "notes": parsed.get("notes", ""),
-        "gratitude": parsed.get("gratitude_log", ""),
+        "gratitude": raw_grat,
+        "gratitude_items": grat_items,
         "quran_detail": parsed.get("quran_detail", ""),
         "book_detail": parsed.get("book_detail", "")
     }
@@ -439,6 +479,9 @@ async def update_habit_status(
     user: Dict[str, Any] = Depends(get_current_user)
 ):
     """Updates a single habit using either key (bt) or prop (Brush Teeth)."""
+    if not payload.page_id or payload.page_id == "None":
+        raise HTTPException(status_code=400, detail="شناسه صفحه معتبر نیست.")
+
     prop_name = payload.habit_prop
     if not prop_name and payload.habit_key in HABIT_ITEMS:
         prop_name = HABIT_ITEMS[payload.habit_key]["prop"]
@@ -462,7 +505,10 @@ async def bulk_complete_habits(
     payload: HabitBulkCompleteRequest,
     user: Dict[str, Any] = Depends(get_current_user)
 ):
-    """Marks all habits as completed for the day in one click!"""
+    """Marks all habits as completed for the day in one click."""
+    if not payload.page_id or payload.page_id == "None":
+        raise HTTPException(status_code=400, detail="شناسه صفحه معتبر نیست.")
+
     success = await asyncio.to_thread(
         bulk_update_all_habits,
         payload.page_id,
@@ -470,6 +516,37 @@ async def bulk_complete_habits(
     )
     if not success:
         raise HTTPException(status_code=500, detail="خطا در تکمیل خودکار عادات.")
+    return {"success": True}
+
+
+@app.post("/api/habits/freeze-day")
+async def freeze_habit_day(
+    payload: HabitFreezeRequest,
+    user: Dict[str, Any] = Depends(get_current_user)
+):
+    """Sets streak freeze note on the day page to bridge continuous streak."""
+    if not payload.page_id or payload.page_id == "None":
+        raise HTTPException(status_code=400, detail="شناسه صفحه معتبر نیست.")
+
+    freeze_tag = f"[❄️ روز فریز: {payload.reason}]"
+    success = await asyncio.to_thread(update_habit_notes, payload.page_id, freeze_tag)
+    if not success:
+        raise HTTPException(status_code=500, detail="خطا در ثبت فریز روز.")
+    return {"success": True}
+
+
+@app.post("/api/habits/reset-day")
+async def reset_entire_habit_day(
+    payload: HabitResetRequest,
+    user: Dict[str, Any] = Depends(get_current_user)
+):
+    """Resets all habit checkmarks on the day page."""
+    if not payload.page_id or payload.page_id == "None":
+        raise HTTPException(status_code=400, detail="شناسه صفحه معتبر نیست.")
+
+    success = await asyncio.to_thread(reset_habit_day, payload.page_id)
+    if not success:
+        raise HTTPException(status_code=500, detail="خطا در بازنشانی عادات روز.")
     return {"success": True}
 
 
@@ -495,11 +572,57 @@ async def get_habits_analytics(
     }
 
 
+@app.post("/api/habits/gratitude/save")
+async def save_gratitude_journal(
+    payload: GratitudeSaveRequest,
+    user: Dict[str, Any] = Depends(get_current_user)
+):
+    """Compiles individual gratitude items with category tags and saves to Notion."""
+    if not payload.page_id or payload.page_id == "None":
+        raise HTTPException(status_code=400, detail="شناسه صفحه معتبر نیست.")
+
+    tz = timezone(timedelta(hours=3, minutes=30))
+    date_str = payload.date_iso or datetime.now(tz).strftime("%Y-%m-%d")
+    full_jalali = format_jalali_full_display(date_str)
+
+    lines = [
+        "🌸 دفتر شکرگزاری روزانه",
+        f"📅 {full_jalali}",
+        "━━━━━━━━━━━━━━━━━━━━━━",
+    ]
+
+    if payload.items:
+        tagged_groups: Dict[str, List[str]] = {}
+        for item in payload.items:
+            tag = str(item.get("tag") or "سایر نعمات").strip()
+            text = str(item.get("text") or "").strip()
+            if text:
+                tagged_groups.setdefault(tag, []).append(text)
+
+        for tag, texts in tagged_groups.items():
+            lines.append(f"🏷 [{tag}]:")
+            for t in texts:
+                lines.append(f"🌿 خدایا شکرت بابت {t}")
+            lines.append("")
+
+    lines.append("━━━━━━━━━━━━━━━━━━━━━━")
+    lines.append("🤍 «الحمدلله ربّ العالمین علی کلّ حال»")
+    compiled = "\n".join(lines)
+
+    success = await asyncio.to_thread(update_habit_gratitude, payload.page_id, compiled)
+    if not success:
+        raise HTTPException(status_code=500, detail="خطا در ذخیره دفترچه شکرگزاری.")
+    return {"success": True, "compiled": compiled}
+
+
 @app.post("/api/habits/update-text")
 async def update_habit_text(
     payload: HabitTextUpdateRequest,
     user: Dict[str, Any] = Depends(get_current_user)
 ):
+    if not payload.page_id or payload.page_id == "None":
+        raise HTTPException(status_code=400, detail="شناسه صفحه معتبر نیست.")
+
     if payload.field == "notes":
         success = await asyncio.to_thread(update_habit_notes, payload.page_id, payload.text)
     elif payload.field == "gratitude":
@@ -528,7 +651,8 @@ async def get_recent_logs(user: Dict[str, Any] = Depends(get_current_user)):
         time_entries = []
 
     try:
-        life_entries = await asyncio.to_thread(query_life_tracker_entries, page_size=5)
+        life_entries = await asyncio.to_thread(query_life_tracker_entries)
+        life_entries = life_entries[:5] if life_entries else []
     except Exception:
         life_entries = []
 
@@ -546,12 +670,15 @@ async def get_recent_logs(user: Dict[str, Any] = Depends(get_current_user)):
 
     recent_life = []
     for item in life_entries:
+        t_name = item.get("type", "")
+        modes_list = item.get("modes", [])
+        modes_str = "، ".join(modes_list) if modes_list else ""
         recent_life.append({
             "id": item.get("id"),
-            "type": item.get("type", "—"),
-            "emoji": TYPE_EMOJIS.get(item.get("type", ""), "🌱"),
-            "mode": item.get("mode", "—"),
-            "date": item.get("date", "—"),
+            "type": t_name,
+            "emoji": TYPE_EMOJIS.get(t_name, "🌱"),
+            "mode": modes_str,
+            "date": item.get("date_iso", "—"),
             "notes": item.get("notes", "")
         })
 
