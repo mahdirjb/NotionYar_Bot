@@ -7,6 +7,8 @@ load_dotenv()
 
 BOT_TOKEN = os.getenv("BOT_TOKEN")
 NOTION_TOKEN = os.getenv("NOTION_TOKEN")
+WEBAPP_URL = os.getenv("WEBAPP_URL", "").strip()
+PORT = int(os.getenv("PORT", "8000"))
 
 
 def _clean_database_id(raw_id: str | None) -> str | None:

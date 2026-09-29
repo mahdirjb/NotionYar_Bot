@@ -1,0 +1,281 @@
+<!DOCTYPE html>
+<html lang="fa" dir="rtl">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>نوشن‌یار | ثبت سریع</title>
+  <!-- Telegram WebApp SDK -->
+  <script src="https://telegram.org/js/telegram-web-app.js"></script>
+  <!-- Google Fonts: Vazirmatn -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Vazirmatn:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/static/app.css">
+</head>
+<body>
+  <div id="app">
+    <!-- Header -->
+    <header class="app-header">
+      <div class="user-info">
+        <div class="user-avatar" id="userAvatar">🌿</div>
+        <div>
+          <div class="user-name-row">
+            <span class="user-name" id="userName">در حال دریافت...</span>
+            <span class="user-role-badge" id="userRole">کاربر</span>
+          </div>
+          <div class="current-date" id="currentDate">...</div>
+        </div>
+      </div>
+      <button class="btn-icon" id="btnRefresh" title="بروزرسانی داده‌ها">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <polyline points="23 4 23 10 17 10"></polyline>
+          <polyline points="1 20 1 14 7 14"></polyline>
+          <path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"></path>
+        </svg>
+      </button>
+    </header>
+
+    <!-- Main Content Tabs Container -->
+    <main class="app-content">
+
+      <!-- ================= TAB 1: TIME TRACKER ================= -->
+      <section id="tab-time" class="tab-panel active">
+        <div class="card">
+          <div class="card-title">
+            <span class="icon">⏱️</span>
+            <span>ثبت زمان کاری جدید</span>
+          </div>
+
+          <form id="formTimeTracker" class="form-grid">
+            <div class="form-group">
+              <label for="timeTitle">عنوان کار / تسک <span class="required">*</span></label>
+              <input type="text" id="timeTitle" placeholder="مثال: توسعه فیچر مینی‌اپ" required autocomplete="off">
+            </div>
+
+            <div class="form-group">
+              <label for="timePerson">انجام‌دهنده</label>
+              <select id="timePerson">
+                <option value="">در حال دریافت لیست افراد...</option>
+              </select>
+            </div>
+
+            <div class="form-group">
+              <label>تاریخ ثبت</label>
+              <div class="date-quick-picker">
+                <button type="button" class="btn-pill active" data-date-offset="0">امروز</button>
+                <button type="button" class="btn-pill" data-date-offset="1">دیروز</button>
+                <input type="date" id="timeCustomDate" class="custom-date-input">
+              </div>
+            </div>
+
+            <div class="form-row">
+              <div class="form-group">
+                <label for="timeStart">ساعت شروع</label>
+                <input type="time" id="timeStart">
+              </div>
+              <div class="form-group">
+                <label for="timeEnd">ساعت پایان</label>
+                <input type="time" id="timeEnd">
+              </div>
+            </div>
+
+            <div class="form-group">
+              <label for="timeDuration">یا مدت زمان (دقیقه)</label>
+              <div class="quick-duration-pills">
+                <button type="button" class="btn-chip" data-min="15">۱۵ د</button>
+                <button type="button" class="btn-chip" data-min="30">۳۰ د</button>
+                <button type="button" class="btn-chip" data-min="45">۴۵ د</button>
+                <button type="button" class="btn-chip" data-min="60">۱ ساعت</button>
+                <button type="button" class="btn-chip" data-min="120">۲ ساعت</button>
+              </div>
+              <input type="number" id="timeDuration" min="1" placeholder="مثلاً ۹۰">
+            </div>
+
+            <div class="form-group">
+              <label>میزان رضایت</label>
+              <div class="rating-stars" id="timeSatisfaction">
+                <button type="button" class="btn-star" data-val="1" title="ضعیف">😞</button>
+                <button type="button" class="btn-star" data-val="2" title="قابل قبول">😐</button>
+                <button type="button" class="btn-star" data-val="3" title="خوب">🙂</button>
+                <button type="button" class="btn-star" data-val="4" title="خیلی خوب">😃</button>
+                <button type="button" class="btn-star active" data-val="5" title="عالی">🤩</button>
+              </div>
+            </div>
+
+            <div class="form-group">
+              <label for="timeDescription">توضیحات (اختیاری)</label>
+              <textarea id="timeDescription" rows="2" placeholder="جزییات، دستاوردها یا پیوندها..."></textarea>
+            </div>
+
+            <button type="submit" class="btn-primary" id="btnSubmitTime">
+              <span>ثبت در نوشن</span>
+              <span class="btn-arrow">←</span>
+            </button>
+          </form>
+        </div>
+      </section>
+
+      <!-- ================= TAB 2: LIFE TRACKER ================= -->
+      <section id="tab-life" class="tab-panel">
+        <div class="card">
+          <div class="card-title">
+            <span class="icon">🌱</span>
+            <span>ثبت لاگ روزمرگی</span>
+          </div>
+
+          <!-- Category Selection Grid -->
+          <div class="category-selector-label">نوع رویداد را انتخاب کنید:</div>
+          <div class="categories-grid" id="lifeCategoriesGrid">
+            <!-- Injected dynamically via JS -->
+            <div class="loading-state">در حال بارگذاری دسته‌بندی‌ها...</div>
+          </div>
+
+          <!-- Mode / Subtype Selector (Hidden until type selected) -->
+          <div id="lifeModesContainer" class="modes-container" style="display: none;">
+            <div class="modes-label" id="lifeModesLabel">حالت انتخابی:</div>
+            <div class="modes-chips" id="lifeModesChips"></div>
+          </div>
+
+          <!-- Life Tracker Details Form -->
+          <form id="formLifeTracker" class="form-grid" style="margin-top: 16px;">
+            <div class="form-group">
+              <label>تاریخ</label>
+              <div class="date-quick-picker">
+                <button type="button" class="btn-pill active" data-life-offset="0">امروز</button>
+                <button type="button" class="btn-pill" data-life-offset="1">دیروز</button>
+                <input type="date" id="lifeCustomDate" class="custom-date-input">
+              </div>
+            </div>
+
+            <div class="form-group">
+              <label for="lifeNotes">توضیحات و جزئیات (اختیاری)</label>
+              <input type="text" id="lifeNotes" placeholder="مثال: هزینه، جزئیات، علت یا توضیحات...">
+            </div>
+
+            <button type="submit" class="btn-primary" id="btnSubmitLife" disabled>
+              <span>لطفاً یک نوع را انتخاب کنید</span>
+            </button>
+          </form>
+        </div>
+      </section>
+
+      <!-- ================= TAB 3: HABITS ================= -->
+      <section id="tab-habits" class="tab-panel">
+        <div class="card">
+          <div class="card-title">
+            <span class="icon">🎯</span>
+            <div style="flex: 1;">
+              <span>عادات روزانه</span>
+              <div class="sub-date" id="habitDateTitle">در حال دریافت...</div>
+            </div>
+            <div class="habit-date-actions">
+              <button class="btn-sm" id="btnHabitPrevDay">روز قبل</button>
+              <button class="btn-sm active" id="btnHabitToday">امروز</button>
+            </div>
+          </div>
+
+          <!-- Progress Bar Card -->
+          <div class="progress-box">
+            <div class="progress-info">
+              <span class="progress-text" id="habitCheerleader">در حال محاسبه...</span>
+              <span class="progress-percent" id="habitPercent">۰٪</span>
+            </div>
+            <div class="progress-track">
+              <div class="progress-fill" id="habitProgressFill" style="width: 0%;"></div>
+            </div>
+          </div>
+
+          <!-- Habits List -->
+          <div class="habits-list" id="habitsListContainer">
+            <div class="loading-state">در حال بارگذاری عادات...</div>
+          </div>
+
+          <!-- Habit Reflections Section -->
+          <div class="reflection-section">
+            <div class="section-subtitle">🌸 شکرگزاری و بازتاب روز</div>
+
+            <div class="form-group">
+              <label for="habitGratitude">شکرگزاری امروز</label>
+              <div class="input-with-action">
+                <textarea id="habitGratitude" rows="2" placeholder="خدایا شکرت برای..."></textarea>
+                <button type="button" class="btn-action" data-field="gratitude">ذخیره</button>
+              </div>
+            </div>
+
+            <div class="form-group">
+              <label for="habitNotes">یادداشت روز</label>
+              <div class="input-with-action">
+                <textarea id="habitNotes" rows="2" placeholder="نکات مهم و حس و حال امروز..."></textarea>
+                <button type="button" class="btn-action" data-field="notes">ذخیره</button>
+              </div>
+            </div>
+
+            <div class="form-row">
+              <div class="form-group">
+                <label for="habitBook">مطالعه کتاب</label>
+                <div class="input-with-action">
+                  <input type="text" id="habitBook" placeholder="صفحه، فصل یا کتاب...">
+                  <button type="button" class="btn-action" data-field="book">ذخیره</button>
+                </div>
+              </div>
+              <div class="form-group">
+                <label for="habitQuran">قرائت قرآن</label>
+                <div class="input-with-action">
+                  <input type="text" id="habitQuran" placeholder="آیه یا صفحه...">
+                  <button type="button" class="btn-action" data-field="quran">ذخیره</button>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- ================= TAB 4: RECENT LOGS ================= -->
+      <section id="tab-recent" class="tab-panel">
+        <div class="card">
+          <div class="card-title">
+            <span class="icon">📜</span>
+            <span>آخرین لاگ‌های ثبت شده</span>
+          </div>
+
+          <div class="section-subtitle">⏱️ آخرین ساعات کاری</div>
+          <div class="recent-list" id="recentTimeList">
+            <div class="loading-state">در حال دریافت...</div>
+          </div>
+
+          <div class="section-subtitle" style="margin-top: 20px;">🌱 آخرین لاگ‌های روزمرگی</div>
+          <div class="recent-list" id="recentLifeList">
+            <div class="loading-state">در حال دریافت...</div>
+          </div>
+        </div>
+      </section>
+
+    </main>
+
+    <!-- Bottom Navigation Bar -->
+    <nav class="bottom-nav">
+      <button class="nav-item active" data-tab="tab-time">
+        <span class="nav-icon">⏱️</span>
+        <span class="nav-label">زمان کاری</span>
+      </button>
+      <button class="nav-item" data-tab="tab-life">
+        <span class="nav-icon">🌱</span>
+        <span class="nav-label">روزمرگی</span>
+      </button>
+      <button class="nav-item" data-tab="tab-habits">
+        <span class="nav-icon">🎯</span>
+        <span class="nav-label">عادات</span>
+      </button>
+      <button class="nav-item" data-tab="tab-recent">
+        <span class="nav-icon">📜</span>
+        <span class="nav-label">تاریخچه</span>
+      </button>
+    </nav>
+
+    <!-- Toast Notification -->
+    <div id="toast" class="toast"></div>
+  </div>
+
+  <script src="/static/app.js"></script>
+</body>
+</html>

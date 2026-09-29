@@ -4,6 +4,7 @@ from aiogram.types import Message
 from aiogram.fsm.context import FSMContext
 from app.services.auth_service import is_user_registered, get_user_role
 from app.keyboards.reply import get_main_reply_keyboard
+from app.config import WEBAPP_URL
 
 router = Router()
 
@@ -29,13 +30,24 @@ async def command_start_handler(message: Message, state: FSMContext) -> None:
     welcome_text = (
         f"سلام <b>{first_name}</b>، به ربات <b>نوشن‌یار</b> خوش اومدی! 🌿\n"
         f"🏷 <b>سطح دسترسی شما:</b> <code>{badge}</code>\n\n"
-        "برای شروع از گزینه‌های منوی پایین استفاده کن."
+        "برای ثبت سریع و راحت‌تر زمان، روزمرگی و عادات روزانه می‌توانید از <b>مینی‌اپ اختصاصی</b> یا دکمه‌های زیر استفاده کنید."
     )
+    
+    inline_kb = None
+    if WEBAPP_URL:
+        from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton, WebAppInfo
+        inline_kb = InlineKeyboardMarkup(inline_keyboard=[
+            [InlineKeyboardButton(text="🚀 باز کردن مینی‌اپ نوشن‌یار", web_app=WebAppInfo(url=WEBAPP_URL))]
+        ])
+
     await message.answer(
         welcome_text,
-        reply_markup=get_main_reply_keyboard(user_id),
+        reply_markup=inline_kb or get_main_reply_keyboard(user_id),
         parse_mode="HTML"
     )
+    # Also ensure the persistent reply keyboard is sent if inline_kb was sent
+    if inline_kb:
+        await message.answer("منوی دسترسی سریع:", reply_markup=get_main_reply_keyboard(user_id))
 
 @router.message(F.text == "ℹ️ راهنما")
 @router.message(Command("help"))
