@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-  <title>نوشن‌یار | ثبت سریع</title>
+  <title>نوشن‌یار | ثبت سریع و هوشمند</title>
   <!-- Telegram WebApp SDK -->
   <script src="https://telegram.org/js/telegram-web-app.js"></script>
   <!-- Google Fonts: Vazirmatn -->
@@ -35,7 +35,7 @@
       </button>
     </header>
 
-    <!-- Main Content Tabs Container -->
+    <!-- Main Content Container -->
     <main class="app-content">
 
       <!-- ================= TAB 1: TIME TRACKER ================= -->
@@ -115,114 +115,240 @@
         </div>
       </section>
 
-      <!-- ================= TAB 2: LIFE TRACKER ================= -->
+      <!-- ================= TAB 2: LIFE TRACKER (REVAMPED) ================= -->
       <section id="tab-life" class="tab-panel">
-        <div class="card">
-          <div class="card-title">
-            <span class="icon">🌱</span>
-            <span>ثبت لاگ روزمرگی</span>
-          </div>
+        <!-- Sub-navigation Pills -->
+        <div class="segmented-control">
+          <button class="seg-btn active" data-subtab="life-sub-log">✍️ ثبت لاگ</button>
+          <button class="seg-btn" data-subtab="life-sub-radar">📊 رادار فواصل و تحلیل</button>
+          <button class="seg-btn" data-subtab="life-sub-history">📜 تاریخچه</button>
+        </div>
 
-          <!-- Category Selection Grid -->
-          <div class="category-selector-label">نوع رویداد را انتخاب کنید:</div>
-          <div class="categories-grid" id="lifeCategoriesGrid">
-            <!-- Injected dynamically via JS -->
-            <div class="loading-state">در حال بارگذاری دسته‌بندی‌ها...</div>
-          </div>
+        <!-- Subtab 1: Quick Log -->
+        <div id="life-sub-log" class="subtab-content active">
+          <div class="card">
+            <div class="card-title">
+              <span class="icon">🌱</span>
+              <span>ثبت لاگ روزمرگی</span>
+            </div>
 
-          <!-- Mode / Subtype Selector (Hidden until type selected) -->
-          <div id="lifeModesContainer" class="modes-container" style="display: none;">
-            <div class="modes-label" id="lifeModesLabel">حالت انتخابی:</div>
-            <div class="modes-chips" id="lifeModesChips"></div>
-          </div>
+            <!-- Grouped Category Picker -->
+            <div id="lifeGroupsContainer">
+              <div class="loading-state">در حال بارگذاری دسته‌بندی‌ها...</div>
+            </div>
 
-          <!-- Life Tracker Details Form -->
-          <form id="formLifeTracker" class="form-grid" style="margin-top: 16px;">
-            <div class="form-group">
-              <label>تاریخ</label>
-              <div class="date-quick-picker">
-                <button type="button" class="btn-pill active" data-life-offset="0">امروز</button>
-                <button type="button" class="btn-pill" data-life-offset="1">دیروز</button>
-                <input type="date" id="lifeCustomDate" class="custom-date-input">
+            <!-- Mode Selector (Dynamic Pop-up Box) -->
+            <div id="lifeModesContainer" class="modes-container" style="display: none;">
+              <div class="modes-label" id="lifeModesLabel">حالت انتخابی:</div>
+              <div class="modes-chips" id="lifeModesChips"></div>
+            </div>
+
+            <!-- Details Form -->
+            <form id="formLifeTracker" class="form-grid" style="margin-top: 14px;">
+              <div class="form-group">
+                <label>تاریخ ثبت</label>
+                <div class="date-quick-picker">
+                  <button type="button" class="btn-pill active" data-life-offset="0">امروز</button>
+                  <button type="button" class="btn-pill" data-life-offset="1">دیروز</button>
+                  <button type="button" class="btn-pill" data-life-offset="2">۲ روز قبل</button>
+                  <input type="date" id="lifeCustomDate" class="custom-date-input">
+                </div>
+              </div>
+
+              <div class="form-group">
+                <label for="lifeNotes">توضیحات و هزینه (اختیاری)</label>
+                <input type="text" id="lifeNotes" placeholder="مثلاً: هزینه، جزئیات، علت یا توضیحات...">
+              </div>
+
+              <button type="submit" class="btn-primary" id="btnSubmitLife" disabled>
+                <span>لطفاً یک فعالیت را انتخاب کنید</span>
+              </button>
+            </form>
+          </div>
+        </div>
+
+        <!-- Subtab 2: Routine Radar / Intervals Report -->
+        <div id="life-sub-radar" class="subtab-content">
+          <div class="card">
+            <div class="card-title">
+              <span class="icon">📊</span>
+              <div>
+                <span>رادار روتین‌های روزمرگی</span>
+                <div class="sub-date">بررسی فواصل زمانی و هشدارهای موعد فعالیت‌ها</div>
               </div>
             </div>
 
-            <div class="form-group">
-              <label for="lifeNotes">توضیحات و جزئیات (اختیاری)</label>
-              <input type="text" id="lifeNotes" placeholder="مثال: هزینه، جزئیات، علت یا توضیحات...">
+            <div class="radar-summary-box">
+              <div class="radar-stat">
+                <span class="stat-num" id="radarGoodCount">۰</span>
+                <span class="stat-lbl">🟢 به‌موقع</span>
+              </div>
+              <div class="radar-stat">
+                <span class="stat-num" id="radarNearCount">۰</span>
+                <span class="stat-lbl">🟡 نزدیک به موعد</span>
+              </div>
+              <div class="radar-stat">
+                <span class="stat-num" id="radarOverdueCount">۰</span>
+                <span class="stat-lbl">🔴 گذشته از موعد</span>
+              </div>
             </div>
 
-            <button type="submit" class="btn-primary" id="btnSubmitLife" disabled>
-              <span>لطفاً یک نوع را انتخاب کنید</span>
-            </button>
-          </form>
+            <div class="radar-grid" id="lifeRadarGrid">
+              <div class="loading-state">در حال محاسبه فواصل و تحلیل...</div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Subtab 3: Life Tracker History -->
+        <div id="life-sub-history" class="subtab-content">
+          <div class="card">
+            <div class="card-title">
+              <span class="icon">📜</span>
+              <span>تاریخچه لاگ‌های روزمرگی</span>
+            </div>
+
+            <div class="filter-row">
+              <label for="lifeHistoryFilter">فیلتر فعالیت:</label>
+              <select id="lifeHistoryFilter">
+                <option value="">تمام فعالیت‌ها</option>
+              </select>
+            </div>
+
+            <div class="timeline-list" id="lifeHistoryList">
+              <div class="loading-state">در حال بارگذاری تاریخچه...</div>
+            </div>
+          </div>
         </div>
       </section>
 
-      <!-- ================= TAB 3: HABITS ================= -->
+      <!-- ================= TAB 3: HABITS (REVAMPED) ================= -->
       <section id="tab-habits" class="tab-panel">
-        <div class="card">
-          <div class="card-title">
-            <span class="icon">🎯</span>
-            <div style="flex: 1;">
-              <span>عادات روزانه</span>
-              <div class="sub-date" id="habitDateTitle">در حال دریافت...</div>
-            </div>
-            <div class="habit-date-actions">
-              <button class="btn-sm" id="btnHabitPrevDay">روز قبل</button>
-              <button class="btn-sm active" id="btnHabitToday">امروز</button>
-            </div>
-          </div>
+        <!-- Sub-navigation Pills -->
+        <div class="segmented-control">
+          <button class="seg-btn active" data-subtab="habit-sub-today">🎯 چک‌لیست عادات</button>
+          <button class="seg-btn" data-subtab="habit-sub-analytics">📈 آمار و زنجیره مداومت</button>
+          <button class="seg-btn" data-subtab="habit-sub-journal">🌸 دفترچه بازتاب</button>
+        </div>
 
-          <!-- Progress Bar Card -->
-          <div class="progress-box">
-            <div class="progress-info">
-              <span class="progress-text" id="habitCheerleader">در حال محاسبه...</span>
-              <span class="progress-percent" id="habitPercent">۰٪</span>
-            </div>
-            <div class="progress-track">
-              <div class="progress-fill" id="habitProgressFill" style="width: 0%;"></div>
-            </div>
-          </div>
-
-          <!-- Habits List -->
-          <div class="habits-list" id="habitsListContainer">
-            <div class="loading-state">در حال بارگذاری عادات...</div>
-          </div>
-
-          <!-- Habit Reflections Section -->
-          <div class="reflection-section">
-            <div class="section-subtitle">🌸 شکرگزاری و بازتاب روز</div>
-
-            <div class="form-group">
-              <label for="habitGratitude">شکرگزاری امروز</label>
-              <div class="input-with-action">
-                <textarea id="habitGratitude" rows="2" placeholder="خدایا شکرت برای..."></textarea>
-                <button type="button" class="btn-action" data-field="gratitude">ذخیره</button>
+        <!-- Subtab 1: Daily Habits Checklist -->
+        <div id="habit-sub-today" class="subtab-content active">
+          <!-- Hero Progress Card -->
+          <div class="hero-progress-card">
+            <div class="hero-top-row">
+              <div>
+                <span class="hero-title">عادات روزانه</span>
+                <div class="hero-sub" id="habitDateTitle">در حال دریافت...</div>
+              </div>
+              <div class="hero-date-controls">
+                <button class="btn-hero-date" id="btnHabitPrevDay">روز قبل</button>
+                <button class="btn-hero-date active" id="btnHabitToday">امروز</button>
               </div>
             </div>
 
-            <div class="form-group">
-              <label for="habitNotes">یادداشت روز</label>
-              <div class="input-with-action">
-                <textarea id="habitNotes" rows="2" placeholder="نکات مهم و حس و حال امروز..."></textarea>
-                <button type="button" class="btn-action" data-field="notes">ذخیره</button>
+            <!-- Visual Progress Circle & Bar -->
+            <div class="progress-hero-container">
+              <div class="progress-ring-box">
+                <span class="progress-ring-pct" id="habitPercent">۰٪</span>
+                <span class="progress-ring-count" id="habitCountDisplay">۰ از ۱۳</span>
               </div>
-            </div>
-
-            <div class="form-row">
-              <div class="form-group">
-                <label for="habitBook">مطالعه کتاب</label>
-                <div class="input-with-action">
-                  <input type="text" id="habitBook" placeholder="صفحه، فصل یا کتاب...">
-                  <button type="button" class="btn-action" data-field="book">ذخیره</button>
+              <div class="progress-details">
+                <div class="cheerleader-quote" id="habitCheerleader">در حال محاسبه...</div>
+                <div class="progress-track-sleek">
+                  <div class="progress-fill-sleek" id="habitProgressFill" style="width: 0%;"></div>
                 </div>
               </div>
+            </div>
+
+            <button type="button" class="btn-magic-bulk" id="btnBulkComplete">
+              <span>⚡ تکمیل سریع تمام عادات امروز</span>
+            </button>
+          </div>
+
+          <!-- Grouped Habits List -->
+          <div id="habitsGroupedContainer">
+            <div class="loading-state">در حال بارگذاری عادات...</div>
+          </div>
+        </div>
+
+        <!-- Subtab 2: Habit Analytics & Streaks -->
+        <div id="habit-sub-analytics" class="subtab-content">
+          <div class="card">
+            <div class="card-title">
+              <span class="icon">📈</span>
+              <span>تحلیل زنجیره و مداومت عادات</span>
+            </div>
+
+            <!-- Streaks Hero Widget -->
+            <div class="streak-hero-box">
+              <div class="streak-card highlight">
+                <span class="streak-icon">🔥</span>
+                <div class="streak-data">
+                  <span class="streak-value" id="overallCurrentStreak">۰ روز</span>
+                  <span class="streak-label">زنجیره فعلی روزهای موفق</span>
+                </div>
+              </div>
+              <div class="streak-card">
+                <span class="streak-icon">🏆</span>
+                <div class="streak-data">
+                  <span class="streak-value" id="overallBestStreak">۰ روز</span>
+                  <span class="streak-label">بهترین رکورد متوالی</span>
+                </div>
+              </div>
+            </div>
+
+            <!-- Habit Rankings -->
+            <div class="analytics-section-title">📊 برترین عادات در ۷ روز اخیر</div>
+            <div class="rankings-list" id="habitRankingsList">
+              <div class="loading-state">در حال محاسبه آمار...</div>
+            </div>
+
+            <!-- 7-Day Consistency Matrix -->
+            <div class="analytics-section-title" style="margin-top: 20px;">🗓️ ماتریکس مداومت ۷ روز اخیر</div>
+            <div class="heatmap-matrix-box" id="habitHeatmapContainer">
+              <div class="loading-state">در حال بارگذاری ماتریکس...</div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Subtab 3: Reflections & Journal -->
+        <div id="habit-sub-journal" class="subtab-content">
+          <div class="card">
+            <div class="card-title">
+              <span class="icon">🌸</span>
+              <span>دفترچه شکرگزاری و بازتاب روز</span>
+            </div>
+
+            <div class="journal-form">
               <div class="form-group">
-                <label for="habitQuran">قرائت قرآن</label>
+                <label for="habitGratitude">🌸 ۳ مورد شکرگزاری امروز</label>
                 <div class="input-with-action">
-                  <input type="text" id="habitQuran" placeholder="آیه یا صفحه...">
-                  <button type="button" class="btn-action" data-field="quran">ذخیره</button>
+                  <textarea id="habitGratitude" rows="3" placeholder="خدایا شکرت برای..."></textarea>
+                  <button type="button" class="btn-action" data-field="gratitude">ذخیره</button>
+                </div>
+              </div>
+
+              <div class="form-group">
+                <label for="habitNotes">📝 یادداشت، احوالات و دستاوردهای امروز</label>
+                <div class="input-with-action">
+                  <textarea id="habitNotes" rows="3" placeholder="نکات مهم و حس و حال امروز..."></textarea>
+                  <button type="button" class="btn-action" data-field="notes">ذخیره</button>
+                </div>
+              </div>
+
+              <div class="form-row">
+                <div class="form-group">
+                  <label for="habitBook">📚 مطالعه کتاب</label>
+                  <div class="input-with-action">
+                    <input type="text" id="habitBook" placeholder="نام کتاب و صفحات...">
+                    <button type="button" class="btn-action" data-field="book">ذخیره</button>
+                  </div>
+                </div>
+                <div class="form-group">
+                  <label for="habitQuran">📖 تلاوت قرآن</label>
+                  <div class="input-with-action">
+                    <input type="text" id="habitQuran" placeholder="سوره یا صفحه...">
+                    <button type="button" class="btn-action" data-field="quran">ذخیره</button>
+                  </div>
                 </div>
               </div>
             </div>
@@ -271,6 +397,17 @@
         <span class="nav-label">تاریخچه</span>
       </button>
     </nav>
+
+    <!-- Modal for Habit Level Selection -->
+    <div id="habitLevelModal" class="modal-backdrop" style="display: none;">
+      <div class="modal-card">
+        <div class="modal-header">
+          <span class="modal-title" id="modalHabitTitle">انتخاب کیفیت عادت</span>
+          <button class="btn-modal-close" id="btnModalClose">&times;</button>
+        </div>
+        <div class="modal-body" id="modalLevelOptions"></div>
+      </div>
+    </div>
 
     <!-- Toast Notification -->
     <div id="toast" class="toast"></div>

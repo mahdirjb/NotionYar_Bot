@@ -2,14 +2,11 @@
 
 import os
 import json
-import hmac
-import hashlib
 import asyncio
-from urllib.parse import parse_qsl, unquote
 from datetime import datetime, timezone, timedelta
 from typing import Optional, Dict, Any, List
 
-from fastapi import FastAPI, Depends, HTTPException, Header, status
+from fastapi import FastAPI, Depends, HTTPException, Header, status, Query
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse, JSONResponse
@@ -37,19 +34,26 @@ from app.services.notion_service import (
     get_or_create_habit_day,
     parse_habit_page,
     update_habit_entry,
+    bulk_update_all_habits,
     update_habit_notes,
     update_habit_gratitude,
     update_habit_quran_detail,
     update_habit_book_detail,
+    archive_notion_page,
     HABIT_ITEMS,
     HABIT_DESCRIPTIONS,
+    HABIT_LEVELS,
     get_persian_cheerleader
 )
 from app.services.date_helper import format_jalali_full_display, get_jalali_date_info
+from app.services.insights_service import calculate_habit_insights
+from app.services.habit_analytics_service import calculate_habit_streaks, calculate_consistency_matrix
 
-app = FastAPI(title="NotionYar Telegram Mini App API", version="1.0.0")
+from aiogram.utils.web_app import safe_parse_webapp_init_data, check_webapp_signature
 
-# Enable CORS for local testing or custom web app domains
+app = FastAPI(title="NotionYar Telegram Mini App API", version="2.0.0")
+
+# Enable CORS
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -60,57 +64,15 @@ app.add_middleware(
 
 
 # ==========================================
-# 🔐 TELEGRAM AUTHENTICATION & VALIDATION
+# 🔐 AUTHENTICATION & DEPENDENCY
 # ==========================================
-
-def validate_telegram_init_data(init_data: str, bot_token: str) -> Optional[Dict[str, Any]]:
-    """
-    Validates data received from Telegram WebApp according to official Telegram docs:
-    https://core.telegram.org/bots/webapps#validating-data-received-via-the-mini-app
-    """
-    if not init_data or not bot_token:
-        return None
-
-    try:
-        parsed = dict(parse_qsl(init_data, keep_blank_values=True))
-        if "hash" not in parsed:
-            return None
-
-        received_hash = parsed.pop("hash")
-
-        # Sort the pairs in alphabetical order: key=value\nkey2=value2...
-        data_check_string = "\n".join(f"{k}={v}" for k, v in sorted(parsed.items()))
-
-        # Secret key is HMAC-SHA256 of bot_token with "WebAppData"
-        secret_key = hmac.new(b"WebAppData", bot_token.encode("utf-8"), hashlib.sha256).digest()
-
-        # Calculated hash
-        calculated_hash = hmac.new(secret_key, data_check_string.encode("utf-8"), hashlib.sha256).hexdigest()
-
-        if not hmac.compare_digest(calculated_hash, received_hash):
-            return None
-
-        # Extract user object
-        user_raw = parsed.get("user")
-        if user_raw:
-            user_data = json.loads(user_raw)
-            return user_data
-
-        return None
-    except Exception as e:
-        return None
-
-
-from aiogram.utils.web_app import safe_parse_webapp_init_data, check_webapp_signature
 
 async def get_current_user(
     x_telegram_init_data: Optional[str] = Header(None, alias="X-Telegram-Init-Data")
 ) -> Dict[str, Any]:
     """
-    Dependency to authenticate and authorize requests from the Telegram Mini App.
-    In local development or debug mode, if header is absent, falls back to first admin.
+    Validates Telegram WebApp initData or falls back to dev mode if testing in browser.
     """
-    # 1. Real Telegram Init Data check
     if x_telegram_init_data and BOT_TOKEN:
         try:
             init_data = safe_parse_webapp_init_data(token=BOT_TOKEN, init_data=x_telegram_init_data)
@@ -137,7 +99,7 @@ async def get_current_user(
         except Exception:
             pass
 
-    # 2. Local development fallback (Allows viewing Mini App in regular desktop browser during development)
+    # Development Fallback
     allow_dev_bypass = os.getenv("ALLOW_DEV_BYPASS", "true").lower() == "true"
     if allow_dev_bypass:
         mock_id = ADMIN_USERS[0] if ADMIN_USERS else 999999999
@@ -160,32 +122,38 @@ async def get_current_user(
 
 
 # ==========================================
-# 📦 PYDANTIC REQUEST MODELS
+# 📦 REQUEST MODELS
 # ==========================================
 
 class TimeTrackerCreateRequest(BaseModel):
-    name: str = Field(..., min_length=1, description="عنوان کار یا تسک")
-    person_id: Optional[str] = Field(None, description="شناسه شخص در نوشن")
-    person_name: Optional[str] = Field(None, description="نام شخص")
-    date_iso: Optional[str] = Field(None, description="تاریخ میلادی YYYY-MM-DD")
-    start_time: Optional[str] = Field(None, description="ساعت شروع HH:MM")
-    end_time: Optional[str] = Field(None, description="ساعت پایان HH:MM")
-    manual_duration: Optional[int] = Field(None, description="مدت زمان به دقیقه")
-    satisfaction: Optional[str] = Field(None, description="میزان رضایت ۱ تا ۵")
-    description: Optional[str] = Field(None, description="توضیحات تسک")
+    name: str = Field(..., min_length=1)
+    person_id: Optional[str] = None
+    person_name: Optional[str] = None
+    date_iso: Optional[str] = None
+    start_time: Optional[str] = None
+    end_time: Optional[str] = None
+    manual_duration: Optional[int] = None
+    satisfaction: Optional[str] = None
+    description: Optional[str] = None
 
 
 class LifeTrackerCreateRequest(BaseModel):
-    event_type: str = Field(..., description="نوع لاگ روزمرگی")
-    mode: Optional[str] = Field(None, description="حالت یا زیرمجموعه")
-    date_iso: Optional[str] = Field(None, description="تاریخ میلادی YYYY-MM-DD")
-    notes: Optional[str] = Field(None, description="یادداشت")
+    event_type: str
+    mode: Optional[str] = None
+    date_iso: Optional[str] = None
+    notes: Optional[str] = None
 
 
 class HabitStatusUpdateRequest(BaseModel):
     page_id: str
-    habit_prop: str
-    select_val: Optional[str] = None  # "انجام شد", "ناقص", "انجام نشد", "فریز", None
+    habit_key: Optional[str] = None
+    habit_prop: Optional[str] = None
+    select_val: Optional[str] = None  # "1-💪 کامل", "2-🏃‍♂️ نیمه‌کامل", "3-🐢 سبک", "فریز", None
+
+
+class HabitBulkCompleteRequest(BaseModel):
+    page_id: str
+    select_val: str = "1-💪 کامل"
 
 
 class HabitTextUpdateRequest(BaseModel):
@@ -195,12 +163,11 @@ class HabitTextUpdateRequest(BaseModel):
 
 
 # ==========================================
-# 🚀 API ENDPOINTS
+# 🚀 COMMON & PROFILE ENDPOINTS
 # ==========================================
 
 @app.get("/api/me")
 async def get_me(user: Dict[str, Any] = Depends(get_current_user)):
-    """Returns current authenticated user profile and permissions."""
     tz = timezone(timedelta(hours=3, minutes=30))
     today_iso = datetime.now(tz).strftime("%Y-%m-%d")
     jalali_today = format_jalali_full_display(today_iso)
@@ -212,13 +179,12 @@ async def get_me(user: Dict[str, Any] = Depends(get_current_user)):
     }
 
 
-# ------------------------------------------
+# ==========================================
 # ⏱ TIME TRACKER ENDPOINTS
-# ------------------------------------------
+# ==========================================
 
 @app.get("/api/time-tracker/meta")
 async def get_time_tracker_meta(user: Dict[str, Any] = Depends(get_current_user)):
-    """Returns workspace persons and satisfaction choices for Time Tracker."""
     persons = await asyncio.to_thread(get_workspace_persons)
     satisfaction_options = [
         {"value": "1", "label": "۱ - ضعیف", "emoji": "😞"},
@@ -238,7 +204,6 @@ async def create_time_tracker_entry(
     payload: TimeTrackerCreateRequest,
     user: Dict[str, Any] = Depends(get_current_user)
 ):
-    """Creates a new record in Notion Time Tracker database."""
     if not user.get("can_add_time"):
         raise HTTPException(status_code=403, detail="شما مجوز ثبت زمان را ندارید.")
 
@@ -263,26 +228,61 @@ async def create_time_tracker_entry(
     return {"success": True, "page_id": res.get("id")}
 
 
-# ------------------------------------------
-# 🌱 LIFE TRACKER ENDPOINTS
-# ------------------------------------------
+@app.delete("/api/time-tracker/delete/{page_id}")
+async def delete_time_tracker_entry(
+    page_id: str,
+    user: Dict[str, Any] = Depends(get_current_user)
+):
+    success = await asyncio.to_thread(archive_notion_page, page_id)
+    if not success:
+        raise HTTPException(status_code=500, detail="خطا در حذف رکورد زمان.")
+    return {"success": True}
+
+
+# ==========================================
+# 🌱 LIFE TRACKER ENDPOINTS (REVAMPED)
+# ==========================================
 
 @app.get("/api/life-tracker/options")
 async def get_life_tracker_options(user: Dict[str, Any] = Depends(get_current_user)):
-    """Returns categories, modes and emojis for Life Tracker."""
-    types_with_meta = []
+    """Returns grouped categories and their modes for an intuitive UI."""
+    groups = [
+        {
+            "title": "نظافت و آراستگی",
+            "emoji": "💈",
+            "types": ["آرایشگاه", "ریش و سبیل", "موپالمو", "خورشید", "آینه", "ناخن دست", "ناخن پا"]
+        },
+        {
+            "title": "سلامتی و درمان",
+            "emoji": "💊",
+            "types": ["ویتامین دی", "مریضی"]
+        },
+        {
+            "title": "نقلیه و رفت‌وآمد",
+            "emoji": "🚗",
+            "types": ["رانندگی", "دوری"]
+        },
+        {
+            "title": "خرید و رویدادها",
+            "emoji": "🛒",
+            "types": ["خرید", "اتفاقات", "سایر"]
+        }
+    ]
+
+    all_types_meta = {}
     for t in LIFE_TRACKER_TYPES:
-        types_with_meta.append({
+        all_types_meta[t] = {
             "name": t,
             "emoji": TYPE_EMOJIS.get(t, "🌱"),
             "modes": [
                 {"name": m, "emoji": MODE_EMOJIS.get(m, "🔹")}
                 for m in TYPE_MODE_MAPPING.get(t, [])
             ]
-        })
+        }
 
     return {
-        "types": types_with_meta
+        "groups": groups,
+        "all_types": all_types_meta
     }
 
 
@@ -291,7 +291,6 @@ async def create_life_tracker_entry(
     payload: LifeTrackerCreateRequest,
     user: Dict[str, Any] = Depends(get_current_user)
 ):
-    """Creates a new entry in Life Tracker database."""
     tz = timezone(timedelta(hours=3, minutes=30))
     date_str = payload.date_iso or datetime.now(tz).strftime("%Y-%m-%d")
 
@@ -309,48 +308,126 @@ async def create_life_tracker_entry(
     return {"success": True, "page_id": res.get("id")}
 
 
-# ------------------------------------------
-# 🎯 HABITS TRACKER ENDPOINTS
-# ------------------------------------------
+@app.get("/api/life-tracker/insights")
+async def get_life_tracker_insights(user: Dict[str, Any] = Depends(get_current_user)):
+    """Calculates routines, intervals, averages and overdue alerts."""
+    try:
+        insights = await asyncio.to_thread(calculate_habit_insights)
+        return {"insights": insights}
+    except Exception as e:
+        return {"insights": {}, "error": str(e)}
+
+
+@app.get("/api/life-tracker/history")
+async def get_life_tracker_history(
+    event_type: Optional[str] = Query(None),
+    limit: int = Query(30),
+    user: Dict[str, Any] = Depends(get_current_user)
+):
+    """Returns past life tracker logs with optional type filter."""
+    try:
+        entries = await asyncio.to_thread(query_life_tracker_entries, page_size=limit)
+        if event_type:
+            entries = [e for e in entries if e.get("type") == event_type]
+
+        results = []
+        for item in entries:
+            t_name = item.get("type", "")
+            results.append({
+                "id": item.get("id"),
+                "type": t_name,
+                "emoji": TYPE_EMOJIS.get(t_name, "🌱"),
+                "mode": item.get("mode", ""),
+                "date": item.get("date", "—"),
+                "date_iso": item.get("date_iso", ""),
+                "notes": item.get("notes", "")
+            })
+
+        return {"entries": results}
+    except Exception as e:
+        return {"entries": [], "error": str(e)}
+
+
+@app.delete("/api/life-tracker/delete/{page_id}")
+async def delete_life_tracker_entry(
+    page_id: str,
+    user: Dict[str, Any] = Depends(get_current_user)
+):
+    success = await asyncio.to_thread(archive_notion_page, page_id)
+    if not success:
+        raise HTTPException(status_code=500, detail="خطا در حذف رکورد روزمرگی.")
+    return {"success": True}
+
+
+# ==========================================
+# 🎯 HABITS TRACKER ENDPOINTS (REVAMPED)
+# ==========================================
 
 @app.get("/api/habits/day")
 async def get_habits_day(
     date_iso: Optional[str] = None,
     user: Dict[str, Any] = Depends(get_current_user)
 ):
-    """Returns habit checklist, progress, and reflections for the given date."""
+    """Returns habit checklist with categories, progress, and reflections."""
     tz = timezone(timedelta(hours=3, minutes=30))
     if not date_iso:
         date_iso = datetime.now(tz).strftime("%Y-%m-%d")
 
     jalali_title = format_jalali_full_display(date_iso)
 
-    # Fetch or create habit day page in Notion
-    page = await asyncio.to_thread(get_or_create_habit_day, date_iso, jalali_title)
-    parsed = parse_habit_page(page)
+    try:
+        page = await asyncio.to_thread(get_or_create_habit_day, date_iso, jalali_title)
+        parsed = parse_habit_page(page)
+    except Exception as e:
+        parsed = {"id": "", "progress": 0.0, "habits": {}, "cheerleader": "روز خوبی بساز! 🌟"}
 
-    # Format habits with their definitions
-    habits_list = []
-    for h_name in HABIT_ITEMS:
-        current_status = parsed.get("habits", {}).get(h_name)
-        habits_list.append({
-            "name": h_name,
-            "description": HABIT_DESCRIPTIONS.get(h_name, ""),
-            "status": current_status
+    # Group habits by category
+    categories = {
+        "ذهنی": {"title": "ذهن و تمرکز", "emoji": "🧘", "habits": []},
+        "جسمی": {"title": "جسم و سلامتی", "emoji": "🏃", "habits": []},
+        "نظم": {"title": "نظم و محیط", "emoji": "🛏️", "habits": []},
+        "معنوی": {"title": "معنوی و آرامش", "emoji": "🕊️", "habits": []}
+    }
+
+    total_habits = len(HABIT_ITEMS)
+    completed_count = 0
+
+    for h_key, h_info in HABIT_ITEMS.items():
+        val = parsed.get("habits", {}).get(h_key)
+        is_done = val in ("1-💪 کامل", "2-🏃‍♂️ نیمه‌کامل", "3-🐢 سبک")
+        if is_done:
+            completed_count += 1
+
+        cat = h_info.get("cat", "سایر")
+        if cat not in categories:
+            categories[cat] = {"title": cat, "emoji": "🎯", "habits": []}
+
+        categories[cat]["habits"].append({
+            "key": h_key,
+            "prop": h_info["prop"],
+            "name": h_info["fa"],
+            "emoji": h_info["emoji"],
+            "is_binary": h_info.get("binary", False),
+            "description": HABIT_DESCRIPTIONS.get(h_key, {}).get("v1", ""),
+            "levels": HABIT_DESCRIPTIONS.get(h_key, {}),
+            "status": val,
+            "is_done": is_done
         })
 
-    cheerleader = get_persian_cheerleader(parsed.get("progress_float", 0.0))
+    progress_pct = int(round(parsed.get("progress", 0.0) * 100))
 
     return {
-        "page_id": parsed.get("page_id"),
+        "page_id": parsed.get("id"),
         "date_iso": date_iso,
         "jalali_title": jalali_title,
-        "progress_float": parsed.get("progress_float", 0.0),
-        "progress_percent": int(round(parsed.get("progress_float", 0.0) * 100)),
-        "cheerleader": cheerleader,
-        "habits": habits_list,
+        "progress_float": parsed.get("progress", 0.0),
+        "progress_percent": progress_pct,
+        "completed_count": completed_count,
+        "total_habits": total_habits,
+        "cheerleader": parsed.get("cheerleader", "روز خوبی بساز! 🌟"),
+        "categories": categories,
         "notes": parsed.get("notes", ""),
-        "gratitude": parsed.get("gratitude", ""),
+        "gratitude": parsed.get("gratitude_log", ""),
         "quran_detail": parsed.get("quran_detail", ""),
         "book_detail": parsed.get("book_detail", "")
     }
@@ -361,11 +438,18 @@ async def update_habit_status(
     payload: HabitStatusUpdateRequest,
     user: Dict[str, Any] = Depends(get_current_user)
 ):
-    """Updates the status of a specific habit for a day."""
+    """Updates a single habit using either key (bt) or prop (Brush Teeth)."""
+    prop_name = payload.habit_prop
+    if not prop_name and payload.habit_key in HABIT_ITEMS:
+        prop_name = HABIT_ITEMS[payload.habit_key]["prop"]
+
+    if not prop_name:
+        raise HTTPException(status_code=400, detail="مشخصه عادت نامعتبر است.")
+
     success = await asyncio.to_thread(
         update_habit_entry,
         payload.page_id,
-        payload.habit_prop,
+        prop_name,
         payload.select_val
     )
     if not success:
@@ -373,12 +457,49 @@ async def update_habit_status(
     return {"success": True}
 
 
+@app.post("/api/habits/bulk-complete")
+async def bulk_complete_habits(
+    payload: HabitBulkCompleteRequest,
+    user: Dict[str, Any] = Depends(get_current_user)
+):
+    """Marks all habits as completed for the day in one click!"""
+    success = await asyncio.to_thread(
+        bulk_update_all_habits,
+        payload.page_id,
+        payload.select_val
+    )
+    if not success:
+        raise HTTPException(status_code=500, detail="خطا در تکمیل خودکار عادات.")
+    return {"success": True}
+
+
+@app.get("/api/habits/analytics")
+async def get_habits_analytics(
+    period: str = Query("7d"),
+    user: Dict[str, Any] = Depends(get_current_user)
+):
+    """Returns streaks, 7-day consistency heatmap, and habit rankings."""
+    try:
+        streaks = await asyncio.to_thread(calculate_habit_streaks, None, 100)
+    except Exception as e:
+        streaks = {}
+
+    try:
+        matrix = await asyncio.to_thread(calculate_consistency_matrix, period, None)
+    except Exception as e:
+        matrix = {}
+
+    return {
+        "streaks": streaks,
+        "matrix": matrix
+    }
+
+
 @app.post("/api/habits/update-text")
 async def update_habit_text(
     payload: HabitTextUpdateRequest,
     user: Dict[str, Any] = Depends(get_current_user)
 ):
-    """Updates reflection text fields (notes, gratitude, quran, book)."""
     if payload.field == "notes":
         success = await asyncio.to_thread(update_habit_notes, payload.page_id, payload.text)
     elif payload.field == "gratitude":
@@ -391,19 +512,25 @@ async def update_habit_text(
         raise HTTPException(status_code=400, detail="فیلد نامعتبر است.")
 
     if not success:
-        raise HTTPException(status_code=500, detail="خطا در ذخیره یادداشت در نوشن.")
+        raise HTTPException(status_code=500, detail="خطا در ذخیره متن در نوشن.")
     return {"success": True}
 
 
-# ------------------------------------------
+# ==========================================
 # 📜 RECENT ACTIVITY LOGS
-# ------------------------------------------
+# ==========================================
 
 @app.get("/api/recent-logs")
 async def get_recent_logs(user: Dict[str, Any] = Depends(get_current_user)):
-    """Returns recent Time Tracker and Life Tracker entries for quick overview."""
-    time_entries = await asyncio.to_thread(query_time_tracker_entries, page_size=5)
-    life_entries = await asyncio.to_thread(query_life_tracker_entries, page_size=5)
+    try:
+        time_entries = await asyncio.to_thread(query_time_tracker_entries, page_size=5)
+    except Exception:
+        time_entries = []
+
+    try:
+        life_entries = await asyncio.to_thread(query_life_tracker_entries, page_size=5)
+    except Exception:
+        life_entries = []
 
     recent_time = []
     for item in time_entries:
@@ -435,7 +562,7 @@ async def get_recent_logs(user: Dict[str, Any] = Depends(get_current_user)):
 
 
 # ==========================================
-# 🌐 STATIC FILES & FRONTEND APP
+# 🌐 STATIC FILES & FRONTEND
 # ==========================================
 
 STATIC_DIR = os.path.join(os.path.dirname(__file__), "static")
@@ -447,7 +574,6 @@ app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
 
 @app.get("/")
 async def serve_index():
-    """Serves the Telegram Mini App single-page frontend."""
     index_file = os.path.join(STATIC_DIR, "index.html")
     if os.path.exists(index_file):
         return FileResponse(index_file)
