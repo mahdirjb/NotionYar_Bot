@@ -101,6 +101,8 @@ def validate_telegram_init_data(init_data: str, bot_token: str) -> Optional[Dict
         return None
 
 
+from aiogram.utils.web_app import safe_parse_webapp_init_data, check_webapp_signature
+
 async def get_current_user(
     x_telegram_init_data: Optional[str] = Header(None, alias="X-Telegram-Init-Data")
 ) -> Dict[str, Any]:
@@ -110,25 +112,30 @@ async def get_current_user(
     """
     # 1. Real Telegram Init Data check
     if x_telegram_init_data and BOT_TOKEN:
-        user_info = validate_telegram_init_data(x_telegram_init_data, BOT_TOKEN)
-        if user_info and "id" in user_info:
-            user_id = int(user_info["id"])
-            if not is_user_registered(user_id):
-                raise HTTPException(
-                    status_code=status.HTTP_403_FORBIDDEN,
-                    detail="شما اجازه دسترسی به این ربات را ندارید."
-                )
-            role = get_user_role(user_id) or "member"
-            return {
-                "id": user_id,
-                "first_name": user_info.get("first_name", ""),
-                "last_name": user_info.get("last_name", ""),
-                "username": user_info.get("username", ""),
-                "role": role,
-                "can_add_time": has_permission(user_id, PERM_ADD_TIME),
-                "can_view_reports": has_permission(user_id, PERM_VIEW_REPORTS),
-                "is_admin": has_permission(user_id, PERM_ADMIN)
-            }
+        try:
+            init_data = safe_parse_webapp_init_data(token=BOT_TOKEN, init_data=x_telegram_init_data)
+            if init_data and init_data.user:
+                user_id = init_data.user.id
+                if not is_user_registered(user_id):
+                    raise HTTPException(
+                        status_code=status.HTTP_403_FORBIDDEN,
+                        detail="شما اجازه دسترسی به این ربات را ندارید."
+                    )
+                role = get_user_role(user_id) or "member"
+                return {
+                    "id": user_id,
+                    "first_name": init_data.user.first_name or "",
+                    "last_name": init_data.user.last_name or "",
+                    "username": init_data.user.username or "",
+                    "role": role,
+                    "can_add_time": has_permission(user_id, PERM_ADD_TIME),
+                    "can_view_reports": has_permission(user_id, PERM_VIEW_REPORTS),
+                    "is_admin": has_permission(user_id, PERM_ADMIN)
+                }
+        except HTTPException:
+            raise
+        except Exception:
+            pass
 
     # 2. Local development fallback (Allows viewing Mini App in regular desktop browser during development)
     allow_dev_bypass = os.getenv("ALLOW_DEV_BYPASS", "true").lower() == "true"
