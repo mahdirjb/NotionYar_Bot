@@ -26,13 +26,19 @@
           <div class="current-date" id="currentDate">...</div>
         </div>
       </div>
-      <button class="btn-icon" id="btnRefresh" title="بروزرسانی داده‌ها">
-        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-          <polyline points="23 4 23 10 17 10"></polyline>
-          <polyline points="1 20 1 14 7 14"></polyline>
-          <path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"></path>
-        </svg>
-      </button>
+      <div style="display: flex; align-items: center; gap: 8px;">
+        <button type="button" class="btn-stealth-toggle" id="btnToggleStealth" title="حالت مخفی برای مکان‌های شلوغ">
+          <span class="stealth-icon">🕶️</span>
+          <span class="stealth-text">مخفی</span>
+        </button>
+        <button class="btn-icon" id="btnRefresh" title="بروزرسانی داده‌ها">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <polyline points="23 4 23 10 17 10"></polyline>
+            <polyline points="1 20 1 14 7 14"></polyline>
+            <path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"></path>
+          </svg>
+        </button>
+      </div>
     </header>
 
     <!-- Main Content Container -->
@@ -73,15 +79,23 @@
 
             <div class="form-row">
               <div class="form-group">
-                <label for="timeStart">ساعت شروع</label>
-                <input type="time" id="timeStart">
+                <label>ساعت شروع</label>
+                <button type="button" class="btn-time-picker" id="btnOpenStartTimePicker">
+                  <span class="time-picker-icon">⏰</span>
+                  <span id="timeStartDisplay">انتخاب شروع...</span>
+                </button>
+                <input type="hidden" id="timeStart">
               </div>
               <div class="form-group">
                 <div style="display:flex; justify-content:space-between; align-items:center;">
-                  <label for="timeEnd">ساعت پایان</label>
+                  <label>ساعت پایان</label>
                   <button type="button" class="btn-text-action" id="btnSetNowEnd">🕒 اکنون</button>
                 </div>
-                <input type="time" id="timeEnd">
+                <button type="button" class="btn-time-picker" id="btnOpenEndTimePicker">
+                  <span class="time-picker-icon">⏰</span>
+                  <span id="timeEndDisplay">انتخاب پایان...</span>
+                </button>
+                <input type="hidden" id="timeEnd">
               </div>
             </div>
 
@@ -233,7 +247,23 @@
                   <option value="7d">۷ روز اخیر</option>
                   <option value="30d">۳۰ روز اخیر</option>
                   <option value="month">ماه جاری</option>
+                  <option value="custom">📅 بازه زمانی دلخواه...</option>
                 </select>
+              </div>
+            </div>
+
+            <!-- Custom Date Range Selector (Hidden unless custom is chosen) -->
+            <div id="lifeCustomDateRangeRow" style="display: none; margin-bottom: 12px; background: var(--input-bg); border: 1px solid var(--card-border); border-radius: 12px; padding: 10px;">
+              <div style="font-size: 11px; font-weight: 700; color: var(--link-color); margin-bottom: 8px;">تعیین بازه تاریخی دلخواه (شمسی):</div>
+              <div class="form-row">
+                <div class="form-group">
+                  <label>از تاریخ:</label>
+                  <button type="button" class="btn-pill btn-custom-date" id="btnLifeRangeFrom">📅 شروع</button>
+                </div>
+                <div class="form-group">
+                  <label>تا تاریخ:</label>
+                  <button type="button" class="btn-pill btn-custom-date" id="btnLifeRangeTo">📅 پایان</button>
+                </div>
               </div>
             </div>
 
@@ -422,7 +452,7 @@
             <div class="journal-block" style="margin-top: 14px;">
               <div class="journal-block-title">📝 یادداشت و احوالات روز</div>
               <div class="input-with-action">
-                <textarea id="habitNotes" rows="3" placeholder="دستاوردهای مهم، احساسات یا یادداشت‌های امروز..."></textarea>
+                <textarea id="habitNotes" rows="5" style="min-height: 120px; line-height: 1.6;" placeholder="دستاوردهای مهم، احساسات یا یادداشت‌های امروز..."></textarea>
                 <button type="button" class="btn-action" data-field="notes">ذخیره</button>
               </div>
             </div>
@@ -610,22 +640,84 @@
     <div id="presetModal" class="modal-backdrop" style="display: none;">
       <div class="modal-card">
         <div class="modal-header">
-          <span class="modal-title">📑 قالب‌های سفارشی ثبت عادات</span>
+          <span class="modal-title" id="presetModalTitle">📑 قالب‌های سفارشی ثبت عادات</span>
           <button class="btn-modal-close" id="btnPresetModalClose">&times;</button>
         </div>
         <div class="modal-body">
-          <p style="font-size:12px; color:var(--hint-color); margin-bottom:12px;">
-            یک قالب را برای ثبت سریع عادات امروز انتخاب کنید یا قالب دلخواه خود را بسازید:
-          </p>
+          <!-- View 1: Presets List -->
+          <div id="presetViewList">
+            <p style="font-size:12px; color:var(--hint-color); margin-bottom:12px;">
+              یک قالب را برای ثبت سریع عادات امروز انتخاب کنید یا قالب دلخواه خود را بسازید:
+            </p>
 
-          <div class="presets-list" id="presetsList">
-            <!-- Rendered dynamically via JS -->
+            <div class="presets-list" id="presetsList">
+              <!-- Rendered dynamically via JS -->
+            </div>
+
+            <div style="margin-top:14px; padding-top:12px; border-top:1px solid var(--card-border); display:flex; flex-direction:column; gap:8px;">
+              <button type="button" class="btn-primary" id="btnOpenNewPresetBuilder" style="width:100%;">
+                <span>➕ ساخت قالب جدید با لیست عادات</span>
+              </button>
+              <button type="button" class="btn-magic-bulk" id="btnSaveCurrentAsPreset" style="width:100%;">
+                <span>⚡ ذخیره وضعیت فعلی عادات به عنوان قالب</span>
+              </button>
+            </div>
           </div>
 
-          <div style="margin-top:14px; padding-top:12px; border-top:1px solid var(--card-border);">
-            <button type="button" class="btn-magic-bulk" id="btnSaveCurrentAsPreset" style="width:100%;">
-              <span>➕ ذخیره وضعیت فعلی عادات به عنوان قالب جدید</span>
-            </button>
+          <!-- View 2: Preset Builder / Editor -->
+          <div id="presetViewBuilder" style="display: none;">
+            <div class="form-group" style="margin-bottom: 12px;">
+              <label for="builderPresetTitle">نام قالب سفارشی <span class="required">*</span></label>
+              <input type="text" id="builderPresetTitle" placeholder="مثلاً: روتین عصرگاهی" required>
+            </div>
+            <div style="font-size: 11px; font-weight: 700; color: var(--hint-color); margin-bottom: 8px;">
+              وضعیت هر عادت را برای این قالب مشخص کنید:
+            </div>
+            <div id="presetBuilderHabitsList" style="max-height: 280px; overflow-y: auto; display: flex; flex-direction: column; gap: 8px; margin-bottom: 14px; padding-left: 4px;">
+              <!-- Generated list of 13 habits with status options -->
+            </div>
+            <div style="display: flex; gap: 8px;">
+              <button type="button" class="btn-step" id="btnCancelPresetBuilder" style="flex:1;">بازگشت</button>
+              <button type="button" class="btn-primary" id="btnSavePresetFromBuilder" style="flex:2;">💾 ذخیره قالب</button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Modal for Sleek Persian Time Picker -->
+    <div id="timePickerModal" class="modal-backdrop" style="display: none;">
+      <div class="modal-card">
+        <div class="modal-header">
+          <span class="modal-title" id="timePickerModalTitle">⏰ تنظیم ساعت</span>
+          <button class="btn-modal-close" id="btnTimePickerModalClose">&times;</button>
+        </div>
+        <div class="modal-body">
+          <div class="time-quick-pills">
+            <button type="button" class="btn-chip" id="btnTimeQuickNow">🕒 هم‌اکنون</button>
+            <button type="button" class="btn-chip" id="btnTimeQuickSub15">۱۵- د</button>
+            <button type="button" class="btn-chip" id="btnTimeQuickSub30">۳۰- د</button>
+            <button type="button" class="btn-chip" id="btnTimeQuickSub60">۱- ساعت</button>
+          </div>
+
+          <div class="time-picker-preview-box">
+            <span class="time-preview-large" id="timePickerDisplay">۰۰:۰۰</span>
+            <div class="time-preview-hint">ساعت : دقیقه</div>
+          </div>
+
+          <div style="margin-top:14px;">
+            <div class="picker-section-label">ساعت (از ۰۰ تا ۲۳):</div>
+            <div class="hours-chips-grid" id="hoursChipsGrid"></div>
+          </div>
+
+          <div style="margin-top:12px;">
+            <div class="picker-section-label">دقیقه:</div>
+            <div class="minutes-chips-grid" id="minutesChipsGrid"></div>
+          </div>
+
+          <div style="display:flex; gap:8px; margin-top:16px;">
+            <button type="button" class="btn-step" id="btnClearTimePicker" style="flex:1;">پاک کردن</button>
+            <button type="button" class="btn-primary" id="btnConfirmTimePicker" style="flex:2;">تایید ساعت</button>
           </div>
         </div>
       </div>

@@ -125,6 +125,8 @@
   let selectedLifeModes = []; // supports 0, 1, or multiple modes
   let lifeOptionsData = null;
   let allLifeEntriesCache = []; // for local fast date filtering
+  let customLifeStartDate = null;
+  let customLifeEndDate = null;
 
   let currentHabitDateIso = getDateFromOffset(0);
   let habitDayData = null;
@@ -135,7 +137,7 @@
   let gratitudeItems = [];
 
   // Persian Date Picker Modal State
-  let activeDatePickerTarget = "time"; // "time" | "life" | "habits"
+  let activeDatePickerTarget = "time"; // "time" | "life" | "habits" | "life_from" | "life_to"
 
   // Header Helper
   function getHeaders() {
@@ -367,6 +369,16 @@
         currentHabitDateIso = isoDate;
         document.querySelectorAll("[data-habit-offset]").forEach((b) => b.classList.remove("active"));
         loadHabitsForDate(currentHabitDateIso);
+      } else if (activeDatePickerTarget === "life_from") {
+        customLifeStartDate = isoDate;
+        const btn = document.getElementById("btnLifeRangeFrom");
+        if (btn) btn.textContent = `📅 از ${toPersianDigits(jd)} ${PERSIAN_MONTH_NAMES[jm - 1]}`;
+        renderFilteredLifeHistory();
+      } else if (activeDatePickerTarget === "life_to") {
+        customLifeEndDate = isoDate;
+        const btn = document.getElementById("btnLifeRangeTo");
+        if (btn) btn.textContent = `📅 تا ${toPersianDigits(jd)} ${PERSIAN_MONTH_NAMES[jm - 1]}`;
+        renderFilteredLifeHistory();
       }
 
       modal.style.display = "none";
@@ -386,6 +398,8 @@
     if (target === "time") currentIso = selectedTimeDate;
     if (target === "life") currentIso = selectedLifeDate;
     if (target === "habits") currentIso = currentHabitDateIso;
+    if (target === "life_from") currentIso = customLifeStartDate || currentDateIso;
+    if (target === "life_to") currentIso = customLifeEndDate || currentDateIso;
 
     const parts = currentIso.split("-").map(Number);
     const [jy, jm, jd] = gregorianToJalali(parts[0], parts[1], parts[2]);
@@ -423,6 +437,8 @@
   document.getElementById("btnOpenTimePicker")?.addEventListener("click", () => openPersianDatePicker("time"));
   document.getElementById("btnOpenLifePicker")?.addEventListener("click", () => openPersianDatePicker("life"));
   document.getElementById("btnOpenHabitPicker")?.addEventListener("click", () => openPersianDatePicker("habits"));
+  document.getElementById("btnLifeRangeFrom")?.addEventListener("click", () => openPersianDatePicker("life_from"));
+  document.getElementById("btnLifeRangeTo")?.addEventListener("click", () => openPersianDatePicker("life_to"));
 
   initPersianDatePickerModal();
 
@@ -488,21 +504,18 @@
     haptic("light");
   });
 
-  // Set Now Button for End Time
-  document.getElementById("btnSetNowEnd")?.addEventListener("click", () => {
-    const now = new Date();
-    const hh = String(now.getHours()).padStart(2, "0");
-    const mm = String(now.getMinutes()).padStart(2, "0");
-    document.getElementById("timeEnd").value = `${hh}:${mm}`;
-    autoCalculateDuration();
-    haptic("light");
-    showToast(`ساعت پایان تنظیم شد: ${toPersianDigits(hh)}:${toPersianDigits(mm)}`, "info");
-  });
+  // ==========================================
+  // CUSTOM PERSIAN TIME PICKER MODAL
+  // ==========================================
+  let currentTimeTarget = "start"; // "start" | "end"
+  let pickerSelectedHour = 12;
+  let pickerSelectedMinute = 0;
 
   const timeStart = document.getElementById("timeStart");
   const timeEnd = document.getElementById("timeEnd");
+
   function autoCalculateDuration() {
-    if (timeStart.value && timeEnd.value) {
+    if (timeStart?.value && timeEnd?.value) {
       const [h1, m1] = timeStart.value.split(":").map(Number);
       const [h2, m2] = timeEnd.value.split(":").map(Number);
       const startMin = h1 * 60 + m1;
@@ -512,8 +525,138 @@
       if (diff > 0) document.getElementById("timeDuration").value = diff;
     }
   }
-  timeStart?.addEventListener("change", autoCalculateDuration);
-  timeEnd?.addEventListener("change", autoCalculateDuration);
+
+  function initTimePickerModal() {
+    const modal = document.getElementById("timePickerModal");
+    const title = document.getElementById("timePickerModalTitle");
+    const display = document.getElementById("timePickerDisplay");
+    const hoursGrid = document.getElementById("hoursChipsGrid");
+    const minutesGrid = document.getElementById("minutesChipsGrid");
+
+    if (hoursGrid) {
+      hoursGrid.innerHTML = "";
+      for (let h = 0; h < 24; h++) {
+        const chip = document.createElement("button");
+        chip.type = "button";
+        chip.className = "time-chip";
+        chip.setAttribute("data-hour", h);
+        chip.textContent = toPersianDigits(String(h).padStart(2, "0"));
+        chip.addEventListener("click", () => {
+          pickerSelectedHour = h;
+          updatePickerSelection();
+        });
+        hoursGrid.appendChild(chip);
+      }
+    }
+
+    if (minutesGrid) {
+      minutesGrid.innerHTML = "";
+      for (let m = 0; m < 60; m += 5) {
+        const chip = document.createElement("button");
+        chip.type = "button";
+        chip.className = "time-chip";
+        chip.setAttribute("data-minute", m);
+        chip.textContent = toPersianDigits(String(m).padStart(2, "0"));
+        chip.addEventListener("click", () => {
+          pickerSelectedMinute = m;
+          updatePickerSelection();
+        });
+        minutesGrid.appendChild(chip);
+      }
+    }
+
+    function updatePickerSelection() {
+      const hStr = String(pickerSelectedHour).padStart(2, "0");
+      const mStr = String(pickerSelectedMinute).padStart(2, "0");
+      if (display) {
+        display.textContent = `${toPersianDigits(hStr)}:${toPersianDigits(mStr)}`;
+      }
+      hoursGrid?.querySelectorAll(".time-chip").forEach((c) => {
+        c.classList.toggle("active", parseInt(c.getAttribute("data-hour"), 10) === pickerSelectedHour);
+      });
+      minutesGrid?.querySelectorAll(".time-chip").forEach((c) => {
+        c.classList.toggle("active", parseInt(c.getAttribute("data-minute"), 10) === pickerSelectedMinute);
+      });
+    }
+
+    function setTimeToNow(offsetMinutes = 0) {
+      const d = new Date();
+      if (offsetMinutes) d.setMinutes(d.getMinutes() + offsetMinutes);
+      pickerSelectedHour = d.getHours();
+      pickerSelectedMinute = Math.round(d.getMinutes() / 5) * 5;
+      if (pickerSelectedMinute >= 60) pickerSelectedMinute = 55;
+      updatePickerSelection();
+    }
+
+    document.getElementById("btnTimeQuickNow")?.addEventListener("click", () => { setTimeToNow(0); haptic("light"); });
+    document.getElementById("btnTimeQuickSub15")?.addEventListener("click", () => { setTimeToNow(-15); haptic("light"); });
+    document.getElementById("btnTimeQuickSub30")?.addEventListener("click", () => { setTimeToNow(-30); haptic("light"); });
+    document.getElementById("btnTimeQuickSub60")?.addEventListener("click", () => { setTimeToNow(-60); haptic("light"); });
+
+    document.getElementById("btnTimePickerModalClose")?.addEventListener("click", () => {
+      if (modal) modal.style.display = "none";
+    });
+
+    document.getElementById("btnClearTimePicker")?.addEventListener("click", () => {
+      if (currentTimeTarget === "start") {
+        document.getElementById("timeStart").value = "";
+        document.getElementById("timeStartDisplay").textContent = "انتخاب شروع...";
+      } else {
+        document.getElementById("timeEnd").value = "";
+        document.getElementById("timeEndDisplay").textContent = "انتخاب پایان...";
+      }
+      autoCalculateDuration();
+      if (modal) modal.style.display = "none";
+      haptic("light");
+    });
+
+    document.getElementById("btnConfirmTimePicker")?.addEventListener("click", () => {
+      const hStr = String(pickerSelectedHour).padStart(2, "0");
+      const mStr = String(pickerSelectedMinute).padStart(2, "0");
+      const timeVal = `${hStr}:${mStr}`;
+      const timePersian = `${toPersianDigits(hStr)}:${toPersianDigits(mStr)}`;
+
+      if (currentTimeTarget === "start") {
+        document.getElementById("timeStart").value = timeVal;
+        document.getElementById("timeStartDisplay").textContent = timePersian;
+      } else {
+        document.getElementById("timeEnd").value = timeVal;
+        document.getElementById("timeEndDisplay").textContent = timePersian;
+      }
+      autoCalculateDuration();
+      if (modal) modal.style.display = "none";
+      haptic("medium");
+    });
+
+    function openCustomTimePicker(target) {
+      currentTimeTarget = target;
+      if (title) {
+        title.textContent = target === "start" ? "⏰ تنظیم ساعت شروع" : "⏰ تنظیم ساعت پایان";
+      }
+
+      const inputVal = (target === "start" ? document.getElementById("timeStart")?.value : document.getElementById("timeEnd")?.value) || "";
+      if (inputVal && inputVal.includes(":")) {
+        const [h, m] = inputVal.split(":").map(Number);
+        pickerSelectedHour = h || 0;
+        pickerSelectedMinute = Math.round((m || 0) / 5) * 5;
+        if (pickerSelectedMinute >= 60) pickerSelectedMinute = 55;
+      } else {
+        const d = new Date();
+        pickerSelectedHour = d.getHours();
+        pickerSelectedMinute = Math.round(d.getMinutes() / 5) * 5;
+        if (pickerSelectedMinute >= 60) pickerSelectedMinute = 55;
+      }
+
+      updatePickerSelection();
+      if (modal) modal.style.display = "flex";
+      haptic("light");
+    }
+
+    document.getElementById("btnOpenStartTimePicker")?.addEventListener("click", () => openCustomTimePicker("start"));
+    document.getElementById("btnOpenEndTimePicker")?.addEventListener("click", () => openCustomTimePicker("end"));
+  }
+
+  initTimePickerModal();
 
   document.querySelectorAll("#timeSatisfaction .btn-star").forEach((btn) => {
     btn.addEventListener("click", () => {
@@ -567,6 +710,10 @@
       showToast("زمان کاری با موفقیت در نوشن ثبت شد! 🎉", "success");
       formTimeTracker.reset();
       document.getElementById("timeDuration").value = "";
+      document.getElementById("timeStart").value = "";
+      document.getElementById("timeStartDisplay").textContent = "انتخاب شروع...";
+      document.getElementById("timeEnd").value = "";
+      document.getElementById("timeEndDisplay").textContent = "انتخاب پایان...";
       selectedTimeSatisfaction = "5";
       document.querySelectorAll("#timeSatisfaction .btn-star").forEach((b) => {
         b.classList.toggle("active", b.getAttribute("data-val") === "5");
@@ -783,10 +930,10 @@
             <span class="radar-status-pill ${statusClass}">${item.badge} ${statusText}</span>
           </div>
           <div class="radar-details">
-            <span>📅 آخرین بار: <b>${toPersianDigits(item.days_ago)} روز پیش</b> (${toPersianDigits(item.last_date_shamsi)})</span>
+            <span class="stealth-blur-target">📅 آخرین بار: <b>${toPersianDigits(item.days_ago)} روز پیش</b> (${toPersianDigits(item.last_date_shamsi)})</span>
             <span>⏱️ میانگین: <b>${item.avg_interval ? `هر ${toPersianDigits(item.avg_interval)} روز` : "—"}</b></span>
           </div>
-          <div class="radar-dates">
+          <div class="radar-dates stealth-blur-target">
             <span style="font-size:10px; color:var(--hint-color); align-self:center;">دفعات اخیر:</span>
             ${datesHtml}
           </div>
@@ -820,7 +967,14 @@
   }
 
   document.getElementById("lifeHistoryFilter")?.addEventListener("change", () => renderFilteredLifeHistory());
-  document.getElementById("lifeHistoryPeriodFilter")?.addEventListener("change", () => renderFilteredLifeHistory());
+  document.getElementById("lifeHistoryPeriodFilter")?.addEventListener("change", (e) => {
+    const val = e.target.value;
+    const customRow = document.getElementById("lifeCustomDateRangeRow");
+    if (customRow) {
+      customRow.style.display = val === "custom" ? "block" : "none";
+    }
+    renderFilteredLifeHistory();
+  });
 
   async function loadLifeHistory() {
     const list = document.getElementById("lifeHistoryList");
@@ -854,6 +1008,10 @@
       if (periodFilter === "7d" && d < cutoff7d) return false;
       if (periodFilter === "30d" && d < cutoff30d) return false;
       if (periodFilter === "month" && !item.date_iso.startsWith(currentMonthPrefix)) return false;
+      if (periodFilter === "custom") {
+        if (customLifeStartDate && item.date_iso < customLifeStartDate) return false;
+        if (customLifeEndDate && item.date_iso > customLifeEndDate) return false;
+      }
       return true;
     });
 
@@ -870,7 +1028,7 @@
         <div>
           <div style="font-weight:700; font-size:13px;">${item.emoji} ${item.type} ${item.mode ? `(${item.mode})` : ""}</div>
           <div style="font-size:11px; color:var(--hint-color); margin-top:2px;">
-            📅 ${toPersianDigits(item.date)} ${item.notes ? `| 📝 ${item.notes}` : ""}
+            <span class="stealth-blur-target">📅 ${toPersianDigits(item.date)}</span> ${item.notes ? `| <span class="stealth-blur-target">📝 ${item.notes}</span>` : ""}
           </div>
         </div>
         <button class="btn-item-delete" title="حذف رکورد">🗑️</button>
@@ -900,19 +1058,18 @@
     const tabHabits = document.getElementById("tab-habits");
     const btnToggle = document.getElementById("btnToggleStealth");
 
-    if (isStealthMode) {
-      tabHabits?.classList.add("stealth-active");
-      btnToggle?.classList.add("active");
-    } else {
-      tabHabits?.classList.remove("stealth-active");
-      btnToggle?.classList.remove("active");
+    function applyStealthState() {
+      document.body.classList.toggle("stealth-active", isStealthMode);
+      tabHabits?.classList.toggle("stealth-active", isStealthMode);
+      btnToggle?.classList.toggle("active", isStealthMode);
     }
+
+    applyStealthState();
 
     btnToggle?.addEventListener("click", () => {
       isStealthMode = !isStealthMode;
       localStorage.setItem("notionyar_stealth", isStealthMode);
-      tabHabits?.classList.toggle("stealth-active", isStealthMode);
-      btnToggle?.classList.toggle("active", isStealthMode);
+      applyStealthState();
       haptic("medium");
       showToast(isStealthMode ? "حالت مخفی فعال شد 🕶️" : "حالت عادی فعال شد 👁️", "info");
 
@@ -1041,24 +1198,17 @@
         `;
 
         // Tap on checkmark
-        card.querySelector(".habit-check-circle").addEventListener("click", async (e) => {
+        card.querySelector(".habit-check-circle").addEventListener("click", (e) => {
           e.stopPropagation();
           haptic("light");
           const nextVal = isDone ? null : "1-💪 کامل";
-          await setHabitStatus(h, nextVal);
+          setHabitStatus(h, nextVal);
         });
 
         // Tap on level button
-        card.querySelector(".btn-habit-level").addEventListener("click", async (e) => {
+        card.querySelector(".btn-habit-level").addEventListener("click", (e) => {
           e.stopPropagation();
-          if (isBinary) {
-            // Binary habit toggles directly without opening 5-tier modal (Item 2)
-            haptic("light");
-            const nextVal = isDone ? null : "1-💪 کامل";
-            await setHabitStatus(h, nextVal);
-          } else {
-            openHabitLevelModal(h);
-          }
+          openHabitLevelModal(h);
         });
 
         groupDiv.appendChild(card);
@@ -1074,6 +1224,53 @@
       return;
     }
 
+    // Backup for rollback on network failure
+    const prevStatus = habitObj.status;
+    const prevIsDone = habitObj.is_done;
+
+    // 1. Optimistic in-memory update (0ms immediate UI response)
+    const doneValues = ["1-💪 کامل", "2-🏃‍♂️ نیمه‌کامل", "3-🐢 سبک"];
+    habitObj.status = selectVal;
+    habitObj.is_done = doneValues.includes(selectVal);
+
+    let doneCount = 0;
+    let totalCount = 0;
+    if (habitDayData.categories) {
+      Object.values(habitDayData.categories).forEach((cat) => {
+        (cat.habits || []).forEach((h) => {
+          totalCount++;
+          if (h.is_done) doneCount++;
+        });
+      });
+    }
+
+    const totalHabits = totalCount || 13;
+    const progressPercent = Math.round((doneCount / totalHabits) * 100);
+    habitDayData.completed_count = doneCount;
+    habitDayData.total_habits = totalHabits;
+    habitDayData.progress_percent = progressPercent;
+
+    let cheerleader = "هر روز یک فرصت جدیده، شروع کن! 🌱";
+    if (progressPercent >= 100) cheerleader = "عالی! امروز رو ترکوندی! 🎉";
+    else if (progressPercent >= 70) cheerleader = "فوق‌العاده! بیش از نصف راه رو رفتی! 💪";
+    else if (progressPercent >= 40) cheerleader = "خوبه، ادامه بده! قدم‌های کوچک مهمه! ✨";
+    habitDayData.cheerleader = cheerleader;
+
+    // Immediate DOM update
+    renderGroupedHabits(habitDayData.categories);
+    const percentEl = document.getElementById("habitPercent");
+    if (percentEl) percentEl.textContent = `${toPersianDigits(progressPercent)}٪`;
+    const countEl = document.getElementById("habitCountDisplay");
+    if (countEl) countEl.textContent = `${toPersianDigits(doneCount)} از ${toPersianDigits(totalHabits)}`;
+    const cheerEl = document.getElementById("habitCheerleader");
+    if (cheerEl) cheerEl.textContent = cheerleader;
+
+    const fillPct = `${progressPercent}%`;
+    const fillEl = document.getElementById("habitProgressFill");
+    if (fillEl) fillEl.style.width = fillPct;
+    document.querySelector(".progress-ring-box")?.style.setProperty("--p-fill", fillPct);
+
+    // 2. Asynchronous backend sync
     try {
       const res = await fetch("/api/habits/update-status", {
         method: "POST",
@@ -1086,10 +1283,12 @@
       });
 
       if (!res.ok) throw new Error();
-
-      loadHabitsForDate(currentHabitDateIso);
     } catch (e) {
-      showToast("خطا در ثبت وضعیت عادت", "error");
+      // Revert optimistic changes on failure
+      habitObj.status = prevStatus;
+      habitObj.is_done = prevIsDone;
+      renderGroupedHabits(habitDayData.categories);
+      showToast("خطا در همگام‌سازی با نوشن", "error");
     }
   }
 
@@ -1115,23 +1314,32 @@
     }
   });
 
-  // Modal Level Selector (Cleaned: Freeze & Reset moved to Analytics section)
+  // Modal Level Selector with Binary Support (Item 2)
   function openHabitLevelModal(habitObj) {
     const modal = document.getElementById("habitLevelModal");
     const title = document.getElementById("modalHabitTitle");
     const body = document.getElementById("modalLevelOptions");
 
-    title.textContent = `${habitObj.emoji} ${habitObj.name} - انتخاب سطح کیفیت`;
+    title.textContent = `${habitObj.emoji} ${habitObj.name} - انتخاب وضعیت`;
     body.innerHTML = "";
 
-    const options = [
-      { key: "1-💪 کامل", label: "💪 کامل", desc: habitObj.levels?.v1 || "انجام با بالاترین کیفیت" },
-      { key: "2-🏃‍♂️ نیمه‌کامل", label: "🏃‍♂️ نیمه‌کامل", desc: habitObj.levels?.v2 || "کیفیت استاندارد" },
-      { key: "3-🐢 سبک", label: "🐢 سبک", desc: habitObj.levels?.v3 || "حداقل اجرای ممکن" },
-      { key: "4-❌ با دلیل", label: "❌ عدم انجام با دلیل", desc: "ثبت با عذر موجه" },
-      { key: "5-⛔ بدون دلیل", label: "⛔ عدم انجام بدون دلیل", desc: "فراموشی یا تنبلی" },
-      { key: null, label: "⚪ پاک کردن وضعیت", desc: "حذف کامل ثبت برای امروز" },
-    ];
+    const isBinary = habitObj.is_binary || habitObj.key === "mb" || habitObj.key === "sl";
+
+    const options = isBinary
+      ? [
+          { key: "1-💪 کامل", label: "💪 کامل", desc: habitObj.levels?.v1 || "انجام با بالاترین کیفیت" },
+          { key: "4-❌ با دلیل", label: "❌ عدم انجام با دلیل", desc: "ثبت با عذر موجه" },
+          { key: "5-⛔ بدون دلیل", label: "⛔ عدم انجام بدون دلیل", desc: "فراموشی یا تنبلی" },
+          { key: null, label: "⚪ پاک کردن وضعیت", desc: "حذف کامل ثبت برای امروز" },
+        ]
+      : [
+          { key: "1-💪 کامل", label: "💪 کامل", desc: habitObj.levels?.v1 || "انجام با بالاترین کیفیت" },
+          { key: "2-🏃‍♂️ نیمه‌کامل", label: "🏃‍♂️ نیمه‌کامل", desc: habitObj.levels?.v2 || "کیفیت استاندارد" },
+          { key: "3-🐢 سبک", label: "🐢 سبک", desc: habitObj.levels?.v3 || "حداقل اجرای ممکن" },
+          { key: "4-❌ با دلیل", label: "❌ عدم انجام با دلیل", desc: "ثبت با عذر موجه" },
+          { key: "5-⛔ بدون دلیل", label: "⛔ عدم انجام بدون دلیل", desc: "فراموشی یا تنبلی" },
+          { key: null, label: "⚪ پاک کردن وضعیت", desc: "حذف کامل ثبت برای امروز" },
+        ];
 
     options.forEach((opt) => {
       const btn = document.createElement("button");
@@ -1143,10 +1351,10 @@
         </div>
         ${habitObj.status === opt.key ? "✓" : ""}
       `;
-      btn.addEventListener("click", async () => {
+      btn.addEventListener("click", () => {
         modal.style.display = "none";
         haptic("light");
-        await setHabitStatus(habitObj, opt.key);
+        setHabitStatus(habitObj, opt.key);
       });
       body.appendChild(btn);
     });
@@ -1159,8 +1367,24 @@
   });
 
   // ==========================================
-  // 7. HABIT PRESETS (ITEM 16)
+  // 7. HABIT PRESETS & BUILDER
   // ==========================================
+  const ALL_HABIT_ITEMS = [
+    { key: "bt", prop: "Brush Teeth", fa: "مسواک", emoji: "🪥", is_binary: false },
+    { key: "fr", prop: "Face Routine", fa: "روتین پوستی", emoji: "🧖", is_binary: false },
+    { key: "mb", prop: "Make the Bed", fa: "مرتب‌کردن تخت", emoji: "🛏️", is_binary: true },
+    { key: "ex", prop: "Exercise", fa: "ورزش", emoji: "🏃", is_binary: false },
+    { key: "md", prop: "Meditation", fa: "مدیتیشن", emoji: "🧘", is_binary: false },
+    { key: "gr", prop: "Gratitude", fa: "شکرگزاری", emoji: "🌸", is_binary: false },
+    { key: "rb", prop: "Read Book", fa: "کتاب‌خوانی", emoji: "📚", is_binary: false },
+    { key: "rq", prop: "Read Holy Quran", fa: "تلاوت قرآن", emoji: "📖", is_binary: false },
+    { key: "sl", prop: "Salam", fa: "سلام", emoji: "🕊️", is_binary: true },
+    { key: "es", prop: "Esteghfar", fa: "استغفار", emoji: "📿", is_binary: false },
+    { key: "ps", prop: "Pray After Salah", fa: "تعقیبات نماز", emoji: "🤲", is_binary: false },
+    { key: "bp", prop: "Bedtime Prayer", fa: "دعای قبل خواب", emoji: "🌙", is_binary: false },
+    { key: "sg", prop: "Spritual Gift", fa: "هدیه معنوی", emoji: "🎁", is_binary: false }
+  ];
+
   const DEFAULT_PRESETS = [
     {
       id: "preset_morning",
@@ -1223,8 +1447,103 @@
   }
 
   const presetModal = document.getElementById("presetModal");
+  let editingPresetId = null;
+  let builderHabitsState = {};
+
+  function showPresetView(view) {
+    const listView = document.getElementById("presetViewList");
+    const builderView = document.getElementById("presetViewBuilder");
+    const modalTitle = document.getElementById("presetModalTitle");
+
+    if (view === "builder") {
+      if (listView) listView.style.display = "none";
+      if (builderView) builderView.style.display = "block";
+      if (modalTitle) modalTitle.textContent = editingPresetId ? "✏️ ویرایش قالب سفارشی" : "➕ ساخت قالب جدید با لیست عادات";
+    } else {
+      if (builderView) builderView.style.display = "none";
+      if (listView) listView.style.display = "block";
+      if (modalTitle) modalTitle.textContent = "📑 قالب‌های سفارشی ثبت عادات";
+    }
+  }
+
+  function openPresetBuilder(presetToEdit = null) {
+    editingPresetId = presetToEdit ? presetToEdit.id : null;
+    builderHabitsState = presetToEdit?.habits ? { ...presetToEdit.habits } : {};
+
+    const titleInput = document.getElementById("builderPresetTitle");
+    if (titleInput) {
+      titleInput.value = presetToEdit ? presetToEdit.title.replace(/^✨\s*/, "") : "";
+    }
+
+    renderPresetBuilderHabits();
+    showPresetView("builder");
+    haptic("light");
+  }
+
+  function renderPresetBuilderHabits() {
+    const list = document.getElementById("presetBuilderHabitsList");
+    if (!list) return;
+    list.innerHTML = "";
+
+    ALL_HABIT_ITEMS.forEach((h) => {
+      const row = document.createElement("div");
+      row.className = "preset-builder-habit-row";
+
+      const currentVal = builderHabitsState[h.prop] || null;
+
+      const chipsData = h.is_binary
+        ? [
+            { val: "1-💪 کامل", label: "💪 کامل", cls: "status-1" },
+            { val: "4-❌ با دلیل", label: "❌ دلیل", cls: "status-4" },
+            { val: "5-⛔ بدون دلیل", label: "⛔ بی‌دلیل", cls: "status-5" },
+            { val: null, label: "⚪ خالی", cls: "status-null" },
+          ]
+        : [
+            { val: "1-💪 کامل", label: "💪 کامل", cls: "status-1" },
+            { val: "2-🏃‍♂️ نیمه‌کامل", label: "🏃 متوسط", cls: "status-2" },
+            { val: "3-🐢 سبک", label: "🐢 سبک", cls: "status-3" },
+            { val: "4-❌ با دلیل", label: "❌ دلیل", cls: "status-4" },
+            { val: "5-⛔ بدون دلیل", label: "⛔ بی‌دلیل", cls: "status-5" },
+            { val: null, label: "⚪ خالی", cls: "status-null" },
+          ];
+
+      const chipsHtml = chipsData
+        .map((c) => {
+          const isActive = currentVal === c.val;
+          return `<button type="button" class="preset-status-chip ${c.cls} ${isActive ? "active" : ""}" data-val="${c.val || ""}">${c.label}</button>`;
+        })
+        .join("");
+
+      row.innerHTML = `
+        <div class="preset-builder-habit-name">
+          <span>${h.emoji}</span>
+          <span>${h.fa}</span>
+        </div>
+        <div class="preset-status-chips">
+          ${chipsHtml}
+        </div>
+      `;
+
+      row.querySelectorAll(".preset-status-chip").forEach((btn, idx) => {
+        btn.addEventListener("click", () => {
+          const chosen = chipsData[idx].val;
+          if (chosen) {
+            builderHabitsState[h.prop] = chosen;
+          } else {
+            delete builderHabitsState[h.prop];
+          }
+          row.querySelectorAll(".preset-status-chip").forEach((b) => b.classList.remove("active"));
+          btn.classList.add("active");
+          haptic("light");
+        });
+      });
+
+      list.appendChild(row);
+    });
+  }
 
   document.getElementById("btnOpenPresetsModal")?.addEventListener("click", () => {
+    showPresetView("list");
     renderPresetsList();
     presetModal.style.display = "flex";
     haptic("light");
@@ -1232,6 +1551,61 @@
 
   document.getElementById("btnPresetModalClose")?.addEventListener("click", () => {
     presetModal.style.display = "none";
+  });
+
+  document.getElementById("btnOpenNewPresetBuilder")?.addEventListener("click", () => {
+    openPresetBuilder(null);
+  });
+
+  document.getElementById("btnCancelPresetBuilder")?.addEventListener("click", () => {
+    showPresetView("list");
+    haptic("light");
+  });
+
+  document.getElementById("btnSavePresetFromBuilder")?.addEventListener("click", () => {
+    const title = document.getElementById("builderPresetTitle")?.value.trim();
+    if (!title) {
+      showToast("لطفاً نام قالب را وارد کنید", "error");
+      return;
+    }
+
+    const cleanHabits = {};
+    let count = 0;
+    Object.entries(builderHabitsState).forEach(([prop, val]) => {
+      if (val) {
+        cleanHabits[prop] = val;
+        count++;
+      }
+    });
+
+    if (count === 0) {
+      showToast("حداقل وضعیت یک عادت را در این قالب تعیین کنید", "error");
+      return;
+    }
+
+    const custom = getCustomPresets();
+    if (editingPresetId) {
+      const idx = custom.findIndex((p) => p.id === editingPresetId);
+      if (idx !== -1) {
+        custom[idx].title = "✨ " + title;
+        custom[idx].desc = `${toPersianDigits(count)} عادت تعیین‌شده`;
+        custom[idx].habits = cleanHabits;
+      }
+    } else {
+      custom.push({
+        id: "preset_" + Date.now(),
+        title: "✨ " + title,
+        desc: `${toPersianDigits(count)} عادت تعیین‌شده`,
+        is_default: false,
+        habits: cleanHabits
+      });
+    }
+
+    saveCustomPresets(custom);
+    haptic("success");
+    showToast(editingPresetId ? "قالب با موفقیت ویرایش شد!" : "قالب سفارشی جدید ذخیره شد!", "success");
+    showPresetView("list");
+    renderPresetsList();
   });
 
   function renderPresetsList() {
@@ -1254,7 +1628,10 @@
           <div class="preset-sub">${p.desc || Object.keys(p.habits).length + " عادت"}</div>
         </div>
         <div style="display:flex; align-items:center; gap:6px;">
-          ${!p.is_default ? `<button type="button" class="btn-preset-del" title="حذف قالب">🗑️</button>` : ""}
+          ${!p.is_default ? `
+            <button type="button" class="btn-preset-edit" title="ویرایش قالب">✏️</button>
+            <button type="button" class="btn-preset-del" title="حذف قالب">🗑️</button>
+          ` : ""}
           <button type="button" class="btn-apply-preset">اجرا ⚡</button>
         </div>
       `;
@@ -1286,6 +1663,11 @@
         } catch (e) {
           showToast("خطا در اعمال قالب عادات", "error");
         }
+      });
+
+      // Edit Custom Preset
+      card.querySelector(".btn-preset-edit")?.addEventListener("click", () => {
+        openPresetBuilder(p);
       });
 
       // Delete Custom Preset
@@ -1720,9 +2102,43 @@
             </div>
             <div class="user-item-id">ID: ${toPersianDigits(u.user_id)}</div>
           </div>
-          <button class="btn-item-delete" title="حذف کاربر">🗑️</button>
+          <div style="display:flex; align-items:center; gap:6px;">
+            <button class="btn-item-edit" title="ویرایش کاربر" style="background:transparent; border:none; color:var(--button-color); font-size:15px; cursor:pointer;">✏️</button>
+            <button class="btn-item-delete" title="حذف کاربر">🗑️</button>
+          </div>
         `;
 
+        // Edit user row
+        div.querySelector(".btn-item-edit").addEventListener("click", () => {
+          document.getElementById("adminNewUserId").value = u.user_id;
+          document.getElementById("adminNewUserId").readOnly = true;
+          document.getElementById("adminNewUserName").value = u.name;
+          document.getElementById("adminNewUserRole").value = u.role;
+          const submitBtn = formAddAdminUser?.querySelector("button[type='submit']");
+          if (submitBtn) submitBtn.textContent = "💾 ذخیره تغییرات کاربر";
+
+          let cancelBtn = document.getElementById("btnCancelAdminEdit");
+          if (!cancelBtn && formAddAdminUser) {
+            cancelBtn = document.createElement("button");
+            cancelBtn.type = "button";
+            cancelBtn.id = "btnCancelAdminEdit";
+            cancelBtn.className = "btn-step";
+            cancelBtn.style.marginTop = "8px";
+            cancelBtn.style.width = "100%";
+            cancelBtn.textContent = "انصراف از ویرایش";
+            cancelBtn.addEventListener("click", () => {
+              formAddAdminUser.reset();
+              document.getElementById("adminNewUserId").readOnly = false;
+              if (submitBtn) submitBtn.textContent = "افزودن دسترسی";
+              cancelBtn.remove();
+            });
+            formAddAdminUser.appendChild(cancelBtn);
+          }
+          formAddAdminUser?.scrollIntoView({ behavior: "smooth" });
+          haptic("light");
+        });
+
+        // Delete user
         div.querySelector(".btn-item-delete").addEventListener("click", async () => {
           if (!confirm(`آیا از حذف دسترسی «${u.name}» مطمئن هستید؟`)) return;
           haptic("warning");
@@ -1766,6 +2182,10 @@
       if (!res.ok) throw new Error();
       showToast("کاربر با موفقیت ذخیره شد 🎉", "success");
       formAddAdminUser.reset();
+      document.getElementById("adminNewUserId").readOnly = false;
+      const submitBtn = formAddAdminUser.querySelector("button[type='submit']");
+      if (submitBtn) submitBtn.textContent = "افزودن دسترسی";
+      document.getElementById("btnCancelAdminEdit")?.remove();
       loadAdminUsers();
       loadAdminStats();
     } catch (e) {
@@ -1792,7 +2212,7 @@
             <div>
               <div style="font-weight:700; font-size:13px;">${item.name}</div>
               <div style="font-size:11px; color:var(--hint-color); margin-top:2px;">
-                📅 ${toPersianDigits(item.date)} | ⏰ ${toPersianDigits(item.time_range) || toPersianDigits(item.duration) + " د"}
+                <span class="stealth-blur-target">📅 ${toPersianDigits(item.date)}</span> | <span class="stealth-blur-target">⏰ ${toPersianDigits(item.time_range) || toPersianDigits(item.duration) + " د"}</span>
               </div>
             </div>
             <button class="btn-item-delete" title="حذف رکورد">🗑️</button>
@@ -1824,7 +2244,7 @@
             <div>
               <div style="font-weight:700; font-size:13px;">${item.emoji} ${item.type} ${item.mode ? `(${item.mode})` : ""}</div>
               <div style="font-size:11px; color:var(--hint-color); margin-top:2px;">
-                📅 ${toPersianDigits(item.date)} ${item.notes ? "| 📝 " + item.notes : ""}
+                <span class="stealth-blur-target">📅 ${toPersianDigits(item.date)}</span> ${item.notes ? `| <span class="stealth-blur-target">📝 ${item.notes}</span>` : ""}
               </div>
             </div>
             <button class="btn-item-delete" title="حذف رکورد">🗑️</button>
