@@ -77,21 +77,29 @@
                 <input type="time" id="timeStart">
               </div>
               <div class="form-group">
-                <label for="timeEnd">ساعت پایان</label>
+                <div style="display:flex; justify-content:space-between; align-items:center;">
+                  <label for="timeEnd">ساعت پایان</label>
+                  <button type="button" class="btn-text-action" id="btnSetNowEnd">🕒 اکنون</button>
+                </div>
                 <input type="time" id="timeEnd">
               </div>
             </div>
 
             <div class="form-group">
-              <label for="timeDuration">یا مدت زمان (دقیقه)</label>
+              <label for="timeDuration">مدت زمان (دقیقه)</label>
               <div class="quick-duration-pills">
                 <button type="button" class="btn-chip" data-min="15">۱۵ د</button>
                 <button type="button" class="btn-chip" data-min="30">۳۰ د</button>
                 <button type="button" class="btn-chip" data-min="45">۴۵ د</button>
-                <button type="button" class="btn-chip" data-min="60">۱ ساعت</button>
-                <button type="button" class="btn-chip" data-min="120">۲ ساعت</button>
+                <button type="button" class="btn-chip" data-min="60">۱ س</button>
+                <button type="button" class="btn-chip" data-min="90">۱.۵ س</button>
+                <button type="button" class="btn-chip" data-min="120">۲ س</button>
               </div>
-              <input type="number" id="timeDuration" min="1" placeholder="مثلاً ۹۰">
+              <div class="duration-stepper-row">
+                <button type="button" class="btn-step" id="btnDecDuration">-۱۵</button>
+                <input type="number" id="timeDuration" min="1" placeholder="مثلاً ۹۰">
+                <button type="button" class="btn-step" id="btnIncDuration">+۱۵</button>
+              </div>
             </div>
 
             <div class="form-group">
@@ -142,7 +150,7 @@
 
             <!-- Mode Selector (Supports 0, 1, or multiple modes) -->
             <div id="lifeModesContainer" class="modes-container" style="display: none;">
-              <div class="modes-label" id="lifeModesLabel">حالت‌های انتخابی (امکان انتخاب چند حالت یا بدون حالت):</div>
+              <div class="modes-label" id="lifeModesLabel">حالت‌های انتخابی:</div>
               <div class="modes-chips" id="lifeModesChips"></div>
             </div>
 
@@ -212,10 +220,21 @@
             </div>
 
             <div class="filter-row">
-              <label for="lifeHistoryFilter">فیلتر فعالیت:</label>
-              <select id="lifeHistoryFilter">
-                <option value="">تمام فعالیت‌ها</option>
-              </select>
+              <div class="filter-col">
+                <label for="lifeHistoryFilter">فعالیت:</label>
+                <select id="lifeHistoryFilter">
+                  <option value="">تمام فعالیت‌ها</option>
+                </select>
+              </div>
+              <div class="filter-col">
+                <label for="lifeHistoryPeriodFilter">بازه زمانی:</label>
+                <select id="lifeHistoryPeriodFilter">
+                  <option value="all">تمام تاریخچه</option>
+                  <option value="7d">۷ روز اخیر</option>
+                  <option value="30d">۳۰ روز اخیر</option>
+                  <option value="month">ماه جاری</option>
+                </select>
+              </div>
             </div>
 
             <div class="timeline-list" id="lifeHistoryList">
@@ -272,9 +291,14 @@
               </div>
             </div>
 
-            <button type="button" class="btn-magic-bulk" id="btnBulkComplete">
-              <span>⚡ تکمیل سریع تمام عادات روز</span>
-            </button>
+            <div class="habit-actions-row">
+              <button type="button" class="btn-magic-bulk" id="btnBulkComplete">
+                <span>⚡ تکمیل همه</span>
+              </button>
+              <button type="button" class="btn-presets-menu" id="btnOpenPresetsModal">
+                <span>📑 قالب‌های سفارشی</span>
+              </button>
+            </div>
           </div>
 
           <!-- Grouped Habits List -->
@@ -314,10 +338,10 @@
               <div class="management-title">⚙️ مدیریت وضعیت روز انتخابی</div>
               <div class="management-btns">
                 <button type="button" class="btn-freeze-day" id="btnActionFreeze">
-                  <span>❄️ ثبت روز فریز (Streak Freeze)</span>
+                  <span>❄️ فریز روز</span>
                 </button>
                 <button type="button" class="btn-reset-day" id="btnActionReset">
-                  <span>⚪ ریست و پاک‌کردن عادات امروز</span>
+                  <span>⚪ ریست روز</span>
                 </button>
               </div>
             </div>
@@ -426,6 +450,56 @@
         </div>
       </section>
 
+      <!-- ================= TAB 5: ADMIN PANEL ================= -->
+      <section id="tab-admin" class="tab-panel">
+        <div class="card">
+          <div class="card-title">
+            <span class="icon">👑</span>
+            <span>پنل مدیریت سامانه</span>
+          </div>
+          <div class="admin-stats-grid" id="adminStatsGrid">
+            <div class="loading-state">در حال بررسی وضعیت سامانه...</div>
+          </div>
+        </div>
+
+        <div class="card">
+          <div class="card-title">
+            <span class="icon">👥</span>
+            <span>مدیریت کاربران و دسترسی‌ها</span>
+          </div>
+
+          <form id="formAddAdminUser" class="form-grid" style="margin-bottom: 18px;">
+            <div class="form-row">
+              <div class="form-group">
+                <label for="adminNewUserId">شناسه عددی تلگرام <span class="required">*</span></label>
+                <input type="number" id="adminNewUserId" placeholder="مثلاً: 123456789" required>
+              </div>
+              <div class="form-group">
+                <label for="adminNewUserName">نام کاربر <span class="required">*</span></label>
+                <input type="text" id="adminNewUserName" placeholder="مثلاً: علی" required>
+              </div>
+            </div>
+            <div class="form-group">
+              <label for="adminNewUserRole">نقش کاربری</label>
+              <select id="adminNewUserRole">
+                <option value="member">👤 عضو تیم (ثبت زمان و گزارش)</option>
+                <option value="manager">💼 مدیر تیم (ویرایش و حذف)</option>
+                <option value="admin">👑 مدیر کل (دسترسی کامل)</option>
+                <option value="guest">🌿 مهمان (فقط ثبت زمان)</option>
+              </select>
+            </div>
+            <button type="submit" class="btn-primary" id="btnAdminSaveUser">
+              <span>➕ افزودن یا ویرایش کاربر</span>
+            </button>
+          </form>
+
+          <div class="section-subtitle">لیست اعضای سامانه</div>
+          <div class="timeline-list" id="adminUsersList" style="margin-top: 10px;">
+            <div class="loading-state">در حال دریافت لیست کاربران...</div>
+          </div>
+        </div>
+      </section>
+
     </main>
 
     <!-- Bottom Navigation Bar -->
@@ -445,6 +519,10 @@
       <button class="nav-item" data-tab="tab-recent">
         <span class="nav-icon">📜</span>
         <span class="nav-label">تاریخچه</span>
+      </button>
+      <button class="nav-item" id="navItemAdmin" data-tab="tab-admin" style="display: none;">
+        <span class="nav-icon">👑</span>
+        <span class="nav-label">مدیریت</span>
       </button>
     </nav>
 
@@ -523,6 +601,31 @@
             <button type="button" class="modal-option-btn" data-reason="سفر و جابجایی">✈️ سفر و جابجایی</button>
             <button type="button" class="modal-option-btn" data-reason="بیماری و ناخوشی">🤒 بیماری و ناخوشی</button>
             <button type="button" class="modal-option-btn" data-reason="شرایط اضطراری و مشغله">⚡ شرایط اضطراری و مشغله</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Modal for Custom Habit Presets -->
+    <div id="presetModal" class="modal-backdrop" style="display: none;">
+      <div class="modal-card">
+        <div class="modal-header">
+          <span class="modal-title">📑 قالب‌های سفارشی ثبت عادات</span>
+          <button class="btn-modal-close" id="btnPresetModalClose">&times;</button>
+        </div>
+        <div class="modal-body">
+          <p style="font-size:12px; color:var(--hint-color); margin-bottom:12px;">
+            یک قالب را برای ثبت سریع عادات امروز انتخاب کنید یا قالب دلخواه خود را بسازید:
+          </p>
+
+          <div class="presets-list" id="presetsList">
+            <!-- Rendered dynamically via JS -->
+          </div>
+
+          <div style="margin-top:14px; padding-top:12px; border-top:1px solid var(--card-border);">
+            <button type="button" class="btn-magic-bulk" id="btnSaveCurrentAsPreset" style="width:100%;">
+              <span>➕ ذخیره وضعیت فعلی عادات به عنوان قالب جدید</span>
+            </button>
           </div>
         </div>
       </div>

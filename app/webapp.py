@@ -17,6 +17,9 @@ from app.services.auth_service import (
     is_user_registered,
     get_user_role,
     has_permission,
+    get_all_users,
+    add_or_update_user,
+    remove_user,
     PERM_ADD_TIME,
     PERM_VIEW_REPORTS,
     PERM_ADMIN
@@ -35,6 +38,7 @@ from app.services.notion_service import (
     parse_habit_page,
     update_habit_entry,
     bulk_update_all_habits,
+    batch_update_habit_dict,
     update_habit_notes,
     update_habit_gratitude,
     update_habit_quran_detail,
@@ -178,6 +182,17 @@ class GratitudeSaveRequest(BaseModel):
     page_id: str
     date_iso: Optional[str] = None
     items: List[Dict[str, str]]  # list of {"tag": "...", "text": "..."}
+
+
+class HabitBatchUpdateRequest(BaseModel):
+    page_id: str
+    updates: Dict[str, Optional[str]]
+
+
+class AdminUserSaveRequest(BaseModel):
+    user_id: int
+    name: str
+    role: str = "member"
 
 
 # ==========================================
@@ -634,9 +649,85 @@ async def update_habit_text(
     else:
         raise HTTPException(status_code=400, detail="فیلد نامعتبر است.")
 
+@app.post("/api/habits/batch-update")
+async def batch_update_habits(
+    payload: HabitBatchUpdateRequest,
+    user: Dict[str, Any] = Depends(get_current_user)
+):
+    """Updates multiple habits in a single batch (used for Presets)."""
+    if not payload.page_id or payload.page_id == "None":
+        raise HTTPException(status_code=400, detail="شناسه صفحه معتبر نیست.")
+
+    success = await asyncio.to_thread(batch_update_habit_dict, payload.page_id, payload.updates)
     if not success:
-        raise HTTPException(status_code=500, detail="خطا در ذخیره متن در نوشن.")
+        raise HTTPException(status_code=500, detail="خطا در ثبت گروهی عادات.")
     return {"success": True}
+
+
+# ==========================================
+# 👑 ADMIN PANEL ENDPOINTS
+# ==========================================
+
+@app.get("/api/admin/users")
+async def admin_get_users(user: Dict[str, Any] = Depends(get_current_user)):
+    """Returns all registered users with their roles."""
+    if not user.get("is_admin"):
+        raise HTTPException(status_code=403, detail="دسترسی غیرمجاز است.")
+    all_users = get_all_users()
+    user_list = [
+        {"user_id": uid, "name": uinfo.get("name", f"کاربر {uid}"), "role": uinfo.get("role", "member")}
+        for uid, uinfo in all_users.items()
+    ]
+    return {"users": user_list}
+
+
+@app.post("/api/admin/users/save")
+async def admin_save_user(
+    payload: AdminUserSaveRequest,
+    user: Dict[str, Any] = Depends(get_current_user)
+):
+    """Adds or updates a user role and display name."""
+    if not user.get("is_admin"):
+        raise HTTPException(status_code=403, detail="دسترسی غیرمجاز است.")
+    success = add_or_update_user(payload.user_id, payload.name, payload.role)
+    if not success:
+        raise HTTPException(status_code=400, detail="نقش کاربری نامعتبر است.")
+    return {"success": True}
+
+
+@app.delete("/api/admin/users/{target_user_id}")
+async def admin_delete_user(
+    target_user_id: int,
+    user: Dict[str, Any] = Depends(get_current_user)
+):
+    """Deletes a user access."""
+    if not user.get("is_admin"):
+        raise HTTPException(status_code=403, detail="دسترسی غیرمجاز است.")
+    success = remove_user(target_user_id)
+    if not success:
+        raise HTTPException(status_code=404, detail="کاربر یافت نشد.")
+    return {"success": True}
+
+
+@app.get("/api/admin/stats")
+async def admin_get_stats(user: Dict[str, Any] = Depends(get_current_user)):
+    """Provides system health and activity counters for admins."""
+    if not user.get("is_admin"):
+        raise HTTPException(status_code=403, detail="دسترسی غیرمجاز است.")
+    all_users = get_all_users()
+    try:
+        today_str = datetime.now().strftime("%Y-%m-%d")
+        recent_time = query_time_tracker_entries(start_date_iso=today_str)
+        recent_count = len(recent_time)
+    except Exception:
+        recent_count = 0
+
+    return {
+        "total_users": len(all_users),
+        "recent_time_count": recent_count,
+        "server_status": "🟢 آنلاین و فعال",
+        "scheduler_status": "🟢 فعال (ساعت ۲۲:۳۰)"
+    }
 
 
 # ==========================================

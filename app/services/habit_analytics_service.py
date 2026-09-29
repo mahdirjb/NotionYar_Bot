@@ -268,10 +268,21 @@ def calculate_consistency_matrix(
         day_prog = float(page.get("progress", 0.0)) if page else 0.0
         frz = is_day_frozen(page)
 
+        PERSIAN_WEEKDAYS = {
+            0: "شنبه",
+            1: "یکشنبه",
+            2: "دوشنبه",
+            3: "سه‌شنبه",
+            4: "چهارشنبه",
+            5: "پنج‌شنبه",
+            6: "جمعه"
+        }
+        fa_weekday = PERSIAN_WEEKDAYS.get(j_cur.weekday(), "شنبه")
+
         daily_timeline.append({
             "date_iso": cur_date.isoformat(),
             "jalali_str": j_cur.strftime("%m/%d"),
-            "weekday": j_cur.strftime("%a"),
+            "weekday": fa_weekday,
             "progress": day_prog,
             "has_data": page is not None,
             "is_frozen": frz,

@@ -1,5 +1,5 @@
 // app/static/app.js
-// NotionYar Telegram Mini App v2.5 - Rich UI, Persian Date Picker, Stealth Mode & Gratitude Builder
+// NotionYar Telegram Mini App v2.6 - Persian Digits, Stealth Mode Unblur, Presets & Admin Panel
 
 (function () {
   const tg = window.Telegram?.WebApp;
@@ -72,7 +72,15 @@
   ];
   const PERSIAN_DIGITS = ['۰', '۱', '۲', '۳', '۴', '۵', '۶', '۷', '۸', '۹'];
 
+  const EN_TO_FA_WEEKDAYS = {
+    "Sat": "شنبه", "Sun": "یکشنبه", "Mon": "دوشنبه", "Tue": "سه‌شنبه",
+    "Wed": "چهارشنبه", "Thu": "پنج‌شنبه", "Fri": "جمعه",
+    "Saturday": "شنبه", "Sunday": "یکشنبه", "Monday": "دوشنبه",
+    "Tuesday": "سه‌شنبه", "Wednesday": "چهارشنبه", "Thursday": "پنج‌شنبه", "Friday": "جمعه"
+  };
+
   function toPersianDigits(n) {
+    if (n === null || n === undefined) return "";
     return String(n).replace(/[0-9]/g, (d) => PERSIAN_DIGITS[d]);
   }
 
@@ -90,6 +98,20 @@
     return d.toISOString().split("T")[0];
   }
 
+  // Auto-expand Textareas (no ugly resize handle, matches content height)
+  function autoExpandTextareas() {
+    document.querySelectorAll("textarea").forEach((el) => {
+      const resize = () => {
+        el.style.height = "auto";
+        el.style.height = Math.max(el.scrollHeight, 42) + "px";
+      };
+      el.removeEventListener("input", el._autoResizeHandler || (() => {}));
+      el._autoResizeHandler = resize;
+      el.addEventListener("input", resize);
+      resize();
+    });
+  }
+
   // ==========================================
   // ⚡ APP STATE
   // ==========================================
@@ -102,6 +124,7 @@
   let selectedLifeType = null;
   let selectedLifeModes = []; // supports 0, 1, or multiple modes
   let lifeOptionsData = null;
+  let allLifeEntriesCache = []; // for local fast date filtering
 
   let currentHabitDateIso = getDateFromOffset(0);
   let habitDayData = null;
@@ -143,7 +166,7 @@
 
     toast.className = `toast ${type} show`;
     const icon = type === "success" ? "✅ " : type === "error" ? "❌ " : "ℹ️ ";
-    toast.textContent = icon + message;
+    toast.textContent = icon + toPersianDigits(message);
 
     if (type === "success") haptic("success");
     if (type === "error") haptic("error");
@@ -171,7 +194,7 @@
       currentHabitDateIso = data.today_iso;
 
       document.getElementById("userName").textContent = currentUser.first_name || "کاربر گرامی";
-      document.getElementById("currentDate").textContent = data.today_jalali;
+      document.getElementById("currentDate").textContent = toPersianDigits(data.today_jalali);
 
       const roleBadge = document.getElementById("userRole");
       const roleMap = {
@@ -182,12 +205,20 @@
       };
       roleBadge.textContent = roleMap[currentUser.role] || "کاربر";
 
+      // Show Admin Tab if user is admin
+      const adminNavBtn = document.getElementById("navItemAdmin");
+      if (adminNavBtn) {
+        adminNavBtn.style.display = currentUser.is_admin ? "flex" : "none";
+      }
+
       // Setup stealth mode initial UI
       setupStealthModeUI();
 
       // Update date badges
       updateDateBadge("time", 0);
       updateDateBadge("life", 0);
+
+      autoExpandTextareas();
 
       await Promise.all([
         loadTimeTrackerMeta(),
@@ -234,6 +265,10 @@
       if (targetPanel) targetPanel.classList.add("active");
 
       haptic("light");
+
+      if (targetTabId === "tab-admin") {
+        loadAdminPanel();
+      }
     });
   });
 
@@ -392,7 +427,7 @@
   initPersianDatePickerModal();
 
   // ==========================================
-  // 4. TIME TRACKER
+  // 4. TIME TRACKER (ENHANCED STEPPER & TIME)
   // ==========================================
   async function loadTimeTrackerMeta() {
     try {
@@ -427,11 +462,41 @@
     });
   });
 
+  // Duration Quick Pills
   document.querySelectorAll(".quick-duration-pills .btn-chip").forEach((btn) => {
     btn.addEventListener("click", () => {
-      document.getElementById("timeDuration").value = btn.getAttribute("data-min");
+      document.querySelectorAll(".quick-duration-pills .btn-chip").forEach((b) => b.classList.remove("active"));
+      btn.classList.add("active");
+      const mins = parseInt(btn.getAttribute("data-min"), 10);
+      document.getElementById("timeDuration").value = mins;
       haptic("light");
     });
+  });
+
+  // Duration Stepper (-15 / +15)
+  document.getElementById("btnDecDuration")?.addEventListener("click", () => {
+    const input = document.getElementById("timeDuration");
+    const current = parseInt(input.value, 10) || 0;
+    input.value = Math.max(0, current - 15);
+    haptic("light");
+  });
+
+  document.getElementById("btnIncDuration")?.addEventListener("click", () => {
+    const input = document.getElementById("timeDuration");
+    const current = parseInt(input.value, 10) || 0;
+    input.value = current + 15;
+    haptic("light");
+  });
+
+  // Set Now Button for End Time
+  document.getElementById("btnSetNowEnd")?.addEventListener("click", () => {
+    const now = new Date();
+    const hh = String(now.getHours()).padStart(2, "0");
+    const mm = String(now.getMinutes()).padStart(2, "0");
+    document.getElementById("timeEnd").value = `${hh}:${mm}`;
+    autoCalculateDuration();
+    haptic("light");
+    showToast(`ساعت پایان تنظیم شد: ${toPersianDigits(hh)}:${toPersianDigits(mm)}`, "info");
   });
 
   const timeStart = document.getElementById("timeStart");
@@ -516,7 +581,7 @@
   });
 
   // ==========================================
-  // 5. LIFE TRACKER (REVAMPED)
+  // 5. LIFE TRACKER (MULTI-MODE & PERIOD FILTER)
   // ==========================================
   async function loadLifeTrackerOptions() {
     try {
@@ -580,7 +645,7 @@
 
     if (typeMeta.modes && typeMeta.modes.length > 0) {
       modesBox.style.display = "block";
-      modesLabel.textContent = `حالت‌های انتخابی «${typeMeta.name}» (امکان انتخاب صفر، یک یا چند حالت):`;
+      modesLabel.textContent = `حالت‌های انتخابی «${typeMeta.name}»:`;
       modesChips.innerHTML = "";
 
       typeMeta.modes.forEach((m) => {
@@ -610,6 +675,7 @@
     updateLifeSubmitButton();
   }
 
+  // Button text without sub-mode names (Item 14)
   function updateLifeSubmitButton() {
     const btn = document.getElementById("btnSubmitLife");
     if (!selectedLifeType) {
@@ -618,11 +684,7 @@
       return;
     }
     btn.disabled = false;
-    let text = `ثبت ${selectedLifeType}`;
-    if (selectedLifeModes.length > 0) {
-      text += ` (${selectedLifeModes.join("، ")})`;
-    }
-    btn.innerHTML = `<span>${text}</span> <span class="btn-arrow">←</span>`;
+    btn.innerHTML = `<span>ثبت ${selectedLifeType}</span> <span class="btn-arrow">←</span>`;
   }
 
   document.querySelectorAll("[data-life-offset]").forEach((btn) => {
@@ -677,7 +739,7 @@
     }
   });
 
-  // Routine Radar (Intervals)
+  // Routine Radar (Intervals) with Persian Digits
   async function loadLifeRadar() {
     const grid = document.getElementById("lifeRadarGrid");
     grid.innerHTML = '<div class="loading-state">در حال محاسبه فواصل زمانی و وضعیت موعدها...</div>';
@@ -712,7 +774,7 @@
         card.className = `radar-card ${statusClass}`;
 
         const datesHtml = (item.recent_dates || [])
-          .map((d) => `<span class="radar-date-badge">${d}</span>`)
+          .map((d) => `<span class="radar-date-badge">${toPersianDigits(d)}</span>`)
           .join("");
 
         card.innerHTML = `
@@ -721,8 +783,8 @@
             <span class="radar-status-pill ${statusClass}">${item.badge} ${statusText}</span>
           </div>
           <div class="radar-details">
-            <span>📅 آخرین بار: <b>${item.days_ago} روز پیش</b> (${item.last_date_shamsi})</span>
-            <span>⏱️ میانگین: <b>${item.avg_interval ? `هر ${item.avg_interval} روز` : "—"}</b></span>
+            <span>📅 آخرین بار: <b>${toPersianDigits(item.days_ago)} روز پیش</b> (${toPersianDigits(item.last_date_shamsi)})</span>
+            <span>⏱️ میانگین: <b>${item.avg_interval ? `هر ${toPersianDigits(item.avg_interval)} روز` : "—"}</b></span>
           </div>
           <div class="radar-dates">
             <span style="font-size:10px; color:var(--hint-color); align-self:center;">دفعات اخیر:</span>
@@ -732,9 +794,9 @@
         grid.appendChild(card);
       });
 
-      document.getElementById("radarGoodCount").textContent = goodCnt;
-      document.getElementById("radarNearCount").textContent = nearCnt;
-      document.getElementById("radarOverdueCount").textContent = overdueCnt;
+      document.getElementById("radarGoodCount").textContent = toPersianDigits(goodCnt);
+      document.getElementById("radarNearCount").textContent = toPersianDigits(nearCnt);
+      document.getElementById("radarOverdueCount").textContent = toPersianDigits(overdueCnt);
 
       if (grid.children.length === 0) {
         grid.innerHTML = '<div class="loading-state">داده‌ای برای تحلیل فواصل یافت نشد. با ثبت فعالیت‌ها رادار فعال خواهد شد.</div>';
@@ -744,7 +806,7 @@
     }
   }
 
-  // History & Filter
+  // History with Activity & Time Period Filter (Item 13)
   function populateHistoryFilter() {
     const sel = document.getElementById("lifeHistoryFilter");
     if (!sel || !lifeOptionsData?.all_types) return;
@@ -757,62 +819,82 @@
     });
   }
 
-  document.getElementById("lifeHistoryFilter")?.addEventListener("change", () => {
-    loadLifeHistory();
-  });
+  document.getElementById("lifeHistoryFilter")?.addEventListener("change", () => renderFilteredLifeHistory());
+  document.getElementById("lifeHistoryPeriodFilter")?.addEventListener("change", () => renderFilteredLifeHistory());
 
   async function loadLifeHistory() {
     const list = document.getElementById("lifeHistoryList");
     list.innerHTML = '<div class="loading-state">در حال دریافت لاگ‌ها...</div>';
-    const filter = document.getElementById("lifeHistoryFilter")?.value || "";
 
     try {
-      const url = filter ? `/api/life-tracker/history?event_type=${encodeURIComponent(filter)}` : "/api/life-tracker/history";
-      const res = await fetch(url, { headers: getHeaders() });
+      const res = await fetch("/api/life-tracker/history", { headers: getHeaders() });
       if (!res.ok) throw new Error();
       const data = await res.json();
-      const entries = data.entries || [];
-
-      list.innerHTML = "";
-      if (entries.length === 0) {
-        list.innerHTML = '<div class="loading-state">موردی برای نمایش یافت نشد</div>';
-        return;
-      }
-
-      entries.forEach((item) => {
-        const div = document.createElement("div");
-        div.className = "timeline-item";
-        div.innerHTML = `
-          <div>
-            <div style="font-weight:700; font-size:13px;">${item.emoji} ${item.type} ${item.mode ? `(${item.mode})` : ""}</div>
-            <div style="font-size:11px; color:var(--hint-color); margin-top:2px;">
-              📅 ${item.date} ${item.notes ? `| 📝 ${item.notes}` : ""}
-            </div>
-          </div>
-          <button class="btn-item-delete" title="حذف رکورد">🗑️</button>
-        `;
-
-        div.querySelector(".btn-item-delete").addEventListener("click", async () => {
-          if (!confirm(`آیا از حذف لاگ «${item.type}» مطمئن هستید؟`)) return;
-          haptic("warning");
-          try {
-            await fetch(`/api/life-tracker/delete/${item.id}`, { method: "DELETE", headers: getHeaders() });
-            showToast("رکورد حذف شد", "success");
-            div.remove();
-          } catch (e) {
-            showToast("خطا در حذف رکورد", "error");
-          }
-        });
-
-        list.appendChild(div);
-      });
+      allLifeEntriesCache = data.entries || [];
+      renderFilteredLifeHistory();
     } catch (e) {
       list.innerHTML = '<div class="loading-state" style="color:var(--danger-color)">خطا در بارگذاری تاریخچه</div>';
     }
   }
 
+  function renderFilteredLifeHistory() {
+    const list = document.getElementById("lifeHistoryList");
+    const actFilter = document.getElementById("lifeHistoryFilter")?.value || "";
+    const periodFilter = document.getElementById("lifeHistoryPeriodFilter")?.value || "all";
+
+    const now = new Date();
+    const cutoff7d = new Date(); cutoff7d.setDate(now.getDate() - 7);
+    const cutoff30d = new Date(); cutoff30d.setDate(now.getDate() - 30);
+    const currentMonthPrefix = now.toISOString().slice(0, 7);
+
+    const filtered = allLifeEntriesCache.filter((item) => {
+      if (actFilter && item.type !== actFilter) return false;
+      if (!item.date_iso) return true;
+      const d = new Date(item.date_iso);
+      if (periodFilter === "7d" && d < cutoff7d) return false;
+      if (periodFilter === "30d" && d < cutoff30d) return false;
+      if (periodFilter === "month" && !item.date_iso.startsWith(currentMonthPrefix)) return false;
+      return true;
+    });
+
+    list.innerHTML = "";
+    if (filtered.length === 0) {
+      list.innerHTML = '<div class="loading-state">موردی متناسب با فیلتر یافت نشد</div>';
+      return;
+    }
+
+    filtered.forEach((item) => {
+      const div = document.createElement("div");
+      div.className = "timeline-item";
+      div.innerHTML = `
+        <div>
+          <div style="font-weight:700; font-size:13px;">${item.emoji} ${item.type} ${item.mode ? `(${item.mode})` : ""}</div>
+          <div style="font-size:11px; color:var(--hint-color); margin-top:2px;">
+            📅 ${toPersianDigits(item.date)} ${item.notes ? `| 📝 ${item.notes}` : ""}
+          </div>
+        </div>
+        <button class="btn-item-delete" title="حذف رکورد">🗑️</button>
+      `;
+
+      div.querySelector(".btn-item-delete").addEventListener("click", async () => {
+        if (!confirm(`آیا از حذف لاگ «${item.type}» مطمئن هستید؟`)) return;
+        haptic("warning");
+        try {
+          await fetch(`/api/life-tracker/delete/${item.id}`, { method: "DELETE", headers: getHeaders() });
+          showToast("رکورد حذف شد", "success");
+          allLifeEntriesCache = allLifeEntriesCache.filter((e) => e.id !== item.id);
+          div.remove();
+        } catch (e) {
+          showToast("خطا در حذف رکورد", "error");
+        }
+      });
+
+      list.appendChild(div);
+    });
+  }
+
   // ==========================================
-  // 6. HABITS TRACKER (REVAMPED)
+  // 6. HABITS TRACKER (STEALTH & BINARY HABITS)
   // ==========================================
   function setupStealthModeUI() {
     const tabHabits = document.getElementById("tab-habits");
@@ -833,8 +915,20 @@
       btnToggle?.classList.toggle("active", isStealthMode);
       haptic("medium");
       showToast(isStealthMode ? "حالت مخفی فعال شد 🕶️" : "حالت عادی فعال شد 👁️", "info");
-      // Re-render heatmap if on analytics tab
+
+      // Reload habits and analytics to reflect masked codes & state
+      loadHabitsForDate(currentHabitDateIso);
       loadHabitsAnalytics();
+    });
+
+    // Interactive Click-to-Reveal in Stealth Mode (Item 15)
+    document.addEventListener("click", (e) => {
+      if (!isStealthMode) return;
+      const target = e.target.closest(".stealth-blur-target, .grat-item-row, .streak-value");
+      if (target) {
+        target.classList.toggle("revealed");
+        haptic("light");
+      }
     });
   }
 
@@ -860,9 +954,9 @@
 
       habitDayData = await res.json();
 
-      document.getElementById("habitDateTitle").textContent = habitDayData.jalali_title;
-      document.getElementById("habitPercent").textContent = `${habitDayData.progress_percent}٪`;
-      document.getElementById("habitCountDisplay").textContent = `${habitDayData.completed_count} از ${habitDayData.total_habits}`;
+      document.getElementById("habitDateTitle").textContent = toPersianDigits(habitDayData.jalali_title);
+      document.getElementById("habitPercent").textContent = `${toPersianDigits(habitDayData.progress_percent)}٪`;
+      document.getElementById("habitCountDisplay").textContent = `${toPersianDigits(habitDayData.completed_count)} از ${toPersianDigits(habitDayData.total_habits)}`;
       document.getElementById("habitCheerleader").textContent = habitDayData.cheerleader;
 
       const fillPct = `${habitDayData.progress_percent}%`;
@@ -883,11 +977,13 @@
       initGratitudeItems(habitDayData);
 
       renderGroupedHabits(habitDayData.categories);
+      autoExpandTextareas();
     } catch (err) {
       container.innerHTML = `<div class="loading-state" style="color:var(--danger-color)">${err.message}</div>`;
     }
   }
 
+  // Render Habits with Binary Check (Item 2) and Stealth Mode (Items 8, 11)
   function renderGroupedHabits(categories) {
     const container = document.getElementById("habitsGroupedContainer");
     container.innerHTML = "";
@@ -910,9 +1006,22 @@
         if (h.status === "2-🏃‍♂️ نیمه‌کامل" || h.status === "3-🐢 سبک") cardStatusClass = "partial";
         if (h.status === "فریز") cardStatusClass = "frozen";
 
-        card.className = `habit-card ${cardStatusClass}`;
+        card.className = `habit-card ${cardStatusClass} stealth-blur-target`;
 
         const codeTag = `[${h.code || "HBT"}]`;
+
+        // Item 2: Binary habit check (مرتب کردن تخت و سلام)
+        const isBinary = h.is_binary || h.key === "mb" || h.key === "sl";
+
+        let levelBtnText = "تنظیم کیفیت";
+        if (isBinary) {
+          levelBtnText = isDone ? "انجام شد ✓" : "ثبت انجام";
+        } else if (h.status) {
+          levelBtnText = h.status.replace(/^[0-9]-/, "");
+        }
+
+        // Stealth level mask
+        const stealthLevelText = isDone ? "[OK]" : "[--]";
 
         card.innerHTML = `
           <div class="habit-check-circle">${isDone ? "✓" : ""}</div>
@@ -925,21 +1034,31 @@
               </span>
             </div>
           </div>
-          <button class="btn-habit-level ${h.status ? "active" : ""}">
-            ${h.status ? h.status.replace(/^[0-9]-/, "") : "تنظیم کیفیت"}
+          <button class="btn-habit-level ${isDone ? "active" : ""}">
+            <span class="habit-title-normal">${levelBtnText}</span>
+            <span class="habit-title-code">${stealthLevelText}</span>
           </button>
         `;
 
-        // Checkmark Tap (One-tap complete/clear)
-        card.querySelector(".habit-check-circle").addEventListener("click", async () => {
+        // Tap on checkmark
+        card.querySelector(".habit-check-circle").addEventListener("click", async (e) => {
+          e.stopPropagation();
           haptic("light");
           const nextVal = isDone ? null : "1-💪 کامل";
           await setHabitStatus(h, nextVal);
         });
 
-        // Level Button Tap (Opens Modal)
-        card.querySelector(".btn-habit-level").addEventListener("click", () => {
-          openHabitLevelModal(h);
+        // Tap on level button
+        card.querySelector(".btn-habit-level").addEventListener("click", async (e) => {
+          e.stopPropagation();
+          if (isBinary) {
+            // Binary habit toggles directly without opening 5-tier modal (Item 2)
+            haptic("light");
+            const nextVal = isDone ? null : "1-💪 کامل";
+            await setHabitStatus(h, nextVal);
+          } else {
+            openHabitLevelModal(h);
+          }
         });
 
         groupDiv.appendChild(card);
@@ -968,7 +1087,6 @@
 
       if (!res.ok) throw new Error();
 
-      // Reload to ensure precise formula progress calculation
       loadHabitsForDate(currentHabitDateIso);
     } catch (e) {
       showToast("خطا در ثبت وضعیت عادت", "error");
@@ -1041,7 +1159,188 @@
   });
 
   // ==========================================
-  // 7. HABIT ANALYTICS, STREAKS & DAY ACTIONS
+  // 7. HABIT PRESETS (ITEM 16)
+  // ==========================================
+  const DEFAULT_PRESETS = [
+    {
+      id: "preset_morning",
+      title: "🌅 روتین صبحگاهی",
+      desc: "تخت + سلام + مسواک (کامل)",
+      is_default: true,
+      habits: {
+        "Make the Bed": "1-💪 کامل",
+        "Salam": "1-💪 کامل",
+        "Brush Teeth": "1-💪 کامل"
+      }
+    },
+    {
+      id: "preset_focus",
+      title: "🧘 تمرکز و معنویت",
+      desc: "مدیتیشن (کامل) + قرآن (نیمه‌کامل) + استغفار (کامل)",
+      is_default: true,
+      habits: {
+        "Meditation": "1-💪 کامل",
+        "Read Holy Quran": "2-🏃‍♂️ نیمه‌کامل",
+        "Esteghfar": "1-💪 کامل"
+      }
+    },
+    {
+      id: "preset_light",
+      title: "🐢 روز سبک و خسته",
+      desc: "ثبت سطح سبک برای تمام عادات روز",
+      is_default: true,
+      habits: {
+        "Brush Teeth": "3-🐢 سبک",
+        "Face Routine": "3-🐢 سبک",
+        "Make the Bed": "1-💪 کامل",
+        "Exercise": "3-🐢 سبک",
+        "Meditation": "3-🐢 سبک",
+        "Gratitude": "3-🐢 سبک",
+        "Read Book": "3-🐢 سبک",
+        "Read Holy Quran": "3-🐢 سبک",
+        "Salam": "1-💪 کامل",
+        "Esteghfar": "3-🐢 سبک",
+        "Pray After Salah": "3-🐢 سبک",
+        "Bedtime Prayer": "3-🐢 سبک",
+        "Spritual Gift": "3-🐢 سبک"
+      }
+    }
+  ];
+
+  function getCustomPresets() {
+    try {
+      const saved = localStorage.getItem("notionyar_habit_presets");
+      return saved ? JSON.parse(saved) : [];
+    } catch (e) {
+      return [];
+    }
+  }
+
+  function saveCustomPresets(list) {
+    try {
+      localStorage.setItem("notionyar_habit_presets", JSON.stringify(list));
+    } catch (e) {}
+  }
+
+  const presetModal = document.getElementById("presetModal");
+
+  document.getElementById("btnOpenPresetsModal")?.addEventListener("click", () => {
+    renderPresetsList();
+    presetModal.style.display = "flex";
+    haptic("light");
+  });
+
+  document.getElementById("btnPresetModalClose")?.addEventListener("click", () => {
+    presetModal.style.display = "none";
+  });
+
+  function renderPresetsList() {
+    const listEl = document.getElementById("presetsList");
+    if (!listEl) return;
+
+    const custom = getCustomPresets();
+    const allPresets = [...DEFAULT_PRESETS, ...custom];
+
+    listEl.innerHTML = "";
+    allPresets.forEach((p) => {
+      const card = document.createElement("div");
+      card.className = "preset-card";
+      card.innerHTML = `
+        <div class="preset-info">
+          <div class="preset-title">
+            <span>${p.title}</span>
+            ${p.is_default ? '<span style="font-size:9px; background:rgba(59,130,246,0.15); color:var(--button-color); padding:1px 6px; border-radius:6px;">پیش‌فرض</span>' : ""}
+          </div>
+          <div class="preset-sub">${p.desc || Object.keys(p.habits).length + " عادت"}</div>
+        </div>
+        <div style="display:flex; align-items:center; gap:6px;">
+          ${!p.is_default ? `<button type="button" class="btn-preset-del" title="حذف قالب">🗑️</button>` : ""}
+          <button type="button" class="btn-apply-preset">اجرا ⚡</button>
+        </div>
+      `;
+
+      // Apply Preset
+      card.querySelector(".btn-apply-preset").addEventListener("click", async () => {
+        if (!habitDayData?.page_id) {
+          showToast("ابتدا روز را در تب عادات انتخاب کنید", "error");
+          return;
+        }
+
+        haptic("medium");
+        showToast(`در حال اعمال قالب «${p.title}»...`, "info");
+        presetModal.style.display = "none";
+
+        try {
+          const res = await fetch("/api/habits/batch-update", {
+            method: "POST",
+            headers: getHeaders(),
+            body: JSON.stringify({
+              page_id: habitDayData.page_id,
+              updates: p.habits
+            }),
+          });
+
+          if (!res.ok) throw new Error();
+          showToast(`قالب «${p.title}» با موفقیت ثبت شد 🎉`, "success");
+          loadHabitsForDate(currentHabitDateIso);
+        } catch (e) {
+          showToast("خطا در اعمال قالب عادات", "error");
+        }
+      });
+
+      // Delete Custom Preset
+      card.querySelector(".btn-preset-del")?.addEventListener("click", () => {
+        if (!confirm(`آیا از حذف قالب «${p.title}» مطمئن هستید؟`)) return;
+        const updated = custom.filter((item) => item.id !== p.id);
+        saveCustomPresets(updated);
+        renderPresetsList();
+        haptic("warning");
+      });
+
+      listEl.appendChild(card);
+    });
+  }
+
+  // Save Current Habits as Preset
+  document.getElementById("btnSaveCurrentAsPreset")?.addEventListener("click", () => {
+    if (!habitDayData?.categories) return;
+
+    const currentHabits = {};
+    let count = 0;
+    Object.values(habitDayData.categories).forEach((cat) => {
+      (cat.habits || []).forEach((h) => {
+        if (h.status) {
+          currentHabits[h.prop] = h.status;
+          count++;
+        }
+      });
+    });
+
+    if (count === 0) {
+      showToast("هیچ عادتی برای امروز ثبت نشده تا قالب ساخته شود", "error");
+      return;
+    }
+
+    const name = prompt("نام این قالب سفارشی را وارد کنید:", "قالب من");
+    if (!name || !name.trim()) return;
+
+    const custom = getCustomPresets();
+    custom.push({
+      id: "preset_" + Date.now(),
+      title: "✨ " + name.trim(),
+      desc: `${toPersianDigits(count)} عادت انتخاب‌شده`,
+      is_default: false,
+      habits: currentHabits
+    });
+
+    saveCustomPresets(custom);
+    renderPresetsList();
+    haptic("success");
+    showToast("قالب سفارشی جدید ذخیره شد!", "success");
+  });
+
+  // ==========================================
+  // 8. HABIT ANALYTICS & STREAKS (PERSIAN WEEKDAYS)
   // ==========================================
   async function loadHabitsAnalytics() {
     try {
@@ -1052,34 +1351,38 @@
       const streaks = data.streaks || {};
       const matrix = data.matrix || {};
 
-      document.getElementById("overallCurrentStreak").textContent = `${streaks.overall_streak?.current || 0} روز`;
-      document.getElementById("overallBestStreak").textContent = `${streaks.overall_streak?.best || 0} روز`;
+      document.getElementById("overallCurrentStreak").textContent = `${toPersianDigits(streaks.overall_streak?.current || 0)} روز`;
+      document.getElementById("overallBestStreak").textContent = `${toPersianDigits(streaks.overall_streak?.best || 0)} روز`;
 
       // Render Rankings
       const rankList = document.getElementById("habitRankingsList");
       rankList.innerHTML = "";
       (matrix.habit_rankings || []).slice(0, 6).forEach((item) => {
         const div = document.createElement("div");
-        div.className = "ranking-item";
+        div.className = "ranking-item stealth-blur-target";
         div.innerHTML = `
           <div>
-            <span style="font-weight:700;">${item.info?.emoji || "🎯"} ${item.info?.fa || item.key}</span>
+            <span style="font-weight:700;">
+              <span class="ranking-name-normal">${item.info?.emoji || "🎯"} ${item.info?.fa || item.key}</span>
+              <span class="ranking-name-code">[${item.info?.code || item.key.toUpperCase()}]</span>
+            </span>
             <div class="ranking-bar-box">
               <div class="ranking-bar-fill" style="width:${Math.round(item.pct)}%;"></div>
             </div>
           </div>
-          <span style="font-weight:800; color:var(--button-color); font-size:13px;">${Math.round(item.pct)}٪</span>
+          <span style="font-weight:800; color:var(--button-color); font-size:13px;">${toPersianDigits(Math.round(item.pct))}٪</span>
         `;
         rankList.appendChild(div);
       });
 
-      // Render 7-day consistency Heatmap (Fix undefined in column headers)
+      // Render 7-day consistency Heatmap with 100% Persian weekdays (Item 9)
       const heatmapContainer = document.getElementById("habitHeatmapContainer");
       if (matrix.daily_timeline && matrix.daily_timeline.length > 0) {
         let tableHtml = '<table class="heatmap-table"><thead><tr><th>عادت</th>';
         matrix.daily_timeline.forEach((day) => {
-          const weekdayStr = day.weekday || "";
-          const jDateStr = day.jalali_str ? day.jalali_str.split("/").slice(1).join("/") : (day.date ? day.date.slice(5) : "");
+          let weekdayStr = day.weekday || "";
+          if (EN_TO_FA_WEEKDAYS[weekdayStr]) weekdayStr = EN_TO_FA_WEEKDAYS[weekdayStr];
+          const jDateStr = day.jalali_str ? toPersianDigits(day.jalali_str.split("/").slice(1).join("/")) : "";
           tableHtml += `
             <th>
               <div style="font-size:11px; font-weight:700;">${weekdayStr}</div>
@@ -1089,11 +1392,14 @@
         tableHtml += "</tr></thead><tbody>";
 
         (matrix.habit_rankings || []).forEach((item) => {
-          const habitLabel = isStealthMode
-            ? `[${item.info?.code || item.key.toUpperCase()}]`
-            : `${item.info?.emoji || ""} ${item.info?.fa || item.key}`;
+          const normalLabel = `${item.info?.emoji || ""} ${item.info?.fa || item.key}`;
+          const codeLabel = `[${item.info?.code || item.key.toUpperCase()}]`;
 
-          tableHtml += `<tr><td style="text-align:right; font-weight:600;">${habitLabel}</td>`;
+          tableHtml += `<tr><td style="text-align:right; font-weight:600;">
+            <span class="ranking-name-normal">${normalLabel}</span>
+            <span class="ranking-name-code">${codeLabel}</span>
+          </td>`;
+
           matrix.daily_timeline.forEach((day) => {
             const hStatus = day.habits?.[item.key];
             let cellClass = "none";
@@ -1113,7 +1419,7 @@
     }
   }
 
-  // Action: Streak Freeze Day Modal
+  // Freeze Day Action
   const freezeModal = document.getElementById("freezeModal");
   document.getElementById("btnActionFreeze")?.addEventListener("click", () => {
     if (!habitDayData?.page_id) {
@@ -1155,7 +1461,7 @@
     });
   });
 
-  // Action: Reset Habit Day
+  // Reset Day Action
   document.getElementById("btnActionReset")?.addEventListener("click", async () => {
     if (!habitDayData?.page_id) return;
     if (!confirm("آیا از پاک کردن و ریست تمام عادات این روز مطمئن هستید؟")) return;
@@ -1180,7 +1486,7 @@
   });
 
   // ==========================================
-  // 8. GRATITUDE BUILDER & JOURNAL REFLECTIONS
+  // 9. GRATITUDE BUILDER & JOURNAL REFLECTIONS
   // ==========================================
   function initGratitudeItems(dayData) {
     if (dayData?.gratitude_items && dayData.gratitude_items.length > 0) {
@@ -1190,7 +1496,6 @@
         text: it.text || "",
       }));
     } else if (dayData?.gratitude) {
-      // Parse plain text lines if previously entered
       gratitudeItems = [];
       const lines = dayData.gratitude.split("\n");
       lines.forEach((line, idx) => {
@@ -1252,7 +1557,6 @@
     });
   }
 
-  // Gratitude Category Chips
   document.querySelectorAll("#gratTagsChips .btn-tag-chip").forEach((btn) => {
     btn.addEventListener("click", () => {
       document.querySelectorAll("#gratTagsChips .btn-tag-chip").forEach((b) => b.classList.remove("active"));
@@ -1262,7 +1566,6 @@
     });
   });
 
-  // Add Gratitude Item
   document.getElementById("btnAddGratitudeItem")?.addEventListener("click", () => {
     const input = document.getElementById("gratitudeItemInput");
     const val = input.value.trim();
@@ -1282,7 +1585,6 @@
     haptic("light");
   });
 
-  // Save All Gratitude Items
   document.getElementById("btnSaveGratitudeJournal")?.addEventListener("click", async () => {
     if (!habitDayData?.page_id) {
       showToast("خطا در یافتن روز انتخابی", "error");
@@ -1315,7 +1617,6 @@
     }
   });
 
-  // Journal Inputs Save Handlers (Book, Quran, Notes)
   document.querySelectorAll(".journal-block .btn-action").forEach((btn) => {
     btn.addEventListener("click", async () => {
       if (!habitDayData?.page_id) return;
@@ -1351,7 +1652,129 @@
   });
 
   // ==========================================
-  // 9. RECENT LOGS
+  // 10. ADMIN PANEL LOGIC (ITEM 6)
+  // ==========================================
+  async function loadAdminPanel() {
+    loadAdminStats();
+    loadAdminUsers();
+  }
+
+  async function loadAdminStats() {
+    const grid = document.getElementById("adminStatsGrid");
+    if (!grid) return;
+    grid.innerHTML = '<div class="loading-state">در حال بررسی وضعیت سامانه...</div>';
+
+    try {
+      const res = await fetch("/api/admin/stats", { headers: getHeaders() });
+      if (!res.ok) throw new Error();
+      const stats = await res.json();
+
+      grid.innerHTML = `
+        <div class="admin-stat-card">
+          <span class="admin-stat-val">${toPersianDigits(stats.total_users)}</span>
+          <span class="admin-stat-lbl">👥 کل کاربران مجاز</span>
+        </div>
+        <div class="admin-stat-card">
+          <span class="admin-stat-val">${toPersianDigits(stats.recent_time_count)}</span>
+          <span class="admin-stat-lbl">⏱️ ساعات کاری اخیر</span>
+        </div>
+        <div class="admin-stat-card">
+          <span class="admin-stat-val" style="font-size:13px; color:var(--success-color);">${stats.server_status}</span>
+          <span class="admin-stat-lbl">سرور مینی‌اپ</span>
+        </div>
+        <div class="admin-stat-card">
+          <span class="admin-stat-val" style="font-size:13px; color:var(--success-color);">${toPersianDigits(stats.scheduler_status)}</span>
+          <span class="admin-stat-lbl">زمان‌بند یادآور شبانه</span>
+        </div>
+      `;
+    } catch (e) {
+      grid.innerHTML = '<div class="loading-state" style="color:var(--danger-color)">خطا در دریافت وضعیت ادمین</div>';
+    }
+  }
+
+  async function loadAdminUsers() {
+    const list = document.getElementById("adminUsersList");
+    if (!list) return;
+    list.innerHTML = '<div class="loading-state">در حال دریافت لیست کاربران...</div>';
+
+    try {
+      const res = await fetch("/api/admin/users", { headers: getHeaders() });
+      if (!res.ok) throw new Error();
+      const data = await res.json();
+      const users = data.users || [];
+
+      list.innerHTML = "";
+      if (users.length === 0) {
+        list.innerHTML = '<div class="loading-state">کاربری ثبت نشده است</div>';
+        return;
+      }
+
+      users.forEach((u) => {
+        const div = document.createElement("div");
+        div.className = "user-item-row";
+        div.innerHTML = `
+          <div class="user-item-info">
+            <div class="user-item-name">
+              <span>${u.name}</span>
+              <span class="user-role-badge-admin">${u.role}</span>
+            </div>
+            <div class="user-item-id">ID: ${toPersianDigits(u.user_id)}</div>
+          </div>
+          <button class="btn-item-delete" title="حذف کاربر">🗑️</button>
+        `;
+
+        div.querySelector(".btn-item-delete").addEventListener("click", async () => {
+          if (!confirm(`آیا از حذف دسترسی «${u.name}» مطمئن هستید؟`)) return;
+          haptic("warning");
+          try {
+            await fetch(`/api/admin/users/${u.user_id}`, { method: "DELETE", headers: getHeaders() });
+            showToast("کاربر حذف شد", "success");
+            div.remove();
+          } catch (e) {
+            showToast("خطا در حذف کاربر", "error");
+          }
+        });
+
+        list.appendChild(div);
+      });
+    } catch (e) {
+      list.innerHTML = '<div class="loading-state" style="color:var(--danger-color)">خطا در بارگذاری کاربران</div>';
+    }
+  }
+
+  const formAddAdminUser = document.getElementById("formAddAdminUser");
+  formAddAdminUser?.addEventListener("submit", async (e) => {
+    e.preventDefault();
+    const uidVal = document.getElementById("adminNewUserId").value.trim();
+    const nameVal = document.getElementById("adminNewUserName").value.trim();
+    const roleVal = document.getElementById("adminNewUserRole").value;
+
+    if (!uidVal || !nameVal) return;
+
+    haptic("medium");
+    try {
+      const res = await fetch("/api/admin/users/save", {
+        method: "POST",
+        headers: getHeaders(),
+        body: JSON.stringify({
+          user_id: parseInt(uidVal, 10),
+          name: nameVal,
+          role: roleVal
+        })
+      });
+
+      if (!res.ok) throw new Error();
+      showToast("کاربر با موفقیت ذخیره شد 🎉", "success");
+      formAddAdminUser.reset();
+      loadAdminUsers();
+      loadAdminStats();
+    } catch (e) {
+      showToast("خطا در ذخیره کاربر", "error");
+    }
+  });
+
+  // ==========================================
+  // 11. RECENT LOGS
   // ==========================================
   async function loadRecentLogs() {
     try {
@@ -1369,7 +1792,7 @@
             <div>
               <div style="font-weight:700; font-size:13px;">${item.name}</div>
               <div style="font-size:11px; color:var(--hint-color); margin-top:2px;">
-                📅 ${item.date} | ⏰ ${item.time_range || item.duration + " د"}
+                📅 ${toPersianDigits(item.date)} | ⏰ ${toPersianDigits(item.time_range) || toPersianDigits(item.duration) + " د"}
               </div>
             </div>
             <button class="btn-item-delete" title="حذف رکورد">🗑️</button>
@@ -1401,7 +1824,7 @@
             <div>
               <div style="font-weight:700; font-size:13px;">${item.emoji} ${item.type} ${item.mode ? `(${item.mode})` : ""}</div>
               <div style="font-size:11px; color:var(--hint-color); margin-top:2px;">
-                📅 ${item.date} ${item.notes ? "| 📝 " + item.notes : ""}
+                📅 ${toPersianDigits(item.date)} ${item.notes ? "| 📝 " + item.notes : ""}
               </div>
             </div>
             <button class="btn-item-delete" title="حذف رکورد">🗑️</button>

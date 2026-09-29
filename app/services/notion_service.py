@@ -850,11 +850,13 @@ def batch_update_habit_dict(page_id: str, habit_dict: Dict[str, Optional[str]]) 
     """Updates multiple specific habits in a single API call."""
     try:
         update_props: Dict[str, Any] = {}
-        for h_key, sel_val in habit_dict.items():
-            if h_key in HABIT_ITEMS:
-                prop_name = HABIT_ITEMS[h_key]["prop"]
-                val_payload = {"name": sel_val} if sel_val else None
-                update_props[prop_name] = {"select": val_payload}
+        for k, sel_val in habit_dict.items():
+            if k in HABIT_ITEMS:
+                prop_name = HABIT_ITEMS[k]["prop"]
+            else:
+                prop_name = k
+            val_payload = {"name": sel_val} if sel_val else None
+            update_props[prop_name] = {"select": val_payload}
 
         if update_props:
             notion.pages.update(page_id=page_id, properties=update_props)

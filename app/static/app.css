@@ -285,6 +285,28 @@ textarea {
   transition: border-color 0.2s, box-shadow 0.2s;
 }
 
+textarea {
+  resize: none !important;
+  overflow-y: hidden;
+  min-height: 42px;
+  line-height: 1.5;
+}
+
+select {
+  appearance: none;
+  -webkit-appearance: none;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%2394a3b8' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='6 9 12 15 18 9'%3E%3C/polyline%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: left 12px center;
+  padding-left: 36px;
+  cursor: pointer;
+}
+
+select option {
+  background: var(--secondary-bg-color);
+  color: var(--text-color);
+}
+
 input:focus,
 select:focus,
 textarea:focus {
@@ -352,11 +374,66 @@ textarea:focus {
   background: var(--secondary-bg-color);
   border: 1px solid var(--card-border);
   color: var(--hint-color);
-  padding: 5px 10px;
+  padding: 6px 12px;
   border-radius: 8px;
   font-size: 12px;
   white-space: nowrap;
   cursor: pointer;
+  transition: all 0.2s;
+}
+
+.btn-chip.active,
+.btn-chip:active {
+  background: var(--button-color);
+  color: #fff;
+  border-color: var(--button-color);
+}
+
+.duration-stepper-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 6px;
+}
+
+.duration-stepper-row input {
+  text-align: center;
+  font-weight: 700;
+  font-size: 16px;
+}
+
+.btn-step {
+  background: var(--secondary-bg-color);
+  border: 1px solid var(--card-border);
+  color: var(--text-color);
+  padding: 10px 16px;
+  border-radius: 12px;
+  font-size: 13px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: all 0.2s;
+  flex-shrink: 0;
+}
+
+.btn-step:active {
+  background: var(--button-color);
+  color: #fff;
+  transform: scale(0.95);
+}
+
+.btn-text-action {
+  background: none;
+  border: none;
+  color: var(--link-color);
+  font-size: 11px;
+  font-weight: 700;
+  cursor: pointer;
+  padding: 2px 6px;
+  border-radius: 6px;
+}
+
+.btn-text-action:active {
+  opacity: 0.7;
 }
 
 .rating-stars {
@@ -634,32 +711,43 @@ textarea:focus {
   color: var(--hint-color);
 }
 
-/* Life Timeline */
+/* Life Timeline & Filter */
 .filter-row {
   display: flex;
   align-items: center;
   gap: 10px;
-  margin-bottom: 12px;
+  margin-bottom: 14px;
 }
 
-.filter-row select {
+.filter-col {
   flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.filter-col label {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--hint-color);
 }
 
 .timeline-list {
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: 12px;
 }
 
 .timeline-item {
   background: var(--secondary-bg-color);
   border: 1px solid var(--card-border);
-  border-radius: 12px;
-  padding: 10px 12px;
+  border-radius: 14px;
+  padding: 12px 14px;
   display: flex;
   justify-content: space-between;
   align-items: center;
+  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.04);
+  transition: transform 0.15s, border-color 0.15s;
 }
 
 .btn-item-delete {
@@ -801,8 +889,13 @@ textarea:focus {
   transition: width 0.4s ease-out;
 }
 
+.habit-actions-row {
+  display: flex;
+  gap: 8px;
+}
+
 .btn-magic-bulk {
-  width: 100%;
+  flex: 1;
   background: rgba(16, 185, 129, 0.15);
   border: 1px dashed var(--success-color);
   color: var(--success-color);
@@ -812,10 +905,30 @@ textarea:focus {
   font-weight: 700;
   cursor: pointer;
   transition: all 0.2s;
+  white-space: nowrap;
 }
 
 .btn-magic-bulk:active {
   background: var(--success-color);
+  color: #fff;
+}
+
+.btn-presets-menu {
+  flex: 1;
+  background: rgba(139, 92, 246, 0.15);
+  border: 1px dashed var(--purple-color);
+  color: var(--purple-color);
+  border-radius: 12px;
+  padding: 10px;
+  font-size: 13px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: all 0.2s;
+  white-space: nowrap;
+}
+
+.btn-presets-menu:active {
+  background: var(--purple-color);
   color: #fff;
 }
 
@@ -911,6 +1024,10 @@ textarea:focus {
 }
 
 /* Stealth Mode Styles */
+.stealth-active .habit-emoji {
+  display: none !important;
+}
+
 .stealth-active .habit-title-normal {
   display: none;
 }
@@ -929,15 +1046,70 @@ textarea:focus {
   display: none;
 }
 
+.stealth-active .btn-habit-level {
+  font-family: monospace !important;
+  font-size: 11px;
+}
+
+/* Interactive Click-to-Reveal in Stealth Mode */
+.stealth-active .stealth-blur-target {
+  filter: blur(5px);
+  transition: filter 0.2s, opacity 0.2s;
+  cursor: pointer;
+  user-select: none;
+}
+
+.stealth-active .stealth-blur-target.revealed {
+  filter: none !important;
+  opacity: 1 !important;
+}
+
 .stealth-active .journal-block textarea,
 .stealth-active .journal-block input {
-  filter: blur(4px);
+  filter: blur(5px);
   transition: filter 0.2s;
 }
 
 .stealth-active .journal-block textarea:focus,
-.stealth-active .journal-block input:focus {
+.stealth-active .journal-block input:focus,
+.stealth-active .journal-block textarea.revealed,
+.stealth-active .journal-block input.revealed {
   filter: blur(0px);
+}
+
+.stealth-active .grat-item-row {
+  filter: blur(4px);
+  transition: filter 0.2s;
+  cursor: pointer;
+}
+
+.stealth-active .grat-item-row.revealed {
+  filter: none !important;
+}
+
+/* Analytics Stealth */
+.stealth-active .ranking-name-normal {
+  display: none;
+}
+
+.stealth-active .ranking-name-code {
+  display: inline-block;
+  font-family: monospace !important;
+  color: var(--warning-color);
+}
+
+.ranking-name-code {
+  display: none;
+}
+
+.stealth-active .streak-data .streak-value {
+  filter: blur(6px);
+  cursor: pointer;
+  transition: filter 0.2s;
+}
+
+.stealth-active .streak-data .streak-value.revealed {
+  filter: none !important;
 }
 
 /* Day Management in Streaks */
@@ -1446,4 +1618,143 @@ textarea:focus {
   color: var(--hint-color);
   font-size: 13px;
   padding: 20px 0;
+}
+
+/* ================= ADMIN PANEL STYLES ================= */
+.admin-stats-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 10px;
+}
+
+.admin-stat-card {
+  background: var(--input-bg);
+  border: 1px solid var(--card-border);
+  border-radius: 12px;
+  padding: 12px 10px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  gap: 4px;
+}
+
+.admin-stat-val {
+  font-size: 16px;
+  font-weight: 800;
+  color: var(--button-color);
+}
+
+.admin-stat-lbl {
+  font-size: 10px;
+  color: var(--hint-color);
+}
+
+.user-item-row {
+  background: var(--secondary-bg-color);
+  border: 1px solid var(--card-border);
+  border-radius: 12px;
+  padding: 10px 12px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 8px;
+}
+
+.user-item-info {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.user-item-name {
+  font-weight: 700;
+  font-size: 13px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.user-item-id {
+  font-size: 10px;
+  color: var(--hint-color);
+  font-family: monospace !important;
+}
+
+.user-role-badge-admin {
+  font-size: 10px;
+  font-weight: 700;
+  padding: 2px 8px;
+  border-radius: 8px;
+  background: rgba(59, 130, 246, 0.15);
+  color: var(--button-color);
+}
+
+/* ================= PRESET MODAL STYLES ================= */
+.presets-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.preset-card {
+  background: var(--input-bg);
+  border: 1px solid var(--card-border);
+  border-radius: 14px;
+  padding: 12px 14px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 10px;
+  transition: all 0.2s;
+}
+
+.preset-card:active {
+  border-color: var(--purple-color);
+}
+
+.preset-info {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  flex: 1;
+}
+
+.preset-title {
+  font-weight: 700;
+  font-size: 13px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.preset-sub {
+  font-size: 11px;
+  color: var(--hint-color);
+}
+
+.btn-apply-preset {
+  background: var(--purple-color);
+  border: none;
+  color: #fff;
+  border-radius: 10px;
+  padding: 8px 14px;
+  font-size: 12px;
+  font-weight: 700;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: transform 0.15s;
+}
+
+.btn-apply-preset:active {
+  transform: scale(0.96);
+}
+
+.btn-preset-del {
+  background: transparent;
+  border: none;
+  font-size: 14px;
+  color: var(--hint-color);
+  cursor: pointer;
+  padding: 4px;
 }
