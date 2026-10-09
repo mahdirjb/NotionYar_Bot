@@ -59,8 +59,10 @@ def get_preset_date_range(preset: str) -> tuple[str, str, str]:
     Returns (start_iso, end_iso, label) for a given preset:
     - 'today'
     - 'yesterday'
-    - 'last_7_days'
-    - 'this_month' (start of current Jalali month to today)
+    - 'last_7_days' / '7d'
+    - 'last_14_days' / '14d'
+    - 'last_30_days' / '30d'
+    - 'this_month' / 'month' (start of current Jalali month to today)
     """
     tz = timezone(timedelta(hours=3, minutes=30))
     g_today = datetime.now(tz).date()
@@ -76,7 +78,7 @@ def get_preset_date_range(preset: str) -> tuple[str, str, str]:
         g_iso = g_yest.isoformat()
         return g_iso, g_iso, f"دیروز ({j_yest.strftime('%Y/%m/%d')})"
 
-    elif preset == "last_7_days":
+    elif preset in ("last_7_days", "7d"):
         g_start = g_today - timedelta(days=6)
         j_start = jdatetime.date.fromgregorian(date=g_start)
         return (
@@ -85,7 +87,25 @@ def get_preset_date_range(preset: str) -> tuple[str, str, str]:
             f"۷ روز اخیر ({j_start.strftime('%m/%d')} تا {j_today.strftime('%m/%d')})"
         )
 
-    elif preset == "this_month":
+    elif preset in ("last_14_days", "14d"):
+        g_start = g_today - timedelta(days=13)
+        j_start = jdatetime.date.fromgregorian(date=g_start)
+        return (
+            g_start.isoformat(),
+            g_today.isoformat(),
+            f"۱۴ روز اخیر ({j_start.strftime('%m/%d')} تا {j_today.strftime('%m/%d')})"
+        )
+
+    elif preset in ("last_30_days", "30d"):
+        g_start = g_today - timedelta(days=29)
+        j_start = jdatetime.date.fromgregorian(date=g_start)
+        return (
+            g_start.isoformat(),
+            g_today.isoformat(),
+            f"۳۰ روز اخیر ({j_start.strftime('%m/%d')} تا {j_today.strftime('%m/%d')})"
+        )
+
+    elif preset in ("this_month", "month"):
         j_month_start = jdatetime.date(j_today.year, j_today.month, 1)
         g_month_start = j_month_start.togregorian()
         return (

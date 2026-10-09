@@ -1266,6 +1266,61 @@ def bulk_mark_salah_reset(page_id: str) -> bool:
         return False
 
 
+def bulk_mark_salah_range_ada(start_date_iso: str, end_date_iso: str) -> Dict[str, Any]:
+    """
+    Marks all 5 prayers as completed and Ada across an entire date range.
+    Creates missing days with 5/5 Ada and updates existing days.
+    """
+    if not NOTION_DBID_SALAH:
+        raise ValueError("NOTION_DBID_SALAH is not defined in environment variables.")
+
+    start_d = datetime.strptime(start_date_iso, "%Y-%m-%d").date()
+    end_d = datetime.strptime(end_date_iso, "%Y-%m-%d").date()
+    if start_d > end_d:
+        start_d, end_d = end_d, start_d
+
+    # Generate all ISO dates in range
+    cur_d = start_d
+    dates_list: List[str] = []
+    while cur_d <= end_d:
+        dates_list.append(cur_d.isoformat())
+        cur_d += timedelta(days=1)
+
+    # Fetch existing entries in this range
+    existing = query_salah_entries(
+        start_date_iso=start_d.isoformat(),
+        end_date_iso=end_d.isoformat(),
+        limit_count=min(100, max(len(dates_list) + 10, 30))
+    )
+    existing_by_date = {p.get("date_iso"): p for p in existing if p.get("date_iso")}
+
+    updated_count = 0
+    created_count = 0
+    already_ada_count = 0
+
+    for d_iso in dates_list:
+        if d_iso in existing_by_date:
+            p = existing_by_date[d_iso]
+            if p.get("ada_count", 0) < 5 or p.get("completed_count", 0) < 5:
+                if bulk_mark_salah_ada(p["id"]):
+                    updated_count += 1
+            else:
+                already_ada_count += 1
+        else:
+            get_or_create_salah_day(d_iso, f"Salah - {d_iso}")
+            created_count += 1
+
+    return {
+        "start_date": start_d.isoformat(),
+        "end_date": end_d.isoformat(),
+        "total_days": len(dates_list),
+        "updated_count": updated_count,
+        "created_count": created_count,
+        "already_ada_count": already_ada_count
+    }
+
+
+
 def update_salah_notes(page_id: str, notes_text: str) -> bool:
     """Updates the Notes property in Salah table."""
     try:

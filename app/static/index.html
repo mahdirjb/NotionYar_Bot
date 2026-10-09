@@ -14,7 +14,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Vazirmatn:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="/static/app.css?v=2.7.0">
+  <link rel="stylesheet" href="/static/app.css?v=2.8.0">
 </head>
 
 <body>
@@ -510,12 +510,15 @@
             </div>
 
             <!-- Quick Bulk Action Buttons -->
-            <div class="habit-actions-row" style="margin-top: 14px;">
-              <button type="button" class="btn-magic-bulk" id="btnSpiritualBulkAda">
-                <span>⚡ تکمیل همه (اداء)</span>
+            <div class="spiritual-actions-row">
+              <button type="button" class="btn-sp-magic-bulk" id="btnSpiritualBulkAda">
+                <span>⚡ تکمیل امروز (اداء)</span>
               </button>
-              <button type="button" class="btn-reset-day" id="btnSpiritualResetDay" style="padding: 10px 14px;">
-                <span>⚪ ریست وضعیت</span>
+              <button type="button" class="btn-sp-range-bulk" id="btnOpenSpiritualBulkRangeModal">
+                <span>🗓️ ثبت اداء چند روز</span>
+              </button>
+              <button type="button" class="btn-sp-reset" id="btnSpiritualResetDay">
+                <span>⚪ ریست امروز</span>
               </button>
             </div>
           </div>
@@ -865,11 +868,52 @@
       </div>
     </div>
 
+    <!-- Modal for Spiritual Bulk Range Ada -->
+    <div id="spiritualBulkRangeModal" class="modal-backdrop" style="display: none;">
+      <div class="modal-card">
+        <div class="modal-header">
+          <span class="modal-title">🗓️ تکمیل گروهی اداء نمازها</span>
+          <button class="btn-modal-close" id="btnSpiritualBulkRangeClose">&times;</button>
+        </div>
+        <div class="modal-body">
+          <p style="font-size:12px; color:var(--hint-color); margin-bottom:12px; line-height: 1.5;">
+            با انتخاب بازه زمانی، تمام ۵ نماز روزانه در این روزها به صورت خودکار به وضعیت «اداء» در می‌آیند و روزهای ثبت‌نشده ساخته می‌شوند:
+          </p>
+
+          <div class="section-subtitle" style="margin-bottom: 8px;">انتخاب بازه‌های آماده:</div>
+          <div class="range-preset-grid">
+            <button type="button" class="btn-range-preset-pill active" data-sp-bulk-preset="last_7_days">۷ روز اخیر</button>
+            <button type="button" class="btn-range-preset-pill" data-sp-bulk-preset="last_14_days">۱۴ روز اخیر</button>
+            <button type="button" class="btn-range-preset-pill" data-sp-bulk-preset="last_30_days">۳۰ روز اخیر</button>
+            <button type="button" class="btn-range-preset-pill" data-sp-bulk-preset="this_month">ماه جاری</button>
+          </div>
+
+          <div class="section-subtitle" style="margin-top: 10px; margin-bottom: 8px;">یا انتخاب بازه شمسی دلخواه:</div>
+          <div class="custom-range-picker-row">
+            <button type="button" class="btn-range-date-select" id="btnSpBulkFrom">
+              <span>📅 از تاریخ</span>
+            </button>
+            <button type="button" class="btn-range-date-select" id="btnSpBulkTo">
+              <span>📅 تا تاریخ</span>
+            </button>
+          </div>
+
+          <div class="selected-date-badge" id="spBulkSelectedRangeBadge" style="margin-bottom: 14px; text-align: center; font-weight: 600;">
+            بازه انتخابی: ۷ روز اخیر
+          </div>
+
+          <button type="button" class="btn-primary" id="btnConfirmSpiritualBulkRange" style="width: 100%; border-radius: 22px;">
+            <span>⚡ اعمال و ثبت اداء برای کل بازه</span>
+          </button>
+        </div>
+      </div>
+    </div>
+
     <!-- Toast Notification -->
     <div id="toast" class="toast"></div>
   </div>
 
-  <script src="/static/app.js?v=2.7.0"></script>
+  <script src="/static/app.js?v=2.8.0"></script>
 </body>
 </html>
 

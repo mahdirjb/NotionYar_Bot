@@ -54,6 +54,7 @@ from app.services.notion_service import (
     update_salah_prayer_status,
     bulk_mark_salah_ada,
     bulk_mark_salah_reset,
+    bulk_mark_salah_range_ada,
     update_salah_notes,
     add_quran_reading_entry,
     query_quran_entries,
@@ -214,6 +215,12 @@ class SpiritualPrayerToggleRequest(BaseModel):
 
 class SpiritualBulkRequest(BaseModel):
     page_id: str
+
+
+class SpiritualBulkRangeRequest(BaseModel):
+    start_date: Optional[str] = None
+    end_date: Optional[str] = None
+    preset: Optional[str] = None  # "7d", "14d", "month", "30d", or None
 
 
 class SpiritualNotesRequest(BaseModel):
@@ -907,6 +914,31 @@ async def api_bulk_reset(
     if not success:
         raise HTTPException(status_code=500, detail="خطا در بازنشانی وضعیت نمازها.")
     return {"success": True}
+
+
+@app.post("/api/spiritual/bulk-range-ada")
+async def api_bulk_range_ada(
+    payload: SpiritualBulkRangeRequest,
+    user: Dict[str, Any] = Depends(get_current_user)
+):
+    """Marks all 5 daily prayers as Ada across a date range."""
+    s_iso = payload.start_date
+    e_iso = payload.end_date
+
+    if payload.preset:
+        s_iso, e_iso, _ = get_preset_date_range(payload.preset)
+
+    if not s_iso or not e_iso:
+        today_iso = datetime.now().strftime("%Y-%m-%d")
+        s_iso = s_iso or today_iso
+        e_iso = e_iso or today_iso
+
+    try:
+        result = await asyncio.to_thread(bulk_mark_salah_range_ada, s_iso, e_iso)
+        return {"success": True, "result": result}
+    except Exception as e:
+        logger.error(f"Error in api_bulk_range_ada: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))
 
 
 @app.post("/api/spiritual/update-notes")

@@ -6,7 +6,7 @@ from typing import Dict, Any, Optional
 
 from aiogram import Router, F, Bot
 from aiogram.filters import Command
-from aiogram.types import Message, CallbackQuery
+from aiogram.types import Message, CallbackQuery, InlineKeyboardMarkup, InlineKeyboardButton
 from aiogram.fsm.context import FSMContext
 
 from app.keyboards.reply import BTN_SPIRITUAL
@@ -14,6 +14,7 @@ from app.keyboards.inline import (
     build_spiritual_hub_keyboard,
     get_spiritual_prayer_picker_keyboard,
     get_spiritual_date_picker_keyboard,
+    get_spiritual_bulk_range_keyboard,
     get_spiritual_notes_keyboard,
     get_spiritual_cancel_keyboard,
     get_spiritual_report_keyboard,
@@ -35,6 +36,7 @@ from app.services.notion_service import (
     update_salah_prayer_status,
     bulk_mark_salah_ada,
     bulk_mark_salah_reset,
+    bulk_mark_salah_range_ada,
     update_salah_notes,
     add_quran_reading_entry,
     get_spiritual_report,
@@ -238,6 +240,131 @@ async def handle_bulk_ada(callback: CallbackQuery, state: FSMContext):
 
     await callback.message.edit_text(hub_text, reply_markup=kb, parse_mode="HTML")
     await callback.answer("همه نمازها با موفقیت «اداء» علامت خوردند! 🟢", show_alert=True)
+
+
+# ==========================================
+# 🗓️ BULK RANGE ADA COMPLETION
+# ==========================================
+
+@router.callback_query(F.data == "sp_bulk_range_menu")
+async def handle_spiritual_bulk_range_menu(callback: CallbackQuery):
+    kb = get_spiritual_bulk_range_keyboard()
+    await callback.message.edit_text(
+        "🗓️ <b>تکمیل گروهی اداء نمازها (بازه زمانی):</b>\n\n"
+        "با انتخاب بازه زمانی، تمام ۵ نماز در این روزها به صورت خودکار به وضعیت «اداء» در می‌آیند و روزهای ثبت‌نشده در نوشن ایجاد خواهند شد:\n\n"
+        "👇 لطفاً بازه مورد نظر را انتخاب کرده یا بازه دلخواه را تایپ کنید:",
+        reply_markup=kb,
+        parse_mode="HTML"
+    )
+    await callback.answer()
+
+
+@router.callback_query(F.data.startswith("sp_do_bulk_range:"))
+async def handle_execute_bulk_range_preset(callback: CallbackQuery):
+    preset = callback.data.split(":")[1]
+    s_iso, e_iso, d_label = get_preset_date_range(preset)
+
+    await callback.message.edit_text(
+        f"⏳ در حال اعمال اداء برای بازه <b>{d_label}</b> در نوشن...\nلطفاً چند لحظه صبر کنید.",
+        parse_mode="HTML"
+    )
+
+    try:
+        res = await asyncio.to_thread(bulk_mark_salah_range_ada, s_iso, e_iso)
+        total = res.get("total_days", 0)
+        updated = res.get("updated_count", 0)
+        created = res.get("created_count", 0)
+        already = res.get("already_ada_count", 0)
+
+        kb = InlineKeyboardMarkup(inline_keyboard=[
+            [InlineKeyboardButton(text="🔙 بازگشت به هاب معنوی", callback_data="sp_nav:0")]
+        ])
+
+        await callback.message.edit_text(
+            "✅ <b>ثبت گروهی اداء با موفقیت پایان یافت!</b>\n\n"
+            f"📅 <b>بازه زمانی:</b> {d_label}\n"
+            f"📊 <b>تعداد کل روزها:</b> {total} روز\n"
+            f"🟢 <b>روزهای ثبت‌شده/بروزرسانی‌شده:</b> {updated + created} روز\n"
+            f"▫️ <b>روزهای از قبل کامل:</b> {already} روز",
+            reply_markup=kb,
+            parse_mode="HTML"
+        )
+    except Exception as e:
+        await callback.message.edit_text(
+            f"❌ خطا در اجرای عملیات: {e}",
+            reply_markup=InlineKeyboardMarkup(inline_keyboard=[
+                [InlineKeyboardButton(text="🔙 بازگشت به هاب معنوی", callback_data="sp_nav:0")]
+            ])
+        )
+    await callback.answer()
+
+
+@router.callback_query(F.data == "sp_bulk_range_custom")
+async def handle_prompt_custom_bulk_range(callback: CallbackQuery, state: FSMContext):
+    await state.set_state(SpiritualState.waiting_for_bulk_range)
+    kb = InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="🔙 بازگشت به منوی بازه‌ها", callback_data="sp_bulk_range_menu")],
+        [InlineKeyboardButton(text="❌ انصراف", callback_data="sp_nav:0")]
+    ])
+    await callback.message.edit_text(
+        "✏️ <b>ثبت اداء برای بازه دلخواه:</b>\n\n"
+        "لطفاً بازه زمانی شمسی را ارسال کنید:\n\n"
+        "<i>مثال‌ها:</i>\n"
+        "• <code>1403/07/01 تا 1403/07/15</code>\n"
+        "• <code>1403/07/01 - 1403/07/15</code>\n"
+        "• <code>1403/07/10</code> (تک روز)",
+        reply_markup=kb,
+        parse_mode="HTML"
+    )
+    await callback.answer()
+
+
+@router.message(SpiritualState.waiting_for_bulk_range)
+async def process_custom_bulk_range_input(message: Message, state: FSMContext):
+    parsed = parse_custom_date_range(message.text or "")
+    if not parsed:
+        await message.answer(
+            "❌ فرمت بازه زمانی نامعتبر است.\n"
+            "لطفاً به شکل <code>1403/07/01 تا 1403/07/15</code> ارسال فرمایید:",
+            parse_mode="HTML"
+        )
+        return
+
+    s_iso, e_iso, d_label = parsed
+    await state.clear()
+
+    wait_msg = await message.answer(
+        f"⏳ در حال اعمال اداء برای بازه <b>{d_label}</b> در نوشن...\nلطفاً چند لحظه شکیبا باشید.",
+        parse_mode="HTML"
+    )
+
+    try:
+        res = await asyncio.to_thread(bulk_mark_salah_range_ada, s_iso, e_iso)
+        total = res.get("total_days", 0)
+        updated = res.get("updated_count", 0)
+        created = res.get("created_count", 0)
+        already = res.get("already_ada_count", 0)
+
+        kb = InlineKeyboardMarkup(inline_keyboard=[
+            [InlineKeyboardButton(text="🔙 بازگشت به هاب معنوی", callback_data="sp_nav:0")]
+        ])
+
+        await wait_msg.edit_text(
+            "✅ <b>ثبت گروهی اداء با موفقیت پایان یافت!</b>\n\n"
+            f"📅 <b>بازه انتخابی:</b> {d_label}\n"
+            f"📊 <b>تعداد کل روزها:</b> {total} روز\n"
+            f"🟢 <b>روزهای ثبت‌شده/بروزرسانی‌شده:</b> {updated + created} روز\n"
+            f"▫️ <b>روزهای از قبل کامل:</b> {already} روز",
+            reply_markup=kb,
+            parse_mode="HTML"
+        )
+    except Exception as e:
+        await wait_msg.edit_text(
+            f"❌ خطا در اجرای عملیات: {e}",
+            reply_markup=InlineKeyboardMarkup(inline_keyboard=[
+                [InlineKeyboardButton(text="🔙 بازگشت به هاب معنوی", callback_data="sp_nav:0")]
+            ])
+        )
 
 
 # ==========================================

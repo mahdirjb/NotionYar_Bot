@@ -8,3 +8,4 @@ class SpiritualState(StatesGroup):
     waiting_for_quran_pages = State()
     waiting_for_quran_title = State()
     waiting_for_custom_report_range = State()
+    waiting_for_bulk_range = State()

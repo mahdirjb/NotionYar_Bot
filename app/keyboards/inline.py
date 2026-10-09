@@ -1551,12 +1551,19 @@ def build_spiritual_hub_keyboard(
         [sobh_btn, zohr_btn],
         # Row 2: Asr & Maghreb
         [asr_btn, maghreb_btn],
-        # Row 3: Eshsa & Quick All Ada
+        # Row 3: Eshsa & Quick Today Ada
         [
             eshsa_btn,
             InlineKeyboardButton(
-                text="⚡ تکمیل همه (اداء)",
+                text="⚡ تکمیل امروز (اداء)",
                 callback_data=f"sp_bulk_ada:{offset_days}"
+            )
+        ],
+        # Row 4: Bulk Range Ada
+        [
+            InlineKeyboardButton(
+                text="🗓️ تکمیل گروهی اداء (چند روز)",
+                callback_data="sp_bulk_range_menu"
             )
         ],
         # Row 4: Quran & Notes
@@ -1744,4 +1751,27 @@ def get_spiritual_report_result_keyboard() -> InlineKeyboardMarkup:
                 InlineKeyboardButton(text="🔙 بازگشت به هاب معنوی", callback_data="sp_nav:0")
             ]
         ]
-    )
+    )
+
+
+def get_spiritual_bulk_range_keyboard() -> InlineKeyboardMarkup:
+    """Keyboard shown for selecting bulk range to mark Ada."""
+    return InlineKeyboardMarkup(
+        inline_keyboard=[
+            [
+                InlineKeyboardButton(text="⚡ ۷ روز اخیر", callback_data="sp_do_bulk_range:last_7_days"),
+                InlineKeyboardButton(text="⚡ ۱۴ روز اخیر", callback_data="sp_do_bulk_range:last_14_days"),
+            ],
+            [
+                InlineKeyboardButton(text="⚡ ماه جاری شمسی", callback_data="sp_do_bulk_range:this_month"),
+                InlineKeyboardButton(text="⚡ ۳۰ روز اخیر", callback_data="sp_do_bulk_range:last_30_days"),
+            ],
+            [
+                InlineKeyboardButton(text="✏️ تایپ بازه دلخواه (شمسی)", callback_data="sp_bulk_range_custom")
+            ],
+            [
+                InlineKeyboardButton(text="🔙 بازگشت به هاب معنوی", callback_data="sp_nav:0")
+            ]
+        ]
+    )
+

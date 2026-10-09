@@ -136,13 +136,16 @@
   let currentSpiritualDateIso = getDateFromOffset(0);
   let selectedQuranDateIso = getDateFromOffset(0);
   let spiritualDayData = null;
+  let spBulkActivePreset = "last_7_days";
+  let spBulkCustomFromIso = "";
+  let spBulkCustomToIso = "";
 
   // Gratitude Builder State
   let currentGratitudeTag = "سلامتی و جسم";
   let gratitudeItems = [];
 
   // Persian Date Picker Modal State
-  let activeDatePickerTarget = "time"; // "time" | "life" | "habits" | "spiritual" | "quran" | "life_from" | "life_to"
+  let activeDatePickerTarget = "time"; // "time" | "life" | "habits" | "spiritual" | "quran" | "life_from" | "life_to" | "spiritual_bulk_from" | "spiritual_bulk_to"
 
 
   // Header Helper
@@ -405,6 +408,20 @@
         const btn = document.getElementById("btnLifeRangeTo");
         if (btn) btn.textContent = `📅 تا ${toPersianDigits(jd)} ${PERSIAN_MONTH_NAMES[jm - 1]}`;
         renderFilteredLifeHistory();
+      } else if (activeDatePickerTarget === "spiritual_bulk_from") {
+        spBulkCustomFromIso = isoDate;
+        spBulkActivePreset = null;
+        document.querySelectorAll("[data-sp-bulk-preset]").forEach((b) => b.classList.remove("active"));
+        const btn = document.getElementById("btnSpBulkFrom");
+        if (btn) btn.innerHTML = `<span>📅 از: ${toPersianDigits(jd)} ${PERSIAN_MONTH_NAMES[jm - 1]}</span>`;
+        updateSpBulkRangeBadge();
+      } else if (activeDatePickerTarget === "spiritual_bulk_to") {
+        spBulkCustomToIso = isoDate;
+        spBulkActivePreset = null;
+        document.querySelectorAll("[data-sp-bulk-preset]").forEach((b) => b.classList.remove("active"));
+        const btn = document.getElementById("btnSpBulkTo");
+        if (btn) btn.innerHTML = `<span>📅 تا: ${toPersianDigits(jd)} ${PERSIAN_MONTH_NAMES[jm - 1]}</span>`;
+        updateSpBulkRangeBadge();
       }
 
       modal.style.display = "none";
@@ -428,6 +445,8 @@
     if (target === "quran") currentIso = selectedQuranDateIso;
     if (target === "life_from") currentIso = customLifeStartDate || currentDateIso;
     if (target === "life_to") currentIso = customLifeEndDate || currentDateIso;
+    if (target === "spiritual_bulk_from") currentIso = spBulkCustomFromIso || currentDateIso;
+    if (target === "spiritual_bulk_to") currentIso = spBulkCustomToIso || currentDateIso;
 
 
     const parts = currentIso.split("-").map(Number);
@@ -470,6 +489,8 @@
   document.getElementById("btnLifeRangeTo")?.addEventListener("click", () => openPersianDatePicker("life_to"));
   document.getElementById("btnOpenSpiritualPicker")?.addEventListener("click", () => openPersianDatePicker("spiritual"));
   document.getElementById("btnOpenQuranDatePicker")?.addEventListener("click", () => openPersianDatePicker("quran"));
+  document.getElementById("btnSpBulkFrom")?.addEventListener("click", () => openPersianDatePicker("spiritual_bulk_from"));
+  document.getElementById("btnSpBulkTo")?.addEventListener("click", () => openPersianDatePicker("spiritual_bulk_to"));
 
 
   initPersianDatePickerModal();
@@ -2392,7 +2413,7 @@
     }
   }
 
-  // Bulk Ada button
+  // Bulk Ada button (single day)
   document.getElementById("btnSpiritualBulkAda")?.addEventListener("click", async () => {
     if (!spiritualDayData || !spiritualDayData.page_id) return;
     haptic("medium");
@@ -2408,6 +2429,127 @@
       await loadSpiritualDay(currentSpiritualDateIso);
     } catch (err) {
       showToast(err.message, "error");
+    }
+  });
+
+  // Update Bulk Range Badge helper
+  function updateSpBulkRangeBadge() {
+    const badge = document.getElementById("spBulkSelectedRangeBadge");
+    if (!badge) return;
+
+    if (spBulkActivePreset) {
+      const presetNames = {
+        "last_7_days": "۷ روز اخیر",
+        "last_14_days": "۱۴ روز اخیر",
+        "last_30_days": "۳۰ روز اخیر",
+        "this_month": "ماه جاری"
+      };
+      badge.textContent = `بازه انتخابی: ${presetNames[spBulkActivePreset] || spBulkActivePreset}`;
+    } else if (spBulkCustomFromIso && spBulkCustomToIso) {
+      const fParts = spBulkCustomFromIso.split("-").map(Number);
+      const [fy, fm, fd] = gregorianToJalali(fParts[0], fParts[1], fParts[2]);
+      const tParts = spBulkCustomToIso.split("-").map(Number);
+      const [ty, tm, td] = gregorianToJalali(tParts[0], tParts[1], tParts[2]);
+      badge.textContent = `بازه انتخابی: از ${toPersianDigits(fd)} ${PERSIAN_MONTH_NAMES[fm - 1]} تا ${toPersianDigits(td)} ${PERSIAN_MONTH_NAMES[tm - 1]}`;
+    } else if (spBulkCustomFromIso) {
+      badge.textContent = "بازه انتخابی: تاریخ شروع مشخص شد (لطفاً تا تاریخ را انتخاب کنید)";
+    } else {
+      badge.textContent = "لطفاً یک بازه زمانی انتخاب کنید";
+    }
+  }
+
+  // Bulk Range Modal Open & Close
+  const modalSpRange = document.getElementById("spiritualBulkRangeModal");
+  document.getElementById("btnOpenSpiritualBulkRangeModal")?.addEventListener("click", () => {
+    spBulkActivePreset = "last_7_days";
+    spBulkCustomFromIso = "";
+    spBulkCustomToIso = "";
+    document.querySelectorAll("[data-sp-bulk-preset]").forEach((btn) => {
+      btn.classList.toggle("active", btn.getAttribute("data-sp-bulk-preset") === "last_7_days");
+    });
+    const btnFrom = document.getElementById("btnSpBulkFrom");
+    const btnTo = document.getElementById("btnSpBulkTo");
+    if (btnFrom) btnFrom.innerHTML = "<span>📅 از تاریخ</span>";
+    if (btnTo) btnTo.innerHTML = "<span>📅 تا تاریخ</span>";
+    updateSpBulkRangeBadge();
+    if (modalSpRange) modalSpRange.style.display = "flex";
+    haptic("light");
+  });
+
+  document.getElementById("btnSpiritualBulkRangeClose")?.addEventListener("click", () => {
+    if (modalSpRange) modalSpRange.style.display = "none";
+  });
+
+  // Preset Buttons in Modal
+  document.querySelectorAll("[data-sp-bulk-preset]").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      document.querySelectorAll("[data-sp-bulk-preset]").forEach((b) => b.classList.remove("active"));
+      btn.classList.add("active");
+      spBulkActivePreset = btn.getAttribute("data-sp-bulk-preset");
+      spBulkCustomFromIso = "";
+      spBulkCustomToIso = "";
+      const btnFrom = document.getElementById("btnSpBulkFrom");
+      const btnTo = document.getElementById("btnSpBulkTo");
+      if (btnFrom) btnFrom.innerHTML = "<span>📅 از تاریخ</span>";
+      if (btnTo) btnTo.innerHTML = "<span>📅 تا تاریخ</span>";
+      updateSpBulkRangeBadge();
+      haptic("light");
+    });
+  });
+
+  // Confirm Bulk Range Ada execution
+  document.getElementById("btnConfirmSpiritualBulkRange")?.addEventListener("click", async () => {
+    const btnConfirm = document.getElementById("btnConfirmSpiritualBulkRange");
+
+    let payload = {};
+    if (spBulkActivePreset) {
+      payload = { preset: spBulkActivePreset };
+    } else if (spBulkCustomFromIso && spBulkCustomToIso) {
+      if (spBulkCustomFromIso > spBulkCustomToIso) {
+        showToast("تاریخ شروع باید قبل از تاریخ پایان باشد", "warning");
+        return;
+      }
+      payload = { start_date: spBulkCustomFromIso, end_date: spBulkCustomToIso };
+    } else {
+      showToast("لطفاً یک بازه زمانی یا تاریخ‌های شروع و پایان را انتخاب کنید", "warning");
+      return;
+    }
+
+    if (btnConfirm) {
+      btnConfirm.disabled = true;
+      btnConfirm.innerHTML = "<span>⏳ در حال اعمال اداء در نوشن...</span>";
+    }
+    haptic("medium");
+
+    try {
+      const res = await fetch("/api/spiritual/bulk-range-ada", {
+        method: "POST",
+        headers: getHeaders(),
+        body: JSON.stringify(payload)
+      });
+
+      if (!res.ok) {
+        const errData = await res.json().catch(() => ({}));
+        throw new Error(errData.detail || "خطا در اعمال بازه زمانی");
+      }
+
+      const data = await res.json();
+      const r = data.result || {};
+      const total = r.total_days || 0;
+      const updated = r.updated_count || 0;
+      const created = r.created_count || 0;
+
+      showToast(`⚡ با موفقیت انجام شد: ${toPersianDigits(total)} روز (${toPersianDigits(updated + created)} روز اداء ثبت شد)`, "success");
+
+      if (modalSpRange) modalSpRange.style.display = "none";
+      await loadSpiritualDay(currentSpiritualDateIso);
+    } catch (err) {
+      showToast(err.message, "error");
+    } finally {
+      if (btnConfirm) {
+        btnConfirm.disabled = false;
+        btnConfirm.innerHTML = "<span>⚡ اعمال و ثبت اداء برای کل بازه</span>";
+      }
     }
   });
 
