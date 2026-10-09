@@ -49,15 +49,26 @@ from app.services.notion_service import (
     HABIT_ITEMS,
     HABIT_DESCRIPTIONS,
     HABIT_LEVELS,
-    get_persian_cheerleader
+    get_persian_cheerleader,
+    get_or_create_salah_day,
+    update_salah_prayer_status,
+    bulk_mark_salah_ada,
+    bulk_mark_salah_reset,
+    update_salah_notes,
+    add_quran_reading_entry,
+    query_quran_entries,
+    get_spiritual_report,
+    PRAYER_KEYS,
+    PRAYER_META
 )
-from app.services.date_helper import format_jalali_full_display, get_jalali_date_info
+from app.services.date_helper import format_jalali_full_display, get_jalali_date_info, get_preset_date_range
 from app.services.insights_service import calculate_habit_insights
 from app.services.habit_analytics_service import calculate_habit_streaks, calculate_consistency_matrix
 
 from aiogram.utils.web_app import safe_parse_webapp_init_data, check_webapp_signature
 
-app = FastAPI(title="NotionYar Telegram Mini App API", version="2.5.0")
+app = FastAPI(title="NotionYar Telegram Mini App API", version="2.6.0")
+
 
 # Enable CORS
 app.add_middleware(
@@ -193,6 +204,28 @@ class AdminUserSaveRequest(BaseModel):
     user_id: int
     name: str
     role: str = "member"
+
+
+class SpiritualPrayerToggleRequest(BaseModel):
+    page_id: str
+    prayer_key: str
+    target_status: Optional[str] = None  # "ada", "qaza", "none", or None to cycle
+
+
+class SpiritualBulkRequest(BaseModel):
+    page_id: str
+
+
+class SpiritualNotesRequest(BaseModel):
+    page_id: str
+    notes: str
+
+
+class QuranCreateRequest(BaseModel):
+    date_iso: Optional[str] = None
+    pages: str
+    session_name: Optional[str] = None
+
 
 
 # ==========================================
@@ -780,8 +813,192 @@ async def get_recent_logs(user: Dict[str, Any] = Depends(get_current_user)):
 
 
 # ==========================================
+# 📿 SPIRITUAL TRACKER (SALAH & QURAN) ENDPOINTS
+# ==========================================
+
+@app.get("/api/spiritual/day")
+async def get_spiritual_day(
+    date_iso: Optional[str] = None,
+    user: Dict[str, Any] = Depends(get_current_user)
+):
+    """
+    Returns Salah page for the specified date.
+    Auto-creates the entry with all 5 prayers set to Ada (on-time) by default.
+    """
+    tz = timezone(timedelta(hours=3, minutes=30))
+    if not date_iso:
+        date_iso = datetime.now(tz).strftime("%Y-%m-%d")
+
+    jalali_title = format_jalali_full_display(date_iso)
+
+    try:
+        page_data = await asyncio.to_thread(get_or_create_salah_day, date_iso, f"Salah - {date_iso}")
+    except Exception as e:
+        page_data = {
+            "id": "",
+            "progress": 0.0,
+            "prayers": {},
+            "completed_count": 0,
+            "ada_count": 0,
+            "qaza_count": 0,
+            "notes": "",
+            "error": str(e)
+        }
+
+    return {
+        "page_id": page_data.get("id", ""),
+        "date_iso": date_iso,
+        "jalali_title": jalali_title,
+        "progress_float": page_data.get("progress", 0.0),
+        "progress_percent": int(round(page_data.get("progress", 0.0) * 100)),
+        "completed_count": page_data.get("completed_count", 0),
+        "ada_count": page_data.get("ada_count", 0),
+        "qaza_count": page_data.get("qaza_count", 0),
+        "prayers": page_data.get("prayers", {}),
+        "notes": page_data.get("notes", "")
+    }
+
+
+@app.post("/api/spiritual/toggle-prayer")
+async def api_toggle_prayer(
+    payload: SpiritualPrayerToggleRequest,
+    user: Dict[str, Any] = Depends(get_current_user)
+):
+    """Updates or cycles the status of a prayer (ada, qaza, none)."""
+    if not payload.page_id or payload.page_id == "None":
+        raise HTTPException(status_code=400, detail="شناسه صفحه معتبر نیست.")
+
+    success = await asyncio.to_thread(
+        update_salah_prayer_status,
+        payload.page_id,
+        payload.prayer_key,
+        payload.target_status
+    )
+    if not success:
+        raise HTTPException(status_code=500, detail="خطا در به‌روزرسانی وضعیت نماز در نوشن.")
+    return {"success": True}
+
+
+@app.post("/api/spiritual/bulk-ada")
+async def api_bulk_ada(
+    payload: SpiritualBulkRequest,
+    user: Dict[str, Any] = Depends(get_current_user)
+):
+    """Marks all 5 daily prayers as Ada (on-time)."""
+    if not payload.page_id or payload.page_id == "None":
+        raise HTTPException(status_code=400, detail="شناسه صفحه معتبر نیست.")
+
+    success = await asyncio.to_thread(bulk_mark_salah_ada, payload.page_id)
+    if not success:
+        raise HTTPException(status_code=500, detail="خطا در تکمیل خودکار اداء نمازها.")
+    return {"success": True}
+
+
+@app.post("/api/spiritual/bulk-reset")
+async def api_bulk_reset(
+    payload: SpiritualBulkRequest,
+    user: Dict[str, Any] = Depends(get_current_user)
+):
+    """Resets all 5 prayers to uncompleted."""
+    if not payload.page_id or payload.page_id == "None":
+        raise HTTPException(status_code=400, detail="شناسه صفحه معتبر نیست.")
+
+    success = await asyncio.to_thread(bulk_mark_salah_reset, payload.page_id)
+    if not success:
+        raise HTTPException(status_code=500, detail="خطا در بازنشانی وضعیت نمازها.")
+    return {"success": True}
+
+
+@app.post("/api/spiritual/update-notes")
+async def api_update_spiritual_notes(
+    payload: SpiritualNotesRequest,
+    user: Dict[str, Any] = Depends(get_current_user)
+):
+    """Updates daily spiritual notes in Notion."""
+    if not payload.page_id or payload.page_id == "None":
+        raise HTTPException(status_code=400, detail="شناسه صفحه معتبر نیست.")
+
+    success = await asyncio.to_thread(update_salah_notes, payload.page_id, payload.notes)
+    if not success:
+        raise HTTPException(status_code=500, detail="خطا در ذخیره یادداشت معنوی.")
+    return {"success": True}
+
+
+@app.post("/api/spiritual/quran/create")
+async def api_create_quran_session(
+    payload: QuranCreateRequest,
+    user: Dict[str, Any] = Depends(get_current_user)
+):
+    """Creates a new Quran reading log in Notion."""
+    tz = timezone(timedelta(hours=3, minutes=30))
+    date_str = payload.date_iso or datetime.now(tz).strftime("%Y-%m-%d")
+    title = payload.session_name or f"تلاوت {format_jalali_full_display(date_str)}"
+
+    res = await asyncio.to_thread(
+        add_quran_reading_entry,
+        date_iso=date_str,
+        pages_text=payload.pages,
+        session_name=title
+    )
+    if not res:
+        raise HTTPException(status_code=500, detail="خطا در ثبت لاگ تلاوت قرآن.")
+    return {"success": True, "page_id": res.get("id")}
+
+
+@app.get("/api/spiritual/quran/history")
+async def api_get_quran_history(user: Dict[str, Any] = Depends(get_current_user)):
+    """Retrieves recent Quran reading logs."""
+    try:
+        entries = await asyncio.to_thread(query_quran_entries, limit_count=15)
+        return {"entries": entries}
+    except Exception as e:
+        return {"entries": [], "error": str(e)}
+
+
+@app.delete("/api/spiritual/quran/delete/{page_id}")
+async def api_delete_quran_entry(
+    page_id: str,
+    user: Dict[str, Any] = Depends(get_current_user)
+):
+    """Deletes/archives a Quran log."""
+    success = await asyncio.to_thread(archive_notion_page, page_id)
+    if not success:
+        raise HTTPException(status_code=500, detail="خطا در حذف لاگ قرآن.")
+    return {"success": True}
+
+
+@app.get("/api/spiritual/report")
+async def api_get_spiritual_report(
+    period: str = Query("7d"),
+    start_date: Optional[str] = None,
+    end_date: Optional[str] = None,
+    user: Dict[str, Any] = Depends(get_current_user)
+):
+    """Returns analytics report for prayers and Quran."""
+    tz = timezone(timedelta(hours=3, minutes=30))
+    today_d = datetime.now(tz).date()
+
+    if start_date and end_date:
+        s_iso, e_iso = start_date, end_date
+    elif period == "7d":
+        s_iso, e_iso, _ = get_preset_date_range("last_7_days")
+    elif period == "month":
+        s_iso, e_iso, _ = get_preset_date_range("this_month")
+    else:  # 30d
+        s_d = today_d - timedelta(days=29)
+        s_iso, e_iso = s_d.isoformat(), today_d.isoformat()
+
+    try:
+        report = await asyncio.to_thread(get_spiritual_report, s_iso, e_iso)
+        return {"report": report}
+    except Exception as e:
+        return {"report": {}, "error": str(e)}
+
+
+# ==========================================
 # 🌐 STATIC FILES & FRONTEND
 # ==========================================
+
 
 STATIC_DIR = os.path.join(os.path.dirname(__file__), "static")
 if not os.path.exists(STATIC_DIR):

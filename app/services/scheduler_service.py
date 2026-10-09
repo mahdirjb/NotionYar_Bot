@@ -12,7 +12,9 @@ from app.services.date_helper import format_jalali_full_display
 from app.services.notion_service import (
     HABIT_ITEMS,
     get_or_create_habit_day,
+    get_or_create_salah_day,
 )
+
 from app.services.habit_analytics_service import is_day_frozen
 from app.keyboards.inline import build_nightly_checkin_keyboard
 
@@ -135,21 +137,40 @@ async def send_nightly_habit_checkin(bot: Bot, target_user_id: int | None = None
         return False
 
 
+async def auto_initialize_daily_spiritual() -> None:
+    """Auto-creates today's Salah row with 5/5 Ada completion and today's habit day at midnight."""
+    try:
+        g_iso, full_jalali = _get_tehran_date_info()
+        get_or_create_salah_day(g_iso, day_title=f"Salah - {g_iso}")
+        get_or_create_habit_day(g_iso, day_title=full_jalali)
+        logger.info(f"Daily spiritual & habit records auto-initialized for {g_iso}")
+    except Exception as e:
+        logger.error(f"Error auto-initializing daily spiritual records: {e}", exc_info=True)
+
+
 def start_scheduler(bot: Bot) -> None:
     """Configures and starts the background job scheduler."""
     tehran_tz = timezone(timedelta(hours=3, minutes=30))
-    trigger = CronTrigger(hour=22, minute=30, timezone=tehran_tz)
+    trigger_nightly = CronTrigger(hour=22, minute=30, timezone=tehran_tz)
+    trigger_daily_init = CronTrigger(hour=0, minute=5, timezone=tehran_tz)
 
     scheduler.add_job(
         send_nightly_habit_checkin,
-        trigger=trigger,
+        trigger=trigger_nightly,
         args=[bot],
         id="nightly_habit_checkin",
         replace_existing=True,
     )
+    scheduler.add_job(
+        auto_initialize_daily_spiritual,
+        trigger=trigger_daily_init,
+        id="daily_spiritual_init",
+        replace_existing=True,
+    )
     if not scheduler.running:
         scheduler.start()
-        logger.info("APScheduler started successfully (Nightly Check-in set for 22:30 Tehran Time).")
+        logger.info("APScheduler started successfully (Nightly Check-in at 22:30, Daily Init at 00:05).")
+
 
 
 def shutdown_scheduler() -> None:

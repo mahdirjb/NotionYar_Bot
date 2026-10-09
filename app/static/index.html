@@ -460,25 +460,155 @@
         </div>
       </section>
 
-      <!-- ================= TAB 4: RECENT LOGS ================= -->
-      <section id="tab-recent" class="tab-panel">
-        <div class="card">
-          <div class="card-title">
-            <span class="icon">📜</span>
-            <span>آخرین لاگ‌های ثبت شده</span>
+      <!-- ================= TAB 4: SPIRITUAL TRACKER ================= -->
+      <section id="tab-spiritual" class="tab-panel">
+        <!-- Sub-navigation Pills -->
+        <div class="segmented-control">
+          <button class="seg-btn active" data-subtab="spiritual-sub-salah">📿 نمازهای روزانه</button>
+          <button class="seg-btn" data-subtab="spiritual-sub-quran">📖 تلاوت قرآن</button>
+          <button class="seg-btn" data-subtab="spiritual-sub-report">📊 گزارش و تحلیل</button>
+        </div>
+
+        <!-- Subtab 1: Daily Salah Checklist & Hub -->
+        <div id="spiritual-sub-salah" class="subtab-content active">
+          <div class="card">
+            <div class="card-title">
+              <span class="icon">📿</span>
+              <span>ردیاب نمازهای یومیه</span>
+            </div>
+
+            <!-- Persian Date Selector in Spiritual -->
+            <div class="spiritual-date-selector-row">
+              <button type="button" class="btn-pill active" data-spiritual-offset="0">امروز</button>
+              <button type="button" class="btn-pill" data-spiritual-offset="1">دیروز</button>
+              <button type="button" class="btn-pill" data-spiritual-offset="2">پریروز</button>
+              <button type="button" class="btn-pill btn-custom-date" id="btnOpenSpiritualPicker">📅 تقویم شمسی</button>
+            </div>
+            <div class="selected-date-badge" id="spiritualSelectedDateBadge" style="margin-bottom: 14px;">📅 تاریخ: امروز</div>
+
+            <!-- Visual Progress Hero Box -->
+            <div class="progress-hero-container">
+              <div class="progress-ring-box">
+                <span class="progress-ring-pct" id="spiritualPercent">۱۰۰٪</span>
+                <span class="progress-ring-count" id="spiritualCountDisplay">۵ از ۵</span>
+              </div>
+              <div class="progress-details">
+                <div class="spiritual-stats-badges" id="spiritualStatsBadges">
+                  <span class="badge-ada">🟢 اداء: <b id="spiritualAdaCount">۵</b></span>
+                  <span class="badge-qaza">🟡 قضاء: <b id="spiritualQazaCount">۰</b></span>
+                  <span class="badge-pending">⚪ باقیمانده: <b id="spiritualPendingCount">۰</b></span>
+                </div>
+                <div class="progress-track-sleek" style="margin-top: 8px;">
+                  <div class="progress-fill-sleek" id="spiritualProgressFill" style="width: 100%;"></div>
+                </div>
+              </div>
+            </div>
+
+            <!-- Quick Bulk Action Buttons -->
+            <div class="habit-actions-row" style="margin-top: 14px;">
+              <button type="button" class="btn-magic-bulk" id="btnSpiritualBulkAda">
+                <span>⚡ تکمیل همه (اداء)</span>
+              </button>
+              <button type="button" class="btn-reset-day" id="btnSpiritualResetDay" style="padding: 10px 14px;">
+                <span>⚪ ریست وضعیت</span>
+              </button>
+            </div>
           </div>
 
-          <div class="section-subtitle">⏱️ آخرین ساعات کاری</div>
-          <div class="recent-list" id="recentTimeList">
-            <div class="loading-state">در حال دریافت...</div>
+          <!-- 5 Prayers Cards Grid -->
+          <div class="prayers-container" id="prayersListContainer">
+            <div class="loading-state">در حال بارگذاری نمازها...</div>
           </div>
 
-          <div class="section-subtitle" style="margin-top: 20px;">🌱 آخرین لاگ‌های روزمرگی</div>
-          <div class="recent-list" id="recentLifeList">
-            <div class="loading-state">در حال دریافت...</div>
+          <!-- Daily Spiritual Notes Card -->
+          <div class="card" style="margin-top: 14px;">
+            <div class="card-title">
+              <span class="icon">📝</span>
+              <span>یادداشت و دعای روز</span>
+            </div>
+            <div class="input-with-action">
+              <textarea id="spiritualNotesInput" rows="3" placeholder="یادداشت، دعا یا احوالات معنوی امروز..."></textarea>
+              <button type="button" class="btn-action" id="btnSaveSpiritualNotes">ذخیره</button>
+            </div>
+          </div>
+        </div>
+
+        <!-- Subtab 2: Quran Reading Tracker -->
+        <div id="spiritual-sub-quran" class="subtab-content">
+          <div class="card">
+            <div class="card-title">
+              <span class="icon">📖</span>
+              <span>ثبت جلسه تلاوت قرآن</span>
+            </div>
+
+            <form id="formQuranTracker" class="form-grid">
+              <div class="form-group">
+                <label for="quranPagesInput">صفحات یا آیات تلاوت‌شده <span class="required">*</span></label>
+                <input type="text" id="quranPagesInput" placeholder="مثال: ۴۲۴ یا ص ۱ تا ۱۰ یا سوره واقعه" required>
+              </div>
+
+              <div class="form-group">
+                <label for="quranTitleInput">عنوان / مناسبت (اختیاری)</label>
+                <input type="text" id="quranTitleInput" placeholder="مثال: تلاوت بعد از نماز صبح">
+              </div>
+
+              <div class="form-group">
+                <label>تاریخ تلاوت</label>
+                <div class="spiritual-quran-date-pills">
+                  <button type="button" class="btn-pill active" data-quran-offset="0">امروز</button>
+                  <button type="button" class="btn-pill" data-quran-offset="1">دیروز</button>
+                  <button type="button" class="btn-pill btn-custom-date" id="btnOpenQuranDatePicker">📅 تقویم</button>
+                </div>
+                <div class="selected-date-badge" id="quranSelectedDateBadge" style="margin-top: 6px;">📅 تاریخ: امروز</div>
+              </div>
+
+              <button type="submit" class="btn-primary" id="btnSubmitQuran">
+                <span>ثبت تلاوت در نوشن</span>
+                <span class="btn-arrow">←</span>
+              </button>
+            </form>
+          </div>
+
+          <!-- Recent Quran Reading Sessions -->
+          <div class="card" style="margin-top: 14px;">
+            <div class="card-title">
+              <span class="icon">📜</span>
+              <span>جلسات اخیر تلاوت قرآن</span>
+            </div>
+            <div class="recent-list" id="quranHistoryList">
+              <div class="loading-state">در حال بارگذاری جلسات...</div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Subtab 3: Spiritual Reports & Analytics -->
+        <div id="spiritual-sub-report" class="subtab-content">
+          <div class="card">
+            <div class="card-title">
+              <span class="icon">📊</span>
+              <span>تحلیل و آمار معنوی</span>
+            </div>
+
+            <div class="report-period-selector">
+              <button type="button" class="btn-pill active" data-sp-report-period="7d">۷ روز اخیر</button>
+              <button type="button" class="btn-pill" data-sp-report-period="month">ماه جاری</button>
+              <button type="button" class="btn-pill" data-sp-report-period="30d">۳۰ روز اخیر</button>
+            </div>
+
+            <!-- Report Summary Hero Cards -->
+            <div class="spiritual-report-grid" id="spiritualReportSummaryGrid" style="margin-top: 14px;">
+              <div class="loading-state">در حال محاسبه آمار معنوی...</div>
+            </div>
+
+            <!-- Prayer Breakdown Bars -->
+            <div class="analytics-section-title" style="margin-top: 18px;">🕌 نرخ ادای به‌موقع هر نماز</div>
+            <div id="spiritualPrayerBarsContainer" style="margin-top: 10px;">
+              <div class="loading-state">در حال بارگذاری تفکیک نمازها...</div>
+            </div>
           </div>
         </div>
       </section>
+
 
       <!-- ================= TAB 5: ADMIN PANEL ================= -->
       <section id="tab-admin" class="tab-panel">
@@ -546,10 +676,11 @@
         <span class="nav-icon">🎯</span>
         <span class="nav-label">عادات</span>
       </button>
-      <button class="nav-item" data-tab="tab-recent">
-        <span class="nav-icon">📜</span>
-        <span class="nav-label">تاریخچه</span>
+      <button class="nav-item" data-tab="tab-spiritual">
+        <span class="nav-icon">📿</span>
+        <span class="nav-label">معنوی</span>
       </button>
+
       <button class="nav-item" id="navItemAdmin" data-tab="tab-admin" style="display: none;">
         <span class="nav-icon">👑</span>
         <span class="nav-label">مدیریت</span>

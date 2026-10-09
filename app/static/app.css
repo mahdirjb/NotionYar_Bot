@@ -2030,3 +2030,210 @@ textarea:focus {
   outline: none;
 }
 
+/* ==========================================
+   📿 SPIRITUAL TRACKER STYLES
+   ========================================== */
+
+.prayers-container {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin-top: 14px;
+}
+
+.prayer-card {
+  background: var(--card-bg);
+  border: 1px solid var(--card-border);
+  border-radius: var(--radius-md);
+  padding: 12px 14px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  transition: all 0.2s ease;
+}
+
+.prayer-card:hover {
+  border-color: rgba(255, 255, 255, 0.2);
+}
+
+.prayer-info {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 105px;
+}
+
+.prayer-icon {
+  font-size: 24px;
+  line-height: 1;
+}
+
+.prayer-name-box {
+  display: flex;
+  flex-direction: column;
+}
+
+.prayer-name {
+  font-weight: 700;
+  font-size: 14px;
+  color: var(--text-color);
+}
+
+.prayer-status-label {
+  font-size: 11px;
+  color: var(--hint-color);
+  margin-top: 2px;
+}
+
+.prayer-toggles-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.btn-prayer-state {
+  border: 1px solid var(--card-border);
+  background: rgba(255, 255, 255, 0.05);
+  color: var(--hint-color);
+  border-radius: var(--radius-sm);
+  padding: 6px 10px;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.18s ease;
+  white-space: nowrap;
+}
+
+.btn-prayer-state:hover {
+  background: rgba(255, 255, 255, 0.1);
+}
+
+.btn-prayer-state.state-ada.active {
+  background: rgba(16, 185, 129, 0.22);
+  color: #10b981;
+  border-color: #10b981;
+}
+
+.btn-prayer-state.state-qaza.active {
+  background: rgba(245, 158, 11, 0.22);
+  color: #f59e0b;
+  border-color: #f59e0b;
+}
+
+.btn-prayer-state.state-none.active {
+  background: rgba(156, 163, 175, 0.2);
+  color: #9ca3af;
+  border-color: #6b7280;
+}
+
+/* Badges for Ada / Qaza / Missed in Progress Hero */
+.spiritual-stats-badges {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.badge-ada {
+  font-size: 12px;
+  background: rgba(16, 185, 129, 0.15);
+  color: #10b981;
+  padding: 3px 8px;
+  border-radius: var(--radius-sm);
+}
+
+.badge-qaza {
+  font-size: 12px;
+  background: rgba(245, 158, 11, 0.15);
+  color: #f59e0b;
+  padding: 3px 8px;
+  border-radius: var(--radius-sm);
+}
+
+.badge-pending {
+  font-size: 12px;
+  background: rgba(156, 163, 175, 0.15);
+  color: #9ca3af;
+  padding: 3px 8px;
+  border-radius: var(--radius-sm);
+}
+
+.spiritual-date-selector-row,
+.spiritual-quran-date-pills,
+.report-period-selector {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-bottom: 10px;
+}
+
+/* Spiritual Report Grid */
+.spiritual-report-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 10px;
+}
+
+.sp-stat-card {
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid var(--card-border);
+  border-radius: var(--radius-md);
+  padding: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.sp-stat-value {
+  font-size: 20px;
+  font-weight: 800;
+  color: var(--text-color);
+}
+
+.sp-stat-label {
+  font-size: 11px;
+  color: var(--hint-color);
+}
+
+/* Prayer breakdown item in report */
+.sp-bar-item {
+  margin-bottom: 10px;
+}
+
+.sp-bar-header {
+  display: flex;
+  justify-content: space-between;
+  font-size: 12px;
+  margin-bottom: 4px;
+}
+
+.sp-bar-track {
+  height: 6px;
+  background: rgba(255, 255, 255, 0.08);
+  border-radius: 3px;
+  overflow: hidden;
+}
+
+.sp-bar-fill {
+  height: 100%;
+  background: #10b981;
+  border-radius: 3px;
+  transition: width 0.3s ease;
+}
+
+/* Stealth Mode on Prayer cards and Quran logs */
+.stealth-active .prayer-card,
+.stealth-active #quranHistoryList .timeline-item {
+  filter: blur(6px) !important;
+  cursor: pointer;
+  user-select: none;
+  transition: filter 0.2s ease;
+}
+
+.stealth-active .prayer-card.revealed,
+.stealth-active #quranHistoryList .timeline-item.revealed {
+  filter: none !important;
+}
+
+

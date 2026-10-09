@@ -132,12 +132,18 @@
   let habitDayData = null;
   let isStealthMode = localStorage.getItem("notionyar_stealth") === "true";
 
+  // Spiritual Tracker State
+  let currentSpiritualDateIso = getDateFromOffset(0);
+  let selectedQuranDateIso = getDateFromOffset(0);
+  let spiritualDayData = null;
+
   // Gratitude Builder State
   let currentGratitudeTag = "سلامتی و جسم";
   let gratitudeItems = [];
 
   // Persian Date Picker Modal State
-  let activeDatePickerTarget = "time"; // "time" | "life" | "habits" | "life_from" | "life_to"
+  let activeDatePickerTarget = "time"; // "time" | "life" | "habits" | "spiritual" | "quran" | "life_from" | "life_to"
+
 
   // Header Helper
   function getHeaders() {
@@ -194,6 +200,8 @@
       selectedTimeDate = data.today_iso;
       selectedLifeDate = data.today_iso;
       currentHabitDateIso = data.today_iso;
+      currentSpiritualDateIso = data.today_iso;
+      selectedQuranDateIso = data.today_iso;
 
       document.getElementById("userName").textContent = currentUser.first_name || "کاربر گرامی";
       document.getElementById("currentDate").textContent = toPersianDigits(data.today_jalali);
@@ -219,6 +227,8 @@
       // Update date badges
       updateDateBadge("time", 0);
       updateDateBadge("life", 0);
+      updateSpiritualDateBadge(0);
+      updateQuranDateBadge(0);
 
       autoExpandTextareas();
 
@@ -226,8 +236,9 @@
         loadTimeTrackerMeta(),
         loadLifeTrackerOptions(),
         loadHabitsForDate(currentHabitDateIso),
-        loadRecentLogs(),
+        loadSpiritualDay(currentSpiritualDateIso),
       ]);
+
     } catch (err) {
       console.error(err);
       showToast("خطا در ارتباط با سرور", "error");
@@ -271,6 +282,9 @@
       if (targetTabId === "tab-admin") {
         loadAdminPanel();
       }
+      if (targetTabId === "tab-spiritual") {
+        loadSpiritualDay(currentSpiritualDateIso);
+      }
     });
   });
 
@@ -295,9 +309,12 @@
         if (subtabId === "life-sub-radar") loadLifeRadar();
         if (subtabId === "life-sub-history") loadLifeHistory();
         if (subtabId === "habit-sub-analytics") loadHabitsAnalytics();
+        if (subtabId === "spiritual-sub-quran") loadQuranHistory();
+        if (subtabId === "spiritual-sub-report") loadSpiritualReport("7d");
       });
     });
   });
+
 
   document.getElementById("btnRefresh")?.addEventListener("click", async () => {
     haptic("medium");
@@ -369,6 +386,15 @@
         currentHabitDateIso = isoDate;
         document.querySelectorAll("[data-habit-offset]").forEach((b) => b.classList.remove("active"));
         loadHabitsForDate(currentHabitDateIso);
+      } else if (activeDatePickerTarget === "spiritual") {
+        currentSpiritualDateIso = isoDate;
+        document.querySelectorAll("[data-spiritual-offset]").forEach((b) => b.classList.remove("active"));
+        updateSpiritualDateBadge(null, isoDate);
+        loadSpiritualDay(currentSpiritualDateIso);
+      } else if (activeDatePickerTarget === "quran") {
+        selectedQuranDateIso = isoDate;
+        document.querySelectorAll("[data-quran-offset]").forEach((b) => b.classList.remove("active"));
+        updateQuranDateBadge(null, isoDate);
       } else if (activeDatePickerTarget === "life_from") {
         customLifeStartDate = isoDate;
         const btn = document.getElementById("btnLifeRangeFrom");
@@ -398,8 +424,11 @@
     if (target === "time") currentIso = selectedTimeDate;
     if (target === "life") currentIso = selectedLifeDate;
     if (target === "habits") currentIso = currentHabitDateIso;
+    if (target === "spiritual") currentIso = currentSpiritualDateIso;
+    if (target === "quran") currentIso = selectedQuranDateIso;
     if (target === "life_from") currentIso = customLifeStartDate || currentDateIso;
     if (target === "life_to") currentIso = customLifeEndDate || currentDateIso;
+
 
     const parts = currentIso.split("-").map(Number);
     const [jy, jm, jd] = gregorianToJalali(parts[0], parts[1], parts[2]);
@@ -439,6 +468,9 @@
   document.getElementById("btnOpenHabitPicker")?.addEventListener("click", () => openPersianDatePicker("habits"));
   document.getElementById("btnLifeRangeFrom")?.addEventListener("click", () => openPersianDatePicker("life_from"));
   document.getElementById("btnLifeRangeTo")?.addEventListener("click", () => openPersianDatePicker("life_to"));
+  document.getElementById("btnOpenSpiritualPicker")?.addEventListener("click", () => openPersianDatePicker("spiritual"));
+  document.getElementById("btnOpenQuranDatePicker")?.addEventListener("click", () => openPersianDatePicker("quran"));
+
 
   initPersianDatePickerModal();
 
@@ -1098,11 +1130,13 @@
   // ==========================================
   function setupStealthModeUI() {
     const tabHabits = document.getElementById("tab-habits");
+    const tabSpiritual = document.getElementById("tab-spiritual");
     const btnToggle = document.getElementById("btnToggleStealth");
 
     function applyStealthState() {
       document.body.classList.toggle("stealth-active", isStealthMode);
       tabHabits?.classList.toggle("stealth-active", isStealthMode);
+      tabSpiritual?.classList.toggle("stealth-active", isStealthMode);
       btnToggle?.classList.toggle("active", isStealthMode);
     }
 
@@ -1115,10 +1149,12 @@
       haptic("medium");
       showToast(isStealthMode ? "حالت مخفی فعال شد 🕶️" : "حالت عادی فعال شد 👁️", "info");
 
-      // Reload habits and analytics to reflect masked codes & state
+      // Reload habits, analytics, and spiritual day to reflect state
       loadHabitsForDate(currentHabitDateIso);
       loadHabitsAnalytics();
+      loadSpiritualDay(currentSpiritualDateIso);
     });
+
 
     // Interactive Click-to-Reveal in Stealth Mode
     document.addEventListener("click", (e) => {
@@ -2194,81 +2230,420 @@
   });
 
   // ==========================================
-  // 11. RECENT LOGS
+  // 11. 📿 SPIRITUAL TRACKER (SALAH, QURAN & REPORTS)
   // ==========================================
-  async function loadRecentLogs() {
+  const PRAYER_DISPLAY_META = {
+    sobh: { name: "صبح", emoji: "🌅" },
+    zohr: { name: "ظهر", emoji: "☀️" },
+    asr: { name: "عصر", emoji: "🌤️" },
+    maghreb: { name: "مغرب", emoji: "🌇" },
+    eshsa: { name: "عشاء", emoji: "🌌" }
+  };
+
+  function updateSpiritualDateBadge(offset = null, customIso = null) {
+    let text = "";
+    if (offset === 0) text = `امروز (${formatIsoToJalaliDisplay(getDateFromOffset(0))})`;
+    else if (offset === 1) text = `دیروز (${formatIsoToJalaliDisplay(getDateFromOffset(1))})`;
+    else if (offset === 2) text = `پریروز (${formatIsoToJalaliDisplay(getDateFromOffset(2))})`;
+    else if (customIso) text = formatIsoToJalaliDisplay(customIso);
+
+    const badge = document.getElementById("spiritualSelectedDateBadge");
+    if (badge) badge.textContent = `📅 تاریخ: ${text}`;
+  }
+
+  function updateQuranDateBadge(offset = null, customIso = null) {
+    let text = "";
+    if (offset === 0) text = `امروز (${formatIsoToJalaliDisplay(getDateFromOffset(0))})`;
+    else if (offset === 1) text = `دیروز (${formatIsoToJalaliDisplay(getDateFromOffset(1))})`;
+    else if (customIso) text = formatIsoToJalaliDisplay(customIso);
+
+    const badge = document.getElementById("quranSelectedDateBadge");
+    if (badge) badge.textContent = `📅 تاریخ: ${text}`;
+  }
+
+  async function loadSpiritualDay(dateIso) {
+    const container = document.getElementById("prayersListContainer");
+    if (!container) return;
+
     try {
-      const res = await fetch("/api/recent-logs", { headers: getHeaders() });
-      if (!res.ok) return;
+      const res = await fetch(`/api/spiritual/day?date_iso=${dateIso}`, { headers: getHeaders() });
+      if (!res.ok) throw new Error("خطا در بارگذاری روز نماز");
       const data = await res.json();
+      spiritualDayData = data;
 
-      const timeContainer = document.getElementById("recentTimeList");
-      if (data.time_tracker?.length > 0) {
-        timeContainer.innerHTML = "";
-        data.time_tracker.forEach((item) => {
-          const div = document.createElement("div");
-          div.className = "timeline-item";
-          div.innerHTML = `
-            <div>
-              <div style="font-weight:700; font-size:13px;">${item.name}</div>
-              <div style="font-size:11px; color:var(--hint-color); margin-top:2px;">
-                <span class="stealth-blur-target">📅 ${toPersianDigits(item.date)}</span> | <span class="stealth-blur-target">⏰ ${toPersianDigits(item.time_range) || toPersianDigits(item.duration) + " د"}</span>
-              </div>
-            </div>
-            <button class="btn-item-delete" title="حذف رکورد">🗑️</button>
-          `;
-          div.querySelector(".btn-item-delete").addEventListener("click", async () => {
-            if (!confirm(`آیا از حذف رکورد «${item.name}» مطمئن هستید؟`)) return;
-            haptic("warning");
-            try {
-              await fetch(`/api/time-tracker/delete/${item.id}`, { method: "DELETE", headers: getHeaders() });
-              showToast("رکورد زمان حذف شد", "success");
-              div.remove();
-            } catch (e) {
-              showToast("خطا در حذف رکورد", "error");
-            }
-          });
-          timeContainer.appendChild(div);
-        });
-      } else {
-        timeContainer.innerHTML = '<div class="loading-state">هنوز رکوردی ثبت نشده است</div>';
-      }
+      // Update Date Badge
+      updateSpiritualDateBadge(null, dateIso);
 
-      const lifeContainer = document.getElementById("recentLifeList");
-      if (data.life_tracker?.length > 0) {
-        lifeContainer.innerHTML = "";
-        data.life_tracker.forEach((item) => {
-          const div = document.createElement("div");
-          div.className = "timeline-item";
-          div.innerHTML = `
-            <div>
-              <div style="font-weight:700; font-size:13px;">${item.emoji} ${item.type} ${item.mode ? `(${item.mode})` : ""}</div>
-              <div style="font-size:11px; color:var(--hint-color); margin-top:2px;">
-                <span class="stealth-blur-target">📅 ${toPersianDigits(item.date)}</span> ${item.notes ? `| <span class="stealth-blur-target">📝 ${item.notes}</span>` : ""}
-              </div>
-            </div>
-            <button class="btn-item-delete" title="حذف رکورد">🗑️</button>
-          `;
-          div.querySelector(".btn-item-delete").addEventListener("click", async () => {
-            if (!confirm(`آیا از حذف لاگ «${item.type}» مطمئن هستید؟`)) return;
-            haptic("warning");
-            try {
-              await fetch(`/api/life-tracker/delete/${item.id}`, { method: "DELETE", headers: getHeaders() });
-              showToast("لاگ حذف شد", "success");
-              div.remove();
-            } catch (e) {
-              showToast("خطا در حذف لاگ", "error");
-            }
-          });
-          lifeContainer.appendChild(div);
-        });
-      } else {
-        lifeContainer.innerHTML = '<div class="loading-state">هنوز رکوردی ثبت نشده است</div>';
-      }
-    } catch (e) {
-      console.error(e);
+      // Progress & Counters
+      const pct = data.progress_percent || 0;
+      const pctEl = document.getElementById("spiritualPercent");
+      if (pctEl) pctEl.textContent = toPersianDigits(pct) + "٪";
+
+      const countEl = document.getElementById("spiritualCountDisplay");
+      if (countEl) countEl.textContent = `${toPersianDigits(data.completed_count || 0)} از ۵`;
+
+      const fillEl = document.getElementById("spiritualProgressFill");
+      if (fillEl) fillEl.style.width = `${pct}%`;
+
+      const adaEl = document.getElementById("spiritualAdaCount");
+      if (adaEl) adaEl.textContent = toPersianDigits(data.ada_count || 0);
+
+      const qazaEl = document.getElementById("spiritualQazaCount");
+      if (qazaEl) qazaEl.textContent = toPersianDigits(data.qaza_count || 0);
+
+      const pendEl = document.getElementById("spiritualPendingCount");
+      if (pendEl) pendEl.textContent = toPersianDigits(Math.max(0, 5 - (data.completed_count || 0)));
+
+      // Notes
+      const notesEl = document.getElementById("spiritualNotesInput");
+      if (notesEl) notesEl.value = data.notes || "";
+
+      // Render 5 prayers cards
+      renderPrayersList(data);
+    } catch (err) {
+      console.error(err);
+      container.innerHTML = '<div class="loading-state">خطا در بارگذاری نمازها. لطفاً دوباره تلاش کنید.</div>';
     }
   }
+
+  function renderPrayersList(data) {
+    const container = document.getElementById("prayersListContainer");
+    if (!container) return;
+
+    const prayers = data.prayers || {};
+    container.innerHTML = "";
+
+    const prayerKeys = ["sobh", "zohr", "asr", "maghreb", "eshsa"];
+
+    prayerKeys.forEach((key) => {
+      const p = prayers[key] || {};
+      const meta = PRAYER_DISPLAY_META[key] || { name: key, emoji: "🕌" };
+      const status = p.status || "none";
+
+      const card = document.createElement("div");
+      card.className = "prayer-card stealth-blur-target";
+      card.setAttribute("data-prayer-key", key);
+
+      let statusLabel = "هنوز خوانده نشده ⚪";
+      if (status === "ada") statusLabel = "اداء به‌موقع 🟢";
+      if (status === "qaza") statusLabel = "قضاء خارج وقت 🟡";
+
+      card.innerHTML = `
+        <div class="prayer-info">
+          <span class="prayer-icon">${meta.emoji}</span>
+          <div class="prayer-name-box">
+            <span class="prayer-name">نماز ${meta.name}</span>
+            <span class="prayer-status-label">${statusLabel}</span>
+          </div>
+        </div>
+        <div class="prayer-toggles-row">
+          <button type="button" class="btn-prayer-state state-ada ${status === 'ada' ? 'active' : ''}" data-target-status="ada" title="اداء در وقت">🟢 اداء</button>
+          <button type="button" class="btn-prayer-state state-qaza ${status === 'qaza' ? 'active' : ''}" data-target-status="qaza" title="قضاء خارج وقت">🟡 قضاء</button>
+          <button type="button" class="btn-prayer-state state-none ${status === 'none' ? 'active' : ''}" data-target-status="none" title="نخوانده">⚪ نخوانده</button>
+        </div>
+      `;
+
+      card.querySelectorAll(".btn-prayer-state").forEach((btn) => {
+        btn.addEventListener("click", (e) => {
+          e.stopPropagation();
+          const targetStatus = btn.getAttribute("data-target-status");
+          changePrayerStatus(key, targetStatus);
+        });
+      });
+
+      card.addEventListener("click", () => {
+        if (isStealthMode) {
+          card.classList.toggle("revealed");
+        }
+      });
+
+      container.appendChild(card);
+    });
+  }
+
+  async function changePrayerStatus(prayerKey, targetStatus) {
+    if (!spiritualDayData || !spiritualDayData.page_id) {
+      showToast("شناسه روز مشخص نیست", "error");
+      return;
+    }
+
+    haptic("light");
+
+    try {
+      const res = await fetch("/api/spiritual/toggle-prayer", {
+        method: "POST",
+        headers: getHeaders(),
+        body: JSON.stringify({
+          page_id: spiritualDayData.page_id,
+          prayer_key: prayerKey,
+          target_status: targetStatus
+        })
+      });
+
+      if (!res.ok) throw new Error("خطا در به‌روزرسانی نماز");
+
+      const pName = PRAYER_DISPLAY_META[prayerKey]?.name || prayerKey;
+      const statusTitle = targetStatus === "ada" ? "اداء" : (targetStatus === "qaza" ? "قضاء" : "نخوانده");
+      showToast(`نماز ${pName}: ${statusTitle} ثبت شد`, "success");
+
+      await loadSpiritualDay(currentSpiritualDateIso);
+    } catch (err) {
+      showToast(err.message, "error");
+    }
+  }
+
+  // Bulk Ada button
+  document.getElementById("btnSpiritualBulkAda")?.addEventListener("click", async () => {
+    if (!spiritualDayData || !spiritualDayData.page_id) return;
+    haptic("medium");
+
+    try {
+      const res = await fetch("/api/spiritual/bulk-ada", {
+        method: "POST",
+        headers: getHeaders(),
+        body: JSON.stringify({ page_id: spiritualDayData.page_id })
+      });
+      if (!res.ok) throw new Error("خطا در تکمیل خودکار");
+      showToast("تمام ۵ نماز با موفقیت «اداء» علامت خوردند! 🟢", "success");
+      await loadSpiritualDay(currentSpiritualDateIso);
+    } catch (err) {
+      showToast(err.message, "error");
+    }
+  });
+
+  // Reset Day button
+  document.getElementById("btnSpiritualResetDay")?.addEventListener("click", async () => {
+    if (!spiritualDayData || !spiritualDayData.page_id) return;
+    haptic("warning");
+
+    try {
+      const res = await fetch("/api/spiritual/bulk-reset", {
+        method: "POST",
+        headers: getHeaders(),
+        body: JSON.stringify({ page_id: spiritualDayData.page_id })
+      });
+      if (!res.ok) throw new Error("خطا در بازنشانی");
+      showToast("وضعیت نمازهای روز بازنشانی شد ⚪", "info");
+      await loadSpiritualDay(currentSpiritualDateIso);
+    } catch (err) {
+      showToast(err.message, "error");
+    }
+  });
+
+  // Save Notes
+  document.getElementById("btnSaveSpiritualNotes")?.addEventListener("click", async () => {
+    if (!spiritualDayData || !spiritualDayData.page_id) return;
+    const notes = document.getElementById("spiritualNotesInput")?.value || "";
+    haptic("light");
+
+    try {
+      const res = await fetch("/api/spiritual/update-notes", {
+        method: "POST",
+        headers: getHeaders(),
+        body: JSON.stringify({ page_id: spiritualDayData.page_id, notes: notes })
+      });
+      if (!res.ok) throw new Error("خطا در ذخیره یادداشت");
+      showToast("یادداشت معنوی در نوشن ذخیره شد 💾", "success");
+    } catch (err) {
+      showToast(err.message, "error");
+    }
+  });
+
+  // Date pills for Spiritual
+  document.querySelectorAll("[data-spiritual-offset]").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      document.querySelectorAll("[data-spiritual-offset]").forEach((b) => b.classList.remove("active"));
+      btn.classList.add("active");
+      const offset = parseInt(btn.getAttribute("data-spiritual-offset"), 10);
+      currentSpiritualDateIso = getDateFromOffset(offset);
+      updateSpiritualDateBadge(offset);
+      loadSpiritualDay(currentSpiritualDateIso);
+      haptic("light");
+    });
+  });
+
+  // Quran Reading Section
+  document.querySelectorAll("[data-quran-offset]").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      document.querySelectorAll("[data-quran-offset]").forEach((b) => b.classList.remove("active"));
+      btn.classList.add("active");
+      const offset = parseInt(btn.getAttribute("data-quran-offset"), 10);
+      selectedQuranDateIso = getDateFromOffset(offset);
+      updateQuranDateBadge(offset);
+      haptic("light");
+    });
+  });
+
+  document.getElementById("formQuranTracker")?.addEventListener("submit", async (e) => {
+    e.preventDefault();
+    const pages = document.getElementById("quranPagesInput")?.value.trim();
+    const title = document.getElementById("quranTitleInput")?.value.trim();
+    if (!pages) {
+      showToast("لطفاً صفحات را وارد کنید", "warning");
+      return;
+    }
+
+    const btnSubmit = document.getElementById("btnSubmitQuran");
+    btnSubmit.disabled = true;
+    haptic("medium");
+
+    try {
+      const res = await fetch("/api/spiritual/quran/create", {
+        method: "POST",
+        headers: getHeaders(),
+        body: JSON.stringify({
+          date_iso: selectedQuranDateIso,
+          pages: pages,
+          session_name: title || null
+        })
+      });
+      if (!res.ok) throw new Error("خطا در ذخیره تلاوت قرآن");
+
+      showToast("جلسه تلاوت قرآن در نوشن ثبت شد! ✨", "success");
+      document.getElementById("quranPagesInput").value = "";
+      document.getElementById("quranTitleInput").value = "";
+      loadQuranHistory();
+    } catch (err) {
+      showToast(err.message, "error");
+    } finally {
+      btnSubmit.disabled = false;
+    }
+  });
+
+  async function loadQuranHistory() {
+    const container = document.getElementById("quranHistoryList");
+    if (!container) return;
+
+    try {
+      const res = await fetch("/api/spiritual/quran/history", { headers: getHeaders() });
+      if (!res.ok) return;
+      const data = await res.json();
+      const entries = data.entries || [];
+
+      if (entries.length === 0) {
+        container.innerHTML = '<div class="loading-state">هنوز رکوردی ثبت نشده است.</div>';
+        return;
+      }
+
+      container.innerHTML = "";
+      entries.forEach((item) => {
+        const div = document.createElement("div");
+        div.className = "timeline-item stealth-blur-target";
+        div.innerHTML = `
+          <div>
+            <div style="font-weight:700; font-size:13px;">📖 ${item.name}</div>
+            <div style="font-size:12px; color:var(--button-color); margin-top:2px;">صفحات: <b>${toPersianDigits(item.pages)}</b></div>
+            <div style="font-size:11px; color:var(--hint-color); margin-top:2px;">📅 ${toPersianDigits(item.shamsi_date || item.date_iso)}</div>
+          </div>
+          <button type="button" class="btn-text-action btn-del-quran" style="color:var(--danger-color);" data-id="${item.id}" title="حذف این رکورد">🗑</button>
+        `;
+
+        div.querySelector(".btn-del-quran")?.addEventListener("click", async (e) => {
+          e.stopPropagation();
+          if (confirm("آیا از حذف این رکورد تلاوت قرآن مطمئن هستید؟")) {
+            await deleteQuranEntry(item.id);
+          }
+        });
+
+        div.addEventListener("click", () => {
+          if (isStealthMode) div.classList.toggle("revealed");
+        });
+
+        container.appendChild(div);
+      });
+    } catch (err) {
+      console.error(err);
+      container.innerHTML = '<div class="loading-state">خطا در دریافت لیست جلسات.</div>';
+    }
+  }
+
+  async function deleteQuranEntry(pageId) {
+    try {
+      const res = await fetch(`/api/spiritual/quran/delete/${pageId}`, {
+        method: "DELETE",
+        headers: getHeaders()
+      });
+      if (!res.ok) throw new Error("خطا در حذف رکورد");
+      showToast("رکورد تلاوت قرآن حذف شد", "info");
+      loadQuranHistory();
+    } catch (err) {
+      showToast(err.message, "error");
+    }
+  }
+
+  // Spiritual Reports
+  document.querySelectorAll("[data-sp-report-period]").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      document.querySelectorAll("[data-sp-report-period]").forEach((b) => b.classList.remove("active"));
+      btn.classList.add("active");
+      const period = btn.getAttribute("data-sp-report-period");
+      loadSpiritualReport(period);
+      haptic("light");
+    });
+  });
+
+  async function loadSpiritualReport(period = "7d") {
+    const summaryGrid = document.getElementById("spiritualReportSummaryGrid");
+    const barsContainer = document.getElementById("spiritualPrayerBarsContainer");
+    if (!summaryGrid || !barsContainer) return;
+
+    summaryGrid.innerHTML = '<div class="loading-state">در حال محاسبه آمار معنوی...</div>';
+    barsContainer.innerHTML = '<div class="loading-state">در حال بارگذاری تفکیک نمازها...</div>';
+
+    try {
+      const res = await fetch(`/api/spiritual/report?period=${period}`, { headers: getHeaders() });
+      if (!res.ok) throw new Error("خطا در بارگذاری گزارش");
+      const data = await res.json();
+      const rep = data.report || {};
+
+      summaryGrid.innerHTML = `
+        <div class="sp-stat-card">
+          <span class="sp-stat-value">${toPersianDigits(rep.overall_ada_rate || 0)}٪</span>
+          <span class="sp-stat-label">نرخ ادای به‌موقع نمازها</span>
+        </div>
+        <div class="sp-stat-card">
+          <span class="sp-stat-value">${toPersianDigits(rep.perfect_days || 0)} روز</span>
+          <span class="sp-stat-label">روزهای با ۵/۵ ادای کامل</span>
+        </div>
+        <div class="sp-stat-card">
+          <span class="sp-stat-value" style="color:#10b981;">${toPersianDigits(rep.total_ada || 0)}</span>
+          <span class="sp-stat-label">مجموع نمازهای اداء</span>
+        </div>
+        <div class="sp-stat-card">
+          <span class="sp-stat-value" style="color:#f59e0b;">${toPersianDigits(rep.total_qaza || 0)}</span>
+          <span class="sp-stat-label">مجموع نمازهای قضاء</span>
+        </div>
+      `;
+
+      const pStats = rep.prayer_stats || {};
+      const prayerKeys = ["sobh", "zohr", "asr", "maghreb", "eshsa"];
+      barsContainer.innerHTML = "";
+
+      prayerKeys.forEach((k) => {
+        const item = pStats[k] || {};
+        const meta = PRAYER_DISPLAY_META[k] || { name: k, emoji: "🕌" };
+        const rate = item.rate || 0;
+
+        const barEl = document.createElement("div");
+        barEl.className = "sp-bar-item";
+        barEl.innerHTML = `
+          <div class="sp-bar-header">
+            <span>${meta.emoji} ${meta.name} (اداء: ${toPersianDigits(item.ada || 0)} | قضاء: ${toPersianDigits(item.qaza || 0)})</span>
+            <span style="font-weight:700;">${toPersianDigits(rate)}٪</span>
+          </div>
+          <div class="sp-bar-track">
+            <div class="sp-bar-fill" style="width: ${rate}%;"></div>
+          </div>
+        `;
+        barsContainer.appendChild(barEl);
+      });
+    } catch (err) {
+      console.error(err);
+      summaryGrid.innerHTML = '<div class="loading-state">خطا در بارگذاری گزارش معنوی.</div>';
+      barsContainer.innerHTML = "";
+    }
+  }
+
 
   // ==========================================
   // START APPLICATION

@@ -1502,3 +1502,246 @@ def get_book_detail_keyboard(offset_days: int) -> InlineKeyboardMarkup:
             ],
         ]
     )
+
+
+# ==========================================
+# 📿 SPIRITUAL TRACKER KEYBOARDS
+# ==========================================
+
+PRAYER_STATUS_BADGES = {
+    "ada": "🟢 اداء",
+    "qaza": "🟡 قضاء",
+    "none": "⚪ نخوانده",
+}
+
+
+def build_spiritual_hub_keyboard(
+    page_data: Dict[str, Any],
+    offset_days: int,
+    stealth: bool = False
+) -> InlineKeyboardMarkup:
+    """Builds the main interactive keyboard for Daily Salah and Spiritual hub."""
+    prayers = page_data.get("prayers", {})
+
+    def _prayer_btn(key: str) -> InlineKeyboardButton:
+        p = prayers.get(key, {})
+        status = p.get("status", "none")
+        emoji = p.get("emoji", "")
+        name = p.get("name", "")
+        badge = PRAYER_STATUS_BADGES.get(status, "⚪")
+        return InlineKeyboardButton(
+            text=f"{emoji} {name}: {badge}",
+            callback_data=f"sp_tog:{key}:{offset_days}"
+        )
+
+    sobh_btn = _prayer_btn("sobh")
+    zohr_btn = _prayer_btn("zohr")
+    asr_btn = _prayer_btn("asr")
+    maghreb_btn = _prayer_btn("maghreb")
+    eshsa_btn = _prayer_btn("eshsa")
+
+    # Date navigation labels
+    prev_offset = offset_days + 1
+    next_offset = offset_days - 1
+
+    stealth_text = "👁️ حالت عادی" if stealth else "🕶️ حالت مخفی"
+
+    keyboard = [
+        # Row 1: Sobh & Zohr
+        [sobh_btn, zohr_btn],
+        # Row 2: Asr & Maghreb
+        [asr_btn, maghreb_btn],
+        # Row 3: Eshsa & Quick All Ada
+        [
+            eshsa_btn,
+            InlineKeyboardButton(
+                text="⚡ تکمیل همه (اداء)",
+                callback_data=f"sp_bulk_ada:{offset_days}"
+            )
+        ],
+        # Row 4: Quran & Notes
+        [
+            InlineKeyboardButton(
+                text="📖 ثبت تلاوت قرآن",
+                callback_data=f"sp_quran:{offset_days}"
+            ),
+            InlineKeyboardButton(
+                text="📝 یادداشت معنوی",
+                callback_data=f"sp_notes:{offset_days}"
+            )
+        ],
+        # Row 5: Date Navigation (Prev, Today, Next)
+        [
+            InlineKeyboardButton(
+                text="⏮ دیروز",
+                callback_data=f"sp_nav:{prev_offset}"
+            ),
+            InlineKeyboardButton(
+                text="📍 امروز",
+                callback_data="sp_nav:0"
+            ),
+            InlineKeyboardButton(
+                text="⏭ فردا",
+                callback_data=f"sp_nav:{next_offset}"
+            ),
+        ],
+        # Row 6: Custom Date & Calendar
+        [
+            InlineKeyboardButton(
+                text="📅 انتخاب تاریخ شمسی دلخواه",
+                callback_data=f"sp_date_menu:{offset_days}"
+            )
+        ],
+        # Row 7: Stealth mode & Reports
+        [
+            InlineKeyboardButton(
+                text=stealth_text,
+                callback_data=f"sp_stealth:{offset_days}"
+            ),
+            InlineKeyboardButton(
+                text="📊 گزارش و تحلیل معنوی",
+                callback_data="sp_report_menu"
+            )
+        ],
+        # Row 8: Refresh
+        [
+            InlineKeyboardButton(
+                text="🔄 بروزرسانی",
+                callback_data=f"sp_nav:{offset_days}"
+            )
+        ]
+    ]
+
+    return InlineKeyboardMarkup(inline_keyboard=keyboard)
+
+
+def get_spiritual_prayer_picker_keyboard(
+    prayer_key: str,
+    offset_days: int
+) -> InlineKeyboardMarkup:
+    """Detailed picker for a specific prayer."""
+    return InlineKeyboardMarkup(
+        inline_keyboard=[
+            [
+                InlineKeyboardButton(
+                    text="🟢 اداء (خوانده‌شده در وقت)",
+                    callback_data=f"sp_set:{prayer_key}:ada:{offset_days}"
+                )
+            ],
+            [
+                InlineKeyboardButton(
+                    text="🟡 قضاء (خوانده‌شده خارج وقت)",
+                    callback_data=f"sp_set:{prayer_key}:qaza:{offset_days}"
+                )
+            ],
+            [
+                InlineKeyboardButton(
+                    text="⚪ هنوز خوانده نشده",
+                    callback_data=f"sp_set:{prayer_key}:none:{offset_days}"
+                )
+            ],
+            [
+                InlineKeyboardButton(
+                    text="🔙 بازگشت به ردیاب معنوی",
+                    callback_data=f"sp_nav:{offset_days}"
+                )
+            ]
+        ]
+    )
+
+
+def get_spiritual_date_picker_keyboard(offset_days: int) -> InlineKeyboardMarkup:
+    """Date selector presets for spiritual tracker."""
+    return InlineKeyboardMarkup(
+        inline_keyboard=[
+            [
+                InlineKeyboardButton(text="📍 امروز", callback_data="sp_nav:0"),
+                InlineKeyboardButton(text="⏮ دیروز", callback_data="sp_nav:1"),
+                InlineKeyboardButton(text="🗓 ۲ روز قبل", callback_data="sp_nav:2"),
+            ],
+            [
+                InlineKeyboardButton(text="🗓 ۳ روز قبل", callback_data="sp_nav:3"),
+                InlineKeyboardButton(text="🗓 ۷ روز قبل", callback_data="sp_nav:7"),
+                InlineKeyboardButton(text="⏭ فردا", callback_data="sp_nav:-1"),
+            ],
+            [
+                InlineKeyboardButton(
+                    text="✍️ تایپ تاریخ شمسی دلخواه (مثلاً ۱۴۰۵/۰۷/۱۸)",
+                    callback_data=f"sp_cust_date:{offset_days}"
+                )
+            ],
+            [
+                InlineKeyboardButton(
+                    text="🔙 بازگشت",
+                    callback_data=f"sp_nav:{offset_days}"
+                )
+            ]
+        ]
+    )
+
+
+def get_spiritual_notes_keyboard(offset_days: int) -> InlineKeyboardMarkup:
+    """Action keyboard when editing spiritual notes."""
+    return InlineKeyboardMarkup(
+        inline_keyboard=[
+            [
+                InlineKeyboardButton(
+                    text="🗑 پاک کردن یادداشت",
+                    callback_data=f"sp_clr_notes:{offset_days}"
+                )
+            ],
+            [
+                InlineKeyboardButton(
+                    text="🔙 انصراف و بازگشت",
+                    callback_data=f"sp_nav:{offset_days}"
+                )
+            ]
+        ]
+    )
+
+
+def get_spiritual_cancel_keyboard(offset_days: int) -> InlineKeyboardMarkup:
+    """Generic cancel keyboard returning to spiritual hub."""
+    return InlineKeyboardMarkup(
+        inline_keyboard=[
+            [
+                InlineKeyboardButton(
+                    text="🔙 انصراف و بازگشت",
+                    callback_data=f"sp_nav:{offset_days}"
+                )
+            ]
+        ]
+    )
+
+
+def get_spiritual_report_keyboard() -> InlineKeyboardMarkup:
+    """Keyboard for selecting report timeframes."""
+    return InlineKeyboardMarkup(
+        inline_keyboard=[
+            [
+                InlineKeyboardButton(text="🗓 ۷ روز اخیر", callback_data="sp_rep:7d"),
+                InlineKeyboardButton(text="🌙 ماه جاری شمسی", callback_data="sp_rep:month"),
+            ],
+            [
+                InlineKeyboardButton(text="🗓 ۳۰ روز اخیر", callback_data="sp_rep:30d"),
+                InlineKeyboardButton(text="✍️ بازه دلخواه شمسی", callback_data="sp_rep:custom"),
+            ],
+            [
+                InlineKeyboardButton(text="🔙 بازگشت به ردیاب معنوی", callback_data="sp_nav:0")
+            ]
+        ]
+    )
+
+
+def get_spiritual_report_result_keyboard() -> InlineKeyboardMarkup:
+    """Keyboard shown on a generated spiritual report."""
+    return InlineKeyboardMarkup(
+        inline_keyboard=[
+            [
+                InlineKeyboardButton(text="📊 انتخاب بازه دیگر", callback_data="sp_report_menu")
+            ],
+            [
+                InlineKeyboardButton(text="🔙 بازگشت به هاب معنوی", callback_data="sp_nav:0")
+            ]
+        ]
+    )

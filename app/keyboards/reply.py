@@ -7,6 +7,7 @@ BTN_ADD_TIME = "⏱ ثبت زمان جدید"
 BTN_REPORTS = "📊 گزارش و کارکردها"
 BTN_HABITS = "🎯 عادات روزانه"
 BTN_LIFE_TRACKER = "🌱 لاگ روزمرگی"
+BTN_SPIRITUAL = "📿 ردیاب معنوی"
 BTN_ADMIN = "⚙️ پنل مدیریت"
 BTN_HELP = "ℹ️ راهنما"
 
@@ -33,14 +34,15 @@ def get_main_reply_keyboard(user_id: int | None = None) -> ReplyKeyboardMarkup:
     row_2.append(KeyboardButton(text=BTN_HELP))
     keyboard.append(row_2)
 
-    # Row 3 & 4: Habits, Life Tracker & Admin (Exclusive for Admins)
+    # Row 3 & 4: Habits, Life Tracker, Spiritual & Admin (Exclusive for Admins)
     if has_permission(user_id, PERM_ADMIN):
         keyboard.append([
             KeyboardButton(text=BTN_HABITS),
             KeyboardButton(text=BTN_LIFE_TRACKER)
         ])
         keyboard.append([
+            KeyboardButton(text=BTN_SPIRITUAL),
             KeyboardButton(text=BTN_ADMIN)
         ])
 
-    return ReplyKeyboardMarkup(keyboard=keyboard, resize_keyboard=True)
+    return ReplyKeyboardMarkup(keyboard=keyboard, resize_keyboard=True)

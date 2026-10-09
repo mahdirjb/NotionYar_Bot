@@ -10,7 +10,7 @@ from aiogram import Bot, Dispatcher
 from aiogram.types import MenuButtonWebApp, WebAppInfo
 
 from app.config import BOT_TOKEN, WEBAPP_URL, PORT
-from app.handlers import common, time_tracker, reports, admin, life_tracker, habits
+from app.handlers import common, time_tracker, reports, admin, life_tracker, habits, spiritual
 from app.services.scheduler_service import start_scheduler, shutdown_scheduler
 from app.webapp import app
 
@@ -41,6 +41,8 @@ async def lifespan(application):
     dp.include_router(admin.router)
     dp.include_router(life_tracker.router)
     dp.include_router(habits.router)
+    dp.include_router(spiritual.router)
+
 
     # Set persistent Telegram Chat Menu Button if WEBAPP_URL is configured
     if WEBAPP_URL:

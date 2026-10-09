@@ -33,6 +33,9 @@ NOTION_DBID_TIME_TRACKER = _clean_database_id(
 
 NOTION_DBID_LIFE_TRACKER = _clean_database_id(os.getenv("NOTION_DBID_LIFE_TRACKER"))
 NOTION_DBID_HABITS = _clean_database_id(os.getenv("NOTION_DBID_HABITS"))
+NOTION_DBID_SALAH = _clean_database_id(os.getenv("NOTION_DBID_SALAH") or "1c4a75a2561481aab7fcc7314229e177")
+NOTION_DBID_QURAN = _clean_database_id(os.getenv("NOTION_DBID_QURAN") or "1daa75a2561480948fcdc5efb2d392d9")
+
 
 # Default Page ID for Life Tracker 'Intervals' relation field
 NOTION_LIFE_TRACKER_INTERVALS_PAGE_ID = _clean_database_id(

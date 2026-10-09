@@ -8,8 +8,11 @@ from app.config import (
     NOTION_DBID_TIME_TRACKER,
     NOTION_DBID_LIFE_TRACKER,
     NOTION_DBID_HABITS,
+    NOTION_DBID_SALAH,
+    NOTION_DBID_QURAN,
     NOTION_LIFE_TRACKER_INTERVALS_PAGE_ID
 )
+
 
 
 notion = Client(auth=NOTION_TOKEN)
@@ -968,3 +971,503 @@ def update_habit_book_detail(page_id: str, detail_text: str) -> bool:
     except Exception as e:
         print(f"Error updating habit book detail: {e}")
         return False
+
+
+# ==========================================
+# 📿 SPIRITUAL TRACKER (SALAH & QURAN)
+# ==========================================
+
+PRAYER_KEYS: List[str] = ["sobh", "zohr", "asr", "maghreb", "eshsa"]
+
+PRAYER_META: Dict[str, Dict[str, str]] = {
+    "sobh": {"name": "صبح", "prop": "Sobh", "ada_name": "صبح", "emoji": "🌅"},
+    "zohr": {"name": "ظهر", "prop": "Zohr", "ada_name": "ظهر", "emoji": "☀️"},
+    "asr": {"name": "عصر", "prop": "Asr", "ada_name": "عصر", "emoji": "🌤️"},
+    "maghreb": {"name": "مغرب", "prop": "Maghreb", "ada_name": "مغرب", "emoji": "🌇"},
+    "eshsa": {"name": "عشاء", "prop": "Eshsa", "ada_name": "عشاء", "emoji": "🌌"},
+}
+
+_cached_salah_ds_id: Optional[str] = None
+_cached_quran_ds_id: Optional[str] = None
+
+
+def get_salah_data_source_id() -> str:
+    """Retrieves and caches the data_source_id of the Salah Entries database."""
+    global _cached_salah_ds_id
+    if _cached_salah_ds_id:
+        return _cached_salah_ds_id
+
+    if not NOTION_DBID_SALAH:
+        raise ValueError("NOTION_DBID_SALAH is not defined in environment variables.")
+
+    db_info = cast(Dict[str, Any], notion.databases.retrieve(database_id=NOTION_DBID_SALAH))
+    data_sources = db_info.get("data_sources", [])
+    if data_sources:
+        _cached_salah_ds_id = str(data_sources[0]["id"])
+        return _cached_salah_ds_id
+
+    _cached_salah_ds_id = str(NOTION_DBID_SALAH)
+    return _cached_salah_ds_id
+
+
+def get_quran_data_source_id() -> str:
+    """Retrieves and caches the data_source_id of the Quran Reading database."""
+    global _cached_quran_ds_id
+    if _cached_quran_ds_id:
+        return _cached_quran_ds_id
+
+    if not NOTION_DBID_QURAN:
+        raise ValueError("NOTION_DBID_QURAN is not defined in environment variables.")
+
+    db_info = cast(Dict[str, Any], notion.databases.retrieve(database_id=NOTION_DBID_QURAN))
+    data_sources = db_info.get("data_sources", [])
+    if data_sources:
+        _cached_quran_ds_id = str(data_sources[0]["id"])
+        return _cached_quran_ds_id
+
+    _cached_quran_ds_id = str(NOTION_DBID_QURAN)
+    return _cached_quran_ds_id
+
+
+def parse_salah_page(page: Dict[str, Any]) -> Dict[str, Any]:
+    """Parses a Notion Salah Entries page into a structured python dictionary."""
+    props = page.get("properties", {})
+    page_id = page.get("id", "")
+
+    name_list = props.get("Name", {}).get("title", [])
+    name = name_list[0].get("plain_text", "") if name_list else "New Salah"
+
+    date_val = props.get("Date_", {}).get("date")
+    date_iso = date_val.get("start", "") if date_val else ""
+
+    shamsi_formula = props.get("Date", {}).get("formula", {})
+    shamsi_date = shamsi_formula.get("string", "") if shamsi_formula else ""
+
+    notes_list = props.get("Notes", {}).get("rich_text", [])
+    notes = "".join([t.get("plain_text", "") for t in notes_list])
+
+    prog_formula = props.get("Progress", {}).get("formula", {})
+    prog_num = prog_formula.get("number", 0.0) if prog_formula else 0.0
+
+    ada_ms = props.get("Ada?", {}).get("multi_select", [])
+    ada_names = [o.get("name") for o in ada_ms if o.get("name")]
+
+    chks = {
+        "sobh": bool(props.get("Sobh", {}).get("checkbox", False)),
+        "zohr": bool(props.get("Zohr", {}).get("checkbox", False)),
+        "asr": bool(props.get("Asr", {}).get("checkbox", False)),
+        "maghreb": bool(props.get("Maghreb", {}).get("checkbox", False)),
+        "eshsa": bool(props.get("Eshsa", {}).get("checkbox", False)),
+    }
+
+    prayers: Dict[str, Dict[str, Any]] = {}
+    completed_count = 0
+    ada_count = 0
+    qaza_count = 0
+
+    for k in PRAYER_KEYS:
+        chk = chks[k]
+        ada_str = PRAYER_META[k]["ada_name"]
+        in_ada = ada_str in ada_names
+
+        if chk and in_ada:
+            p_status = "ada"
+            completed_count += 1
+            ada_count += 1
+        elif chk and not in_ada:
+            p_status = "qaza"
+            completed_count += 1
+            qaza_count += 1
+        else:
+            p_status = "none"
+
+        prayers[k] = {
+            "key": k,
+            "name": PRAYER_META[k]["name"],
+            "emoji": PRAYER_META[k]["emoji"],
+            "prop": PRAYER_META[k]["prop"],
+            "checked": chk,
+            "is_ada": (p_status == "ada"),
+            "is_qaza": (p_status == "qaza"),
+            "status": p_status,
+        }
+
+    return {
+        "id": page_id,
+        "name": name,
+        "date_iso": date_iso,
+        "shamsi_date": shamsi_date,
+        "notes": notes,
+        "progress": float(prog_num or (completed_count / 5.0)),
+        "ada_names": ada_names,
+        "prayers": prayers,
+        "completed_count": completed_count,
+        "ada_count": ada_count,
+        "qaza_count": qaza_count,
+    }
+
+
+def get_or_create_salah_day(date_iso: str, day_title: str = "New Salah") -> Dict[str, Any]:
+    """
+    Finds existing salah page for the given date, or creates a new row with all 5 prayers checked
+    and set to Ada (on-time) by default.
+    """
+    if not NOTION_DBID_SALAH:
+        raise ValueError("NOTION_DBID_SALAH is not defined in environment variables.")
+
+    ds_id = get_salah_data_source_id()
+    filter_payload = {"property": "Date_", "date": {"equals": date_iso}}
+
+    if hasattr(notion, "data_sources") and hasattr(notion.data_sources, "query"):
+        query_res = notion.data_sources.query(
+            data_source_id=ds_id,
+            filter=filter_payload,
+            page_size=1
+        )
+    else:
+        query_res = notion.databases.query(
+            database_id=NOTION_DBID_SALAH,
+            filter=filter_payload,
+            page_size=1
+        )  # type: ignore
+
+    results = query_res.get("results", []) if isinstance(query_res, dict) else []
+    if results:
+        page = cast(Dict[str, Any], results[0])
+    else:
+        # Default Auto-Completion: All 5 prayers checked and added to Ada?
+        create_props: Dict[str, Any] = {
+            "Name": {"title": [{"text": {"content": day_title}}]},
+            "Date_": {"date": {"start": date_iso}},
+            "Sobh": {"checkbox": True},
+            "Zohr": {"checkbox": True},
+            "Asr": {"checkbox": True},
+            "Maghreb": {"checkbox": True},
+            "Eshsa": {"checkbox": True},
+            "Ada?": {"multi_select": [
+                {"name": "صبح"},
+                {"name": "ظهر"},
+                {"name": "عصر"},
+                {"name": "مغرب"},
+                {"name": "عشاء"},
+            ]},
+            "Notes": {"rich_text": []}
+        }
+        raw_created = notion.pages.create(
+            parent={"database_id": NOTION_DBID_SALAH},
+            properties=create_props
+        )
+        page = cast(Dict[str, Any], raw_created)
+
+    return parse_salah_page(page)
+
+
+def update_salah_prayer_status(page_id: str, prayer_key: str, target_status: Optional[str] = None) -> bool:
+    """
+    Updates the status of a prayer:
+    - target_status = 'ada': checkbox=True, added to Ada?
+    - target_status = 'qaza': checkbox=True, removed from Ada?
+    - target_status = 'none': checkbox=False, removed from Ada?
+    - If target_status is None: cycles (ada -> qaza -> none -> ada)
+    """
+    if prayer_key not in PRAYER_META:
+        return False
+
+    try:
+        page = notion.pages.retrieve(page_id=page_id)
+        parsed = parse_salah_page(page)
+        curr = parsed["prayers"].get(prayer_key)
+        if not curr:
+            return False
+
+        curr_status = curr["status"]
+        if not target_status:
+            if curr_status == "ada":
+                target_status = "qaza"
+            elif curr_status == "qaza":
+                target_status = "none"
+            else:
+                target_status = "ada"
+
+        meta = PRAYER_META[prayer_key]
+        prop_name = meta["prop"]
+        ada_name = meta["ada_name"]
+        current_ada_names = list(parsed["ada_names"])
+
+        if target_status == "ada":
+            new_chk = True
+            if ada_name not in current_ada_names:
+                current_ada_names.append(ada_name)
+        elif target_status == "qaza":
+            new_chk = True
+            if ada_name in current_ada_names:
+                current_ada_names.remove(ada_name)
+        else:
+            new_chk = False
+            if ada_name in current_ada_names:
+                current_ada_names.remove(ada_name)
+
+        notion.pages.update(
+            page_id=page_id,
+            properties={
+                prop_name: {"checkbox": new_chk},
+                "Ada?": {"multi_select": [{"name": n} for n in current_ada_names]}
+            }
+        )
+        return True
+    except Exception as e:
+        print(f"Error updating salah prayer status: {e}")
+        return False
+
+
+def bulk_mark_salah_ada(page_id: str) -> bool:
+    """Marks all 5 prayers as completed and Ada (on-time)."""
+    try:
+        notion.pages.update(
+            page_id=page_id,
+            properties={
+                "Sobh": {"checkbox": True},
+                "Zohr": {"checkbox": True},
+                "Asr": {"checkbox": True},
+                "Maghreb": {"checkbox": True},
+                "Eshsa": {"checkbox": True},
+                "Ada?": {"multi_select": [
+                    {"name": "صبح"},
+                    {"name": "ظهر"},
+                    {"name": "عصر"},
+                    {"name": "مغرب"},
+                    {"name": "عشاء"}
+                ]}
+            }
+        )
+        return True
+    except Exception as e:
+        print(f"Error bulk marking salah ada: {e}")
+        return False
+
+
+def bulk_mark_salah_reset(page_id: str) -> bool:
+    """Resets all 5 prayers to uncompleted."""
+    try:
+        notion.pages.update(
+            page_id=page_id,
+            properties={
+                "Sobh": {"checkbox": False},
+                "Zohr": {"checkbox": False},
+                "Asr": {"checkbox": False},
+                "Maghreb": {"checkbox": False},
+                "Eshsa": {"checkbox": False},
+                "Ada?": {"multi_select": []}
+            }
+        )
+        return True
+    except Exception as e:
+        print(f"Error resetting salah day: {e}")
+        return False
+
+
+def update_salah_notes(page_id: str, notes_text: str) -> bool:
+    """Updates the Notes property in Salah table."""
+    try:
+        notion.pages.update(
+            page_id=page_id,
+            properties={
+                "Notes": {"rich_text": [{"text": {"content": notes_text}}] if notes_text else []}
+            }
+        )
+        return True
+    except Exception as e:
+        print(f"Error updating salah notes: {e}")
+        return False
+
+
+def query_salah_entries(
+    start_date_iso: Optional[str] = None,
+    end_date_iso: Optional[str] = None,
+    limit_count: int = 30
+) -> List[Dict[str, Any]]:
+    """Queries history of Salah days."""
+    if not NOTION_DBID_SALAH:
+        return []
+
+    ds_id = get_salah_data_source_id()
+    and_filters: List[Dict[str, Any]] = []
+
+    if start_date_iso:
+        if end_date_iso and end_date_iso != start_date_iso:
+            and_filters.append({"property": "Date_", "date": {"on_or_after": start_date_iso}})
+            and_filters.append({"property": "Date_", "date": {"on_or_before": end_date_iso}})
+        else:
+            and_filters.append({"property": "Date_", "date": {"equals": start_date_iso}})
+
+    filter_payload = None
+    if len(and_filters) == 1:
+        filter_payload = and_filters[0]
+    elif len(and_filters) > 1:
+        filter_payload = {"and": and_filters}
+
+    kwargs: Dict[str, Any] = {
+        "page_size": min(100, max(1, limit_count)),
+        "sorts": [{"property": "Date_", "direction": "descending"}]
+    }
+    if filter_payload:
+        kwargs["filter"] = filter_payload
+
+    try:
+        if hasattr(notion, "data_sources") and hasattr(notion.data_sources, "query"):
+            kwargs["data_source_id"] = ds_id
+            res = notion.data_sources.query(**kwargs)
+        else:
+            kwargs.pop("data_source_id", None)
+            kwargs["database_id"] = NOTION_DBID_SALAH
+            res = notion.databases.query(**kwargs)  # type: ignore
+
+        results = res.get("results", []) if isinstance(res, dict) else []
+        return [parse_salah_page(p) for p in results]
+    except Exception as e:
+        print(f"Error querying salah entries: {e}")
+        return []
+
+
+def parse_quran_page(page: Dict[str, Any]) -> Dict[str, Any]:
+    """Parses a Notion Quran Reading Tracker page."""
+    props = page.get("properties", {})
+    page_id = page.get("id", "")
+
+    name_list = props.get("Name", {}).get("title", [])
+    name = name_list[0].get("plain_text", "") if name_list else "New Session"
+
+    date_val = props.get("Date_", {}).get("date")
+    date_iso = date_val.get("start", "") if date_val else ""
+
+    shamsi_formula = props.get("Date", {}).get("formula", {})
+    shamsi_date = shamsi_formula.get("string", "") if shamsi_formula else ""
+
+    pages_list = props.get("Page(s)", {}).get("rich_text", [])
+    pages = "".join([t.get("plain_text", "") for t in pages_list])
+
+    return {
+        "id": page_id,
+        "name": name,
+        "date_iso": date_iso,
+        "shamsi_date": shamsi_date,
+        "pages": pages,
+    }
+
+
+def add_quran_reading_entry(
+    date_iso: str,
+    pages_text: str,
+    session_name: str = "New Session"
+) -> Optional[Dict[str, Any]]:
+    """Logs a Quran reading session into Notion."""
+    if not NOTION_DBID_QURAN:
+        return None
+
+    try:
+        create_props: Dict[str, Any] = {
+            "Name": {"title": [{"text": {"content": session_name or "New Session"}}]},
+            "Date_": {"date": {"start": date_iso}},
+            "Page(s)": {"rich_text": [{"text": {"content": pages_text}}] if pages_text else []}
+        }
+        res = notion.pages.create(
+            parent={"database_id": NOTION_DBID_QURAN},
+            properties=create_props
+        )
+        return cast(Dict[str, Any], res)
+    except Exception as e:
+        print(f"Error adding quran entry: {e}")
+        return None
+
+
+def query_quran_entries(
+    start_date_iso: Optional[str] = None,
+    end_date_iso: Optional[str] = None,
+    limit_count: int = 20
+) -> List[Dict[str, Any]]:
+    """Queries recent Quran reading sessions."""
+    if not NOTION_DBID_QURAN:
+        return []
+
+    ds_id = get_quran_data_source_id()
+    and_filters: List[Dict[str, Any]] = []
+
+    if start_date_iso:
+        if end_date_iso and end_date_iso != start_date_iso:
+            and_filters.append({"property": "Date_", "date": {"on_or_after": start_date_iso}})
+            and_filters.append({"property": "Date_", "date": {"on_or_before": end_date_iso}})
+        else:
+            and_filters.append({"property": "Date_", "date": {"equals": start_date_iso}})
+
+    filter_payload = None
+    if len(and_filters) == 1:
+        filter_payload = and_filters[0]
+    elif len(and_filters) > 1:
+        filter_payload = {"and": and_filters}
+
+    kwargs: Dict[str, Any] = {
+        "page_size": min(100, max(1, limit_count)),
+        "sorts": [{"property": "Date_", "direction": "descending"}]
+    }
+    if filter_payload:
+        kwargs["filter"] = filter_payload
+
+    try:
+        if hasattr(notion, "data_sources") and hasattr(notion.data_sources, "query"):
+            kwargs["data_source_id"] = ds_id
+            res = notion.data_sources.query(**kwargs)
+        else:
+            kwargs.pop("data_source_id", None)
+            kwargs["database_id"] = NOTION_DBID_QURAN
+            res = notion.databases.query(**kwargs)  # type: ignore
+
+        results = res.get("results", []) if isinstance(res, dict) else []
+        return [parse_quran_page(p) for p in results]
+    except Exception as e:
+        print(f"Error querying quran entries: {e}")
+        return []
+
+
+def get_spiritual_report(start_date_iso: str, end_date_iso: str) -> Dict[str, Any]:
+    """Generates analytics report for Salah and Quran over a date range."""
+    salah_list = query_salah_entries(start_date_iso=start_date_iso, end_date_iso=end_date_iso, limit_count=100)
+    quran_list = query_quran_entries(start_date_iso=start_date_iso, end_date_iso=end_date_iso, limit_count=100)
+
+    total_days = len(salah_list)
+    total_prayers_possible = total_days * 5
+    total_ada = sum(d["ada_count"] for d in salah_list)
+    total_qaza = sum(d["qaza_count"] for d in salah_list)
+    total_missed = max(0, total_prayers_possible - (total_ada + total_qaza))
+
+    prayer_stats: Dict[str, Dict[str, Any]] = {}
+    for k in PRAYER_KEYS:
+        p_ada = sum(1 for d in salah_list if d["prayers"][k]["is_ada"])
+        p_qaza = sum(1 for d in salah_list if d["prayers"][k]["is_qaza"])
+        p_missed = sum(1 for d in salah_list if d["prayers"][k]["status"] == "none")
+        prayer_stats[k] = {
+            "name": PRAYER_META[k]["name"],
+            "emoji": PRAYER_META[k]["emoji"],
+            "ada": p_ada,
+            "qaza": p_qaza,
+            "missed": p_missed,
+            "rate": round((p_ada / total_days * 100), 1) if total_days > 0 else 0
+        }
+
+    perfect_days = sum(1 for d in salah_list if d["ada_count"] == 5)
+    overall_ada_rate = (total_ada / total_prayers_possible * 100) if total_prayers_possible > 0 else 0
+
+    return {
+        "start_date": start_date_iso,
+        "end_date": end_date_iso,
+        "total_days": total_days,
+        "total_prayers_possible": total_prayers_possible,
+        "total_ada": total_ada,
+        "total_qaza": total_qaza,
+        "total_missed": total_missed,
+        "overall_ada_rate": round(overall_ada_rate, 1),
+        "perfect_days": perfect_days,
+        "prayer_stats": prayer_stats,
+        "quran_sessions_count": len(quran_list),
+        "quran_sessions": quran_list,
+        "recent_salah": salah_list[:7]
+    }
