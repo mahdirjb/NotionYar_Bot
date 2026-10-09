@@ -54,9 +54,12 @@ MANAGER_USERS = _parse_user_ids("MANAGER_USERS")
 MEMBER_USERS = _parse_user_ids("MEMBER_USERS")
 GUEST_USERS = _parse_user_ids("GUEST_USERS")
 
-# Fallback: Anyone in legacy ALLOWED_USERS defaults to a standard MEMBER (Safe default)
+# Fallback: Anyone in legacy ALLOWED_USERS defaults to admin if no explicit ADMIN_USERS set, or standard MEMBER
 LEGACY_ALLOWED = _parse_user_ids("ALLOWED_USERS")
+if not ADMIN_USERS and LEGACY_ALLOWED:
+    ADMIN_USERS.extend(LEGACY_ALLOWED)
+
 if LEGACY_ALLOWED:
     for uid in LEGACY_ALLOWED:
         if uid not in ADMIN_USERS and uid not in MANAGER_USERS and uid not in MEMBER_USERS and uid not in GUEST_USERS:
-            MEMBER_USERS.append(uid)
+            MEMBER_USERS.append(uid)

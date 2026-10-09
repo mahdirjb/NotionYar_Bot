@@ -9,7 +9,10 @@ from app.config import WEBAPP_URL
 router = Router()
 
 @router.message(CommandStart())
+@router.message(Command("menu"))
+@router.message(F.text == "منو")
 async def command_start_handler(message: Message, state: FSMContext) -> None:
+
     await state.clear()
     user_id = message.from_user.id if message.from_user else None
 
