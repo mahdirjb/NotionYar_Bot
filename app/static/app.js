@@ -813,7 +813,7 @@
       document.querySelectorAll("#timeSatisfaction .btn-star").forEach((b) => {
         b.classList.toggle("active", b.getAttribute("data-val") === "5");
       });
-      loadRecentLogs();
+      if (typeof loadLifeHistory === "function") loadLifeHistory();
     } catch (err) {
       showToast(err.message, "error");
     } finally {
@@ -972,7 +972,8 @@
 
       showToast(`لاگ «${selectedLifeType}» با موفقیت ذخیره شد! 🌿`, "success");
       document.getElementById("lifeNotes").value = "";
-      loadRecentLogs();
+      if (typeof loadLifeHistory === "function") loadLifeHistory();
+      if (typeof loadLifeRadar === "function") loadLifeRadar();
     } catch (err) {
       showToast(err.message, "error");
     } finally {
@@ -1180,12 +1181,13 @@
     // Interactive Click-to-Reveal in Stealth Mode
     document.addEventListener("click", (e) => {
       if (!isStealthMode) return;
-      const target = e.target.closest(".stealth-blur-target, .timeline-item, .life-tile, .mode-chip, .grat-item-row, .streak-value");
+      const target = e.target.closest(".stealth-blur-target, .timeline-item, .life-tile, .mode-chip, .grat-item-row, .streak-value, .card-title, .section-subtitle, .analytics-section-title, .habit-cat-title, .journal-block-title, .btn-sp-magic-bulk, .btn-sp-range-bulk, .btn-sp-reset, .btn-prayer-state, .badge-ada, .badge-qaza, .badge-pending, .selected-date-badge, .sp-stat-card, .progress-hero-container, .habit-inline-detail-box");
       if (target && !e.target.closest(".btn-item-delete, button.btn-item-delete")) {
         target.classList.toggle("revealed");
         haptic("light");
       }
     });
+
   }
 
   // Habit quick offset buttons (امروز / دیروز / پریروز)
@@ -1210,9 +1212,38 @@
 
       habitDayData = await res.json();
 
+      // Check for daily auto-apply preset on today
+      const todayIso = getDateFromOffset(0);
+      const autoPresetId = localStorage.getItem("notionyar_auto_apply_preset_id");
+      const lastAutoDate = localStorage.getItem("notionyar_last_auto_applied_date");
+
+      if (dateIso === todayIso && autoPresetId && lastAutoDate !== todayIso && habitDayData?.page_id && (habitDayData.completed_count === 0)) {
+        const customPresets = getCustomPresets();
+        const autoPreset = customPresets.find((p) => p.id === autoPresetId);
+        if (autoPreset && autoPreset.habits && Object.keys(autoPreset.habits).length > 0) {
+          localStorage.setItem("notionyar_last_auto_applied_date", todayIso);
+          try {
+            await fetch("/api/habits/batch-update", {
+              method: "POST",
+              headers: getHeaders(),
+              body: JSON.stringify({
+                page_id: habitDayData.page_id,
+                updates: autoPreset.habits
+              })
+            });
+            showToast(`⭐ قالب خودکار «${autoPreset.title}» برای امروز اعمال شد`, "success");
+            const refreshedRes = await fetch(`/api/habits/day?date_iso=${dateIso}`, { headers: getHeaders() });
+            if (refreshedRes.ok) habitDayData = await refreshedRes.json();
+          } catch (e) {
+            console.error("Auto apply preset error:", e);
+          }
+        }
+      }
+
       document.getElementById("habitDateTitle").textContent = toPersianDigits(habitDayData.jalali_title);
       document.getElementById("habitPercent").textContent = `${toPersianDigits(habitDayData.progress_percent)}٪`;
       document.getElementById("habitCountDisplay").textContent = `${toPersianDigits(habitDayData.completed_count)} از ${toPersianDigits(habitDayData.total_habits)}`;
+
       document.getElementById("habitCheerleader").textContent = habitDayData.cheerleader;
 
       const fillPct = `${habitDayData.progress_percent}%`;
@@ -1310,8 +1341,111 @@
           openHabitLevelModal(h);
         });
 
+        // Inline input box for Quran reading (rq)
+        if (h.key === "rq") {
+          const detailBox = document.createElement("div");
+          detailBox.className = "habit-inline-detail-box";
+          const currentVal = habitDayData?.quran_detail || "";
+          detailBox.innerHTML = `
+            <input type="text" class="habit-inline-input" placeholder="📖 صفحه، سوره یا آیات خوانده‌شده..." value="${currentVal.replace(/"/g, '&quot;')}">
+            <button type="button" class="btn-inline-save">ذخیره</button>
+          `;
+
+          const inputEl = detailBox.querySelector(".habit-inline-input");
+          const saveBtn = detailBox.querySelector(".btn-inline-save");
+
+          saveBtn.addEventListener("click", async (e) => {
+            e.stopPropagation();
+            const textVal = inputEl.value.trim();
+            if (!habitDayData?.page_id) return;
+            haptic("medium");
+            saveBtn.disabled = true;
+            saveBtn.textContent = "⏳...";
+
+            try {
+              const res = await fetch("/api/habits/update-text", {
+                method: "POST",
+                headers: getHeaders(),
+                body: JSON.stringify({
+                  page_id: habitDayData.page_id,
+                  field: "quran",
+                  text: textVal,
+                  date_iso: currentHabitDateIso
+                })
+              });
+              if (!res.ok) throw new Error("خطا در ذخیره تلاوت قرآن");
+              showToast("جزئیات تلاوت قرآن در نوشن ثبت و سینک شد! 📖", "success");
+
+              if (habitDayData) habitDayData.quran_detail = textVal;
+              const globalQuranInput = document.getElementById("habitQuran");
+              if (globalQuranInput) globalQuranInput.value = textVal;
+
+              await loadHabitsForDate(currentHabitDateIso);
+            } catch (err) {
+              showToast(err.message, "error");
+            } finally {
+              saveBtn.disabled = false;
+              saveBtn.textContent = "ذخیره";
+            }
+          });
+
+          card.appendChild(detailBox);
+        }
+
+        // Inline input box for Book reading (rb)
+        if (h.key === "rb") {
+          const detailBox = document.createElement("div");
+          detailBox.className = "habit-inline-detail-box";
+          const currentVal = habitDayData?.book_detail || "";
+          detailBox.innerHTML = `
+            <input type="text" class="habit-inline-input" placeholder="📚 نام کتاب، فصل یا صفحات مطالعه‌شده..." value="${currentVal.replace(/"/g, '&quot;')}">
+            <button type="button" class="btn-inline-save">ذخیره</button>
+          `;
+
+          const inputEl = detailBox.querySelector(".habit-inline-input");
+          const saveBtn = detailBox.querySelector(".btn-inline-save");
+
+          saveBtn.addEventListener("click", async (e) => {
+            e.stopPropagation();
+            const textVal = inputEl.value.trim();
+            if (!habitDayData?.page_id) return;
+            haptic("medium");
+            saveBtn.disabled = true;
+            saveBtn.textContent = "⏳...";
+
+            try {
+              const res = await fetch("/api/habits/update-text", {
+                method: "POST",
+                headers: getHeaders(),
+                body: JSON.stringify({
+                  page_id: habitDayData.page_id,
+                  field: "book",
+                  text: textVal,
+                  date_iso: currentHabitDateIso
+                })
+              });
+              if (!res.ok) throw new Error("خطا در ذخیره مطالعه کتاب");
+              showToast("جزئیات مطالعه کتاب ذخیره شد! 📚", "success");
+
+              if (habitDayData) habitDayData.book_detail = textVal;
+              const globalBookInput = document.getElementById("habitBook");
+              if (globalBookInput) globalBookInput.value = textVal;
+
+              await loadHabitsForDate(currentHabitDateIso);
+            } catch (err) {
+              showToast(err.message, "error");
+            } finally {
+              saveBtn.disabled = false;
+              saveBtn.textContent = "ذخیره";
+            }
+          });
+
+          card.appendChild(detailBox);
+        }
+
         groupDiv.appendChild(card);
       });
+
 
       container.appendChild(groupDiv);
     });
@@ -1669,6 +1803,7 @@
 
     const custom = getCustomPresets();
     const allPresets = [...custom];
+    const autoPresetId = localStorage.getItem("notionyar_auto_apply_preset_id") || null;
 
     listEl.innerHTML = "";
     if (allPresets.length === 0) {
@@ -1677,6 +1812,7 @@
     }
 
     allPresets.forEach((p) => {
+      const isAuto = p.id === autoPresetId;
       const card = document.createElement("div");
       card.className = "preset-card";
       card.innerHTML = `
@@ -1685,13 +1821,31 @@
             <span>${p.title}</span>
           </div>
           <div class="preset-sub">${p.desc || Object.keys(p.habits || {}).length + " عادت"}</div>
+          ${isAuto ? '<div class="preset-auto-badge">⭐ اجرای خودکار روزانه فعال است</div>' : ''}
         </div>
         <div style="display:flex; align-items:center; gap:6px;">
+          <button type="button" class="btn-preset-auto ${isAuto ? "active" : ""}" title="تنظیم به عنوان قالب خودکار روزانه">
+            ${isAuto ? "⭐ خودکار فعال" : "⭐ خودکار"}
+          </button>
           <button type="button" class="btn-preset-edit" title="ویرایش قالب">✏️</button>
           <button type="button" class="btn-preset-del" title="حذف قالب">🗑️</button>
           <button type="button" class="btn-apply-preset">اجرا ⚡</button>
         </div>
       `;
+
+      // Auto-apply daily preset toggle
+      card.querySelector(".btn-preset-auto")?.addEventListener("click", () => {
+        haptic("light");
+        if (isAuto) {
+          localStorage.removeItem("notionyar_auto_apply_preset_id");
+          showToast(`اجرای خودکار برای قالب «${p.title}» غیرفعال شد`, "info");
+        } else {
+          localStorage.setItem("notionyar_auto_apply_preset_id", p.id);
+          showToast(`قالب «${p.title}» برای اجرای خودکار روزانه تنظیم شد ⭐`, "success");
+        }
+        renderPresetsList();
+      });
+
 
       // Apply Preset
       card.querySelector(".btn-apply-preset").addEventListener("click", async () => {

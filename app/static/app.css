@@ -956,6 +956,7 @@ textarea:focus {
   display: flex;
   align-items: center;
   gap: 12px;
+  flex-wrap: wrap;
   margin-bottom: 8px;
   transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
 }
@@ -2063,11 +2064,11 @@ textarea:focus {
   background: var(--card-bg);
   border: 1px solid var(--card-border);
   border-radius: 20px;
-  padding: 13px 16px;
+  padding: 11px 13px;
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 12px;
+  gap: 8px;
   transition: all 0.2s ease;
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
 }
@@ -2079,12 +2080,13 @@ textarea:focus {
 .prayer-info {
   display: flex;
   align-items: center;
-  gap: 10px;
-  min-width: 105px;
+  gap: 8px;
+  min-width: 75px;
+  flex-shrink: 0;
 }
 
 .prayer-icon {
-  font-size: 24px;
+  font-size: 21px;
   line-height: 1;
 }
 
@@ -2095,29 +2097,31 @@ textarea:focus {
 
 .prayer-name {
   font-weight: 700;
-  font-size: 14px;
+  font-size: 13.5px;
   color: var(--text-color);
 }
 
 .prayer-status-label {
-  font-size: 11px;
+  font-size: 10px;
   color: var(--hint-color);
-  margin-top: 2px;
+  margin-top: 1px;
 }
 
 .prayer-toggles-row {
   display: flex;
   align-items: center;
-  gap: 6px;
+  gap: 4px;
+  flex-shrink: 1;
+  justify-content: flex-end;
 }
 
 .btn-prayer-state {
   border: 1px solid var(--card-border);
   background: rgba(255, 255, 255, 0.05);
   color: var(--hint-color);
-  border-radius: 24px;
-  padding: 7px 14px;
-  font-size: 12px;
+  border-radius: 20px;
+  padding: 5px 9px;
+  font-size: 11px;
   font-weight: 600;
   cursor: pointer;
   transition: all 0.18s ease;
@@ -2126,6 +2130,27 @@ textarea:focus {
 
 .btn-prayer-state:hover {
   background: rgba(255, 255, 255, 0.1);
+}
+
+@media (max-width: 380px) {
+  .prayer-card {
+    padding: 8px 10px;
+    gap: 6px;
+  }
+  .prayer-info {
+    min-width: 65px;
+    gap: 6px;
+  }
+  .prayer-icon {
+    font-size: 18px;
+  }
+  .prayer-name {
+    font-size: 12.5px;
+  }
+  .btn-prayer-state {
+    padding: 4px 6px;
+    font-size: 10px;
+  }
 }
 
 .btn-prayer-state.state-ada.active {
@@ -2406,6 +2431,146 @@ textarea:focus {
 
 .stealth-active .prayer-card.revealed,
 .stealth-active #quranHistoryList .timeline-item.revealed {
+  filter: none !important;
+}
+
+/* ==========================================
+   🌸 INLINE DETAIL BOXES FOR QURAN & BOOK HABITS
+   ========================================== */
+.habit-inline-detail-box {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 8px;
+  width: 100%;
+  padding-top: 8px;
+  border-top: 1px dashed rgba(255, 255, 255, 0.08);
+}
+
+.habit-inline-input {
+  flex: 1;
+  background: var(--input-bg);
+  border: 1px solid var(--card-border);
+  border-radius: 12px;
+  padding: 6px 10px;
+  font-size: 11.5px;
+  color: var(--text-color);
+  outline: none;
+  transition: border-color 0.2s;
+}
+
+.habit-inline-input:focus {
+  border-color: var(--button-color);
+}
+
+.btn-inline-save {
+  background: rgba(59, 130, 246, 0.18);
+  border: 1px solid var(--button-color);
+  color: var(--button-color);
+  border-radius: 12px;
+  padding: 6px 12px;
+  font-size: 11px;
+  font-weight: 700;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: all 0.2s ease;
+}
+
+.btn-inline-save:active {
+  background: var(--button-color);
+  color: #fff;
+}
+
+/* ==========================================
+   ⭐ DAILY AUTO-APPLY PRESET STYLES
+   ========================================== */
+.btn-preset-auto {
+  background: rgba(245, 158, 11, 0.1);
+  border: 1px solid rgba(245, 158, 11, 0.35);
+  color: #f59e0b;
+  border-radius: 10px;
+  padding: 5px 9px;
+  font-size: 11px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  white-space: nowrap;
+}
+
+.btn-preset-auto.active {
+  background: #f59e0b;
+  color: #1e1e2d;
+  box-shadow: 0 0 10px rgba(245, 158, 11, 0.35);
+}
+
+.preset-auto-badge {
+  display: inline-block;
+  background: rgba(245, 158, 11, 0.18);
+  color: #f59e0b;
+  font-size: 10px;
+  font-weight: 700;
+  padding: 2px 7px;
+  border-radius: 6px;
+  margin-top: 3px;
+}
+
+/* ==========================================
+   🕶️ COMPREHENSIVE STEALTH MODE BLURS
+   ========================================== */
+.stealth-active .card-title,
+.stealth-active .section-subtitle,
+.stealth-active .analytics-section-title,
+.stealth-active .habit-cat-title,
+.stealth-active .journal-block-title,
+.stealth-active .btn-sp-magic-bulk,
+.stealth-active .btn-sp-range-bulk,
+.stealth-active .btn-sp-reset,
+.stealth-active .btn-prayer-state,
+.stealth-active .btn-magic-bulk,
+.stealth-active .btn-presets-menu,
+.stealth-active .btn-primary,
+.stealth-active .btn-action,
+.stealth-active .btn-step,
+.stealth-active .btn-pill,
+.stealth-active .seg-btn,
+.stealth-active .badge-ada,
+.stealth-active .badge-qaza,
+.stealth-active .badge-pending,
+.stealth-active .selected-date-badge,
+.stealth-active .progress-hero-container,
+.stealth-active .sp-stat-card,
+.stealth-active .sp-bar-item,
+.stealth-active .habit-inline-detail-box {
+  filter: blur(6px) !important;
+  cursor: pointer;
+  user-select: none;
+  transition: filter 0.2s ease;
+}
+
+.stealth-active .card-title.revealed,
+.stealth-active .section-subtitle.revealed,
+.stealth-active .analytics-section-title.revealed,
+.stealth-active .habit-cat-title.revealed,
+.stealth-active .journal-block-title.revealed,
+.stealth-active .btn-sp-magic-bulk.revealed,
+.stealth-active .btn-sp-range-bulk.revealed,
+.stealth-active .btn-sp-reset.revealed,
+.stealth-active .btn-prayer-state.revealed,
+.stealth-active .btn-magic-bulk.revealed,
+.stealth-active .btn-presets-menu.revealed,
+.stealth-active .btn-primary.revealed,
+.stealth-active .btn-action.revealed,
+.stealth-active .btn-step.revealed,
+.stealth-active .btn-pill.revealed,
+.stealth-active .seg-btn.revealed,
+.stealth-active .badge-ada.revealed,
+.stealth-active .badge-qaza.revealed,
+.stealth-active .badge-pending.revealed,
+.stealth-active .selected-date-badge.revealed,
+.stealth-active .progress-hero-container.revealed,
+.stealth-active .sp-stat-card.revealed,
+.stealth-active .sp-bar-item.revealed,
+.stealth-active .habit-inline-detail-box.revealed {
   filter: none !important;
 }
 

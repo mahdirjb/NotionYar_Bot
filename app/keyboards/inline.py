@@ -1555,14 +1555,14 @@ def build_spiritual_hub_keyboard(
         [
             eshsa_btn,
             InlineKeyboardButton(
-                text="⚡ تکمیل امروز (اداء)",
+                text="⚡ تکمیل امروز",
                 callback_data=f"sp_bulk_ada:{offset_days}"
             )
         ],
         # Row 4: Bulk Range Ada
         [
             InlineKeyboardButton(
-                text="🗓️ تکمیل گروهی اداء (چند روز)",
+                text="🗓️ ثبت چند روز",
                 callback_data="sp_bulk_range_menu"
             )
         ],

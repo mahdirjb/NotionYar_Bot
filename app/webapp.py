@@ -188,6 +188,7 @@ class HabitTextUpdateRequest(BaseModel):
     page_id: str
     field: str  # "notes", "gratitude", "quran", "book"
     text: str
+    date_iso: Optional[str] = None
 
 
 class GratitudeSaveRequest(BaseModel):
@@ -684,10 +685,30 @@ async def update_habit_text(
         success = await asyncio.to_thread(update_habit_gratitude, payload.page_id, payload.text)
     elif payload.field == "quran":
         success = await asyncio.to_thread(update_habit_quran_detail, payload.page_id, payload.text)
+        if success and payload.text.strip():
+            try:
+                tz = timezone(timedelta(hours=3, minutes=30))
+                date_str = payload.date_iso or datetime.now(tz).strftime("%Y-%m-%d")
+                title = f"تلاوت {format_jalali_full_display(date_str)}"
+                await asyncio.to_thread(
+                    add_quran_reading_entry,
+                    date_iso=date_str,
+                    pages_text=payload.text.strip(),
+                    session_name=title
+                )
+                await asyncio.to_thread(update_habit_entry, payload.page_id, "Read Holy Quran", "1-💪 کامل")
+            except Exception as e:
+                logger.warning(f"Could not sync habit Quran detail to Quran database: {e}")
     elif payload.field == "book":
         success = await asyncio.to_thread(update_habit_book_detail, payload.page_id, payload.text)
+        if success and payload.text.strip():
+            try:
+                await asyncio.to_thread(update_habit_entry, payload.page_id, "Read Book", "1-💪 کامل")
+            except Exception as e:
+                logger.warning(f"Could not mark Read Book complete: {e}")
     else:
         raise HTTPException(status_code=400, detail="فیلد نامعتبر است.")
+
 
 @app.post("/api/habits/batch-update")
 async def batch_update_habits(
@@ -974,7 +995,19 @@ async def api_create_quran_session(
     )
     if not res:
         raise HTTPException(status_code=500, detail="خطا در ثبت لاگ تلاوت قرآن.")
+
+    # Two-way sync: Also update Habit Tracker (read holy Quran habit & Quran Detail)
+    try:
+        habit_day = await asyncio.to_thread(get_or_create_habit_day, date_str, f"Day - {date_str}")
+        if habit_day and habit_day.get("page_id"):
+            h_pid = habit_day["page_id"]
+            await asyncio.to_thread(update_habit_quran_detail, h_pid, payload.pages)
+            await asyncio.to_thread(update_habit_entry, h_pid, "Read Holy Quran", "1-💪 کامل")
+    except Exception as e:
+        logger.warning(f"Could not sync Spiritual Quran session to Habit Tracker: {e}")
+
     return {"success": True, "page_id": res.get("id")}
+
 
 
 @app.get("/api/spiritual/quran/history")
