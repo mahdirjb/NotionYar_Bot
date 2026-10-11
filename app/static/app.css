@@ -1,20 +1,23 @@
 /* ==========================================================
-   NotionYar Telegram Mini App Stylesheet - Version 2.5
-   Persian Typography, Stealth Mode, Gratitude Builder & Radar
+   NotionYar Telegram Mini App Stylesheet - Version 3.0
+   Dark & Light Theme, Stealth Mode, Custom Dropdowns & Persian UI
    ========================================================== */
 
-:root {
-  --bg-color: var(--tg-theme-bg-color, #0b1120);
-  --secondary-bg-color: var(--tg-theme-secondary-bg-color, #1e293b);
-  --text-color: var(--tg-theme-text-color, #f8fafc);
-  --hint-color: var(--tg-theme-hint-color, #94a3b8);
-  --link-color: var(--tg-theme-link-color, #38bdf8);
-  --button-color: var(--tg-theme-button-color, #3b82f6);
-  --button-text-color: var(--tg-theme-button-text-color, #ffffff);
-  
-  --card-bg: rgba(30, 41, 59, 0.75);
+:root,
+html[data-theme="dark"],
+body[data-theme="dark"] {
+  color-scheme: dark;
+  --bg-color: #0b1120;
+  --secondary-bg-color: #1e293b;
+  --card-bg: #162032;
   --card-border: rgba(255, 255, 255, 0.08);
-  --input-bg: rgba(15, 23, 42, 0.65);
+  --text-color: #f8fafc;
+  --hint-color: #94a3b8;
+  --link-color: #38bdf8;
+  --button-color: #3b82f6;
+  --button-text-color: #ffffff;
+  
+  --input-bg: #0f172a;
   --input-border: rgba(255, 255, 255, 0.12);
   --active-chip: #3b82f6;
   --success-color: #10b981;
@@ -23,21 +26,42 @@
   --info-color: #06b6d4;
   --purple-color: #8b5cf6;
 
+  --dropdown-bg: #1e293b;
+  --dropdown-hover: #334155;
+  --subtle-surface: rgba(255, 255, 255, 0.06);
+
   --nav-height: 64px;
   --header-height: 60px;
 }
 
-@media (prefers-color-scheme: light) {
-  :root {
-    --bg-color: var(--tg-theme-bg-color, #f8fafc);
-    --secondary-bg-color: var(--tg-theme-secondary-bg-color, #ffffff);
-    --text-color: var(--tg-theme-text-color, #0f172a);
-    --hint-color: var(--tg-theme-hint-color, #64748b);
-    --card-bg: rgba(255, 255, 255, 0.95);
-    --card-border: rgba(0, 0, 0, 0.06);
-    --input-bg: #f1f5f9;
-    --input-border: rgba(0, 0, 0, 0.1);
-  }
+html[data-theme="light"],
+body[data-theme="light"] {
+  color-scheme: light;
+  --bg-color: #f8fafc;
+  --secondary-bg-color: #ffffff;
+  --card-bg: #ffffff;
+  --card-border: rgba(0, 0, 0, 0.08);
+  --text-color: #0f172a;
+  --hint-color: #64748b;
+  --link-color: #0284c7;
+  --button-color: #2563eb;
+  --button-text-color: #ffffff;
+
+  --input-bg: #f1f5f9;
+  --input-border: rgba(0, 0, 0, 0.12);
+  --active-chip: #2563eb;
+  --success-color: #059669;
+  --warning-color: #d97706;
+  --danger-color: #dc2626;
+  --info-color: #0891b2;
+  --purple-color: #7c3aed;
+
+  --dropdown-bg: #ffffff;
+  --dropdown-hover: #f1f5f9;
+  --subtle-surface: rgba(0, 0, 0, 0.04);
+
+  --nav-height: 64px;
+  --header-height: 60px;
 }
 
 * {
@@ -145,6 +169,31 @@ body {
 
 .btn-icon:active {
   transform: rotate(180deg);
+}
+
+.btn-theme-toggle {
+  background: var(--secondary-bg-color);
+  border: 1px solid var(--card-border);
+  color: var(--text-color);
+  width: 36px;
+  height: 36px;
+  border-radius: 10px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  font-size: 16px;
+  transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.04);
+}
+
+.btn-theme-toggle:hover {
+  border-color: var(--button-color);
+  transform: scale(1.05);
+}
+
+.btn-theme-toggle:active {
+  transform: scale(0.92);
 }
 
 /* ================= MAIN CONTENT ================= */
@@ -269,6 +318,13 @@ body {
   gap: 10px;
 }
 
+input,
+select,
+textarea,
+button {
+  color-scheme: inherit;
+}
+
 input[type="text"],
 input[type="number"],
 input[type="time"],
@@ -303,7 +359,7 @@ select {
 }
 
 select option {
-  background: var(--secondary-bg-color);
+  background-color: var(--secondary-bg-color);
   color: var(--text-color);
 }
 
@@ -312,6 +368,20 @@ select:focus,
 textarea:focus {
   border-color: var(--button-color);
   box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.2);
+}
+
+input:-webkit-autofill,
+input:-webkit-autofill:hover, 
+input:-webkit-autofill:focus, 
+textarea:-webkit-autofill,
+textarea:-webkit-autofill:hover,
+textarea:-webkit-autofill:focus,
+select:-webkit-autofill,
+select:-webkit-autofill:hover,
+select:-webkit-autofill:focus {
+  -webkit-text-fill-color: var(--text-color);
+  -webkit-box-shadow: 0 0 0px 1000px var(--input-bg) inset;
+  transition: background-color 5000s ease-in-out 0s;
 }
 
 /* Date Pickers */
@@ -769,12 +839,12 @@ textarea:focus {
 
 /* ================= REVAMPED HABITS ================= */
 .hero-progress-card {
-  background: linear-gradient(135deg, rgba(30, 41, 59, 0.9), rgba(15, 23, 42, 0.95));
+  background: var(--card-bg);
   border: 1px solid var(--card-border);
   border-radius: 20px;
   padding: 16px;
   margin-bottom: 14px;
-  box-shadow: 0 6px 24px rgba(0, 0, 0, 0.15);
+  box-shadow: 0 6px 24px rgba(0, 0, 0, 0.08);
 }
 
 .hero-top-row {
@@ -1706,6 +1776,136 @@ textarea:focus {
   color: var(--button-color);
 }
 
+/* ================= CUSTOM DROPDOWN (ADMIN ROLE) ================= */
+.custom-dropdown {
+  position: relative;
+  width: 100%;
+}
+
+.custom-dropdown-trigger {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  background: var(--input-bg);
+  border: 1px solid var(--input-border);
+  color: var(--text-color);
+  border-radius: 12px;
+  padding: 10px 14px;
+  font-size: 13.5px;
+  font-weight: 600;
+  cursor: pointer;
+  text-align: right;
+  transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.04);
+}
+
+.custom-dropdown-trigger:hover,
+.custom-dropdown.open .custom-dropdown-trigger {
+  border-color: var(--button-color);
+  box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.15);
+}
+
+.custom-dropdown-selected {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  flex: 1;
+}
+
+.custom-dropdown-arrow {
+  font-size: 12px;
+  color: var(--hint-color);
+  transition: transform 0.2s ease;
+  flex-shrink: 0;
+  margin-right: 8px;
+}
+
+.custom-dropdown.open .custom-dropdown-arrow {
+  transform: rotate(180deg);
+  color: var(--button-color);
+}
+
+.custom-dropdown-menu {
+  position: absolute;
+  top: calc(100% + 6px);
+  right: 0;
+  left: 0;
+  background: var(--dropdown-bg);
+  border: 1px solid var(--card-border);
+  border-radius: 16px;
+  padding: 6px;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.25);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  z-index: 100;
+  display: none;
+  animation: dropdownFadeIn 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.custom-dropdown.open .custom-dropdown-menu {
+  display: block;
+}
+
+@keyframes dropdownFadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(-6px) scale(0.98);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+.custom-dropdown-item {
+  display: flex;
+  flex-direction: column;
+  padding: 10px 12px;
+  border-radius: 12px;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  user-select: none;
+  margin-bottom: 3px;
+  border: 1px solid transparent;
+}
+
+.custom-dropdown-item:last-child {
+  margin-bottom: 0;
+}
+
+.custom-dropdown-item:hover {
+  background: var(--dropdown-hover);
+}
+
+.custom-dropdown-item.active {
+  background: rgba(59, 130, 246, 0.15);
+  border-color: rgba(59, 130, 246, 0.35);
+}
+
+.custom-dropdown-item .item-title {
+  font-size: 13.5px;
+  font-weight: 700;
+  color: var(--text-color);
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.custom-dropdown-item.active .item-title {
+  color: var(--button-color);
+}
+
+.custom-dropdown-item .item-desc {
+  font-size: 11px;
+  color: var(--hint-color);
+  margin-top: 2px;
+  margin-right: 22px;
+}
+
 /* ================= PRESET MODAL STYLES ================= */
 .presets-list {
   display: flex;
@@ -2117,7 +2317,7 @@ textarea:focus {
 
 .btn-prayer-state {
   border: 1px solid var(--card-border);
-  background: rgba(255, 255, 255, 0.05);
+  background: var(--subtle-surface);
   color: var(--hint-color);
   border-radius: 20px;
   padding: 5px 9px;
@@ -2129,7 +2329,7 @@ textarea:focus {
 }
 
 .btn-prayer-state:hover {
-  background: rgba(255, 255, 255, 0.1);
+  background: var(--card-border);
 }
 
 @media (max-width: 380px) {
@@ -2310,7 +2510,7 @@ textarea:focus {
 }
 
 .btn-range-preset-pill {
-  background: rgba(255, 255, 255, 0.06);
+  background: var(--subtle-surface);
   border: 1px solid var(--card-border);
   color: var(--text-color);
   border-radius: 20px;
@@ -2374,7 +2574,7 @@ textarea:focus {
 }
 
 .sp-stat-card {
-  background: rgba(255, 255, 255, 0.04);
+  background: var(--subtle-surface);
   border: 1px solid var(--card-border);
   border-radius: 20px;
   padding: 14px;
@@ -2408,7 +2608,7 @@ textarea:focus {
 
 .sp-bar-track {
   height: 8px;
-  background: rgba(255, 255, 255, 0.08);
+  background: var(--subtle-surface);
   border-radius: 10px;
   overflow: hidden;
 }

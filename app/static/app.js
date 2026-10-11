@@ -10,6 +10,119 @@
   }
 
   // ==========================================
+  // 🌓 THEME SWITCHER (DARK / LIGHT MODE)
+  // ==========================================
+  function initTheme() {
+    const btnToggle = document.getElementById("btnToggleTheme");
+    const iconSpan = document.getElementById("themeIcon");
+
+    function getInitialTheme() {
+      const saved = localStorage.getItem("notionyar_theme");
+      if (saved === "light" || saved === "dark") return saved;
+      return "dark";
+    }
+
+    function applyTheme(theme) {
+      document.documentElement.setAttribute("data-theme", theme);
+      document.body.setAttribute("data-theme", theme);
+      if (iconSpan) {
+        iconSpan.textContent = theme === "dark" ? "☀️" : "🌙";
+      }
+      if (btnToggle) {
+        btnToggle.setAttribute("title", theme === "dark" ? "تغییر به تم روشن" : "تغییر به تم تاریک");
+      }
+
+      if (tg) {
+        const bgHex = theme === "dark" ? "#0b1120" : "#f8fafc";
+        try {
+          if (typeof tg.setHeaderColor === "function") tg.setHeaderColor(bgHex);
+          if (typeof tg.setBackgroundColor === "function") tg.setBackgroundColor(bgHex);
+        } catch (e) {}
+      }
+    }
+
+    let currentTheme = getInitialTheme();
+    applyTheme(currentTheme);
+
+    btnToggle?.addEventListener("click", () => {
+      currentTheme = currentTheme === "dark" ? "light" : "dark";
+      localStorage.setItem("notionyar_theme", currentTheme);
+      applyTheme(currentTheme);
+      haptic("medium");
+    });
+  }
+
+  // Run theme immediately
+  initTheme();
+
+  // ==========================================
+  // 👑 ROLES PERSIAN DICTIONARY & CUSTOM DROPDOWN
+  // ==========================================
+  const ROLE_PERSIAN_MAP = {
+    admin: "👑 مدیر کل",
+    manager: "💼 مدیر تیم",
+    member: "👤 عضو تیم",
+    guest: "🌿 مهمان",
+  };
+
+  const ROLE_OPTIONS_MAP = {
+    member: { title: "👤 عضو تیم", desc: "ثبت زمان و گزارش" },
+    manager: { title: "💼 مدیر تیم", desc: "ویرایش و حذف" },
+    admin: { title: "👑 مدیر کل", desc: "دسترسی کامل به سامانه" },
+    guest: { title: "🌿 مهمان", desc: "فقط ثبت زمان" }
+  };
+
+  function setAdminRoleDropdown(roleValue) {
+    const hiddenInput = document.getElementById("adminNewUserRole");
+    const selectedSpan = document.getElementById("adminRoleSelected");
+    const dropdown = document.getElementById("adminRoleDropdown");
+    if (!hiddenInput || !selectedSpan) return;
+
+    const role = (roleValue in ROLE_OPTIONS_MAP) ? roleValue : "member";
+    const opt = ROLE_OPTIONS_MAP[role];
+    hiddenInput.value = role;
+    selectedSpan.textContent = `${opt.title} (${opt.desc})`;
+
+    if (dropdown) {
+      dropdown.querySelectorAll(".custom-dropdown-item").forEach(item => {
+        item.classList.toggle("active", item.getAttribute("data-value") === role);
+      });
+    }
+  }
+
+  function initAdminRoleDropdown() {
+    const dropdown = document.getElementById("adminRoleDropdown");
+    const trigger = document.getElementById("adminRoleDropdownTrigger");
+    const menu = document.getElementById("adminRoleDropdownMenu");
+    if (!dropdown || !trigger || !menu) return;
+
+    trigger.addEventListener("click", (e) => {
+      e.stopPropagation();
+      const isOpen = dropdown.classList.toggle("open");
+      trigger.setAttribute("aria-expanded", isOpen);
+      haptic("light");
+    });
+
+    menu.querySelectorAll(".custom-dropdown-item").forEach(item => {
+      item.addEventListener("click", (e) => {
+        e.stopPropagation();
+        const val = item.getAttribute("data-value");
+        setAdminRoleDropdown(val);
+        dropdown.classList.remove("open");
+        trigger.setAttribute("aria-expanded", "false");
+        haptic("selection");
+      });
+    });
+
+    document.addEventListener("click", (e) => {
+      if (!dropdown.contains(e.target)) {
+        dropdown.classList.remove("open");
+        trigger.setAttribute("aria-expanded", "false");
+      }
+    });
+  }
+
+  // ==========================================
   // 📅 JALALI <-> GREGORIAN CONVERTER (PURE JS)
   // ==========================================
   function gregorianToJalali(gy, gm, gd) {
@@ -210,19 +323,16 @@
       document.getElementById("currentDate").textContent = toPersianDigits(data.today_jalali);
 
       const roleBadge = document.getElementById("userRole");
-      const roleMap = {
-        admin: "👑 مدیر کل",
-        manager: "💼 مدیر تیم",
-        member: "👤 عضو تیم",
-        guest: "🌿 مهمان",
-      };
-      roleBadge.textContent = roleMap[currentUser.role] || "کاربر";
+      roleBadge.textContent = ROLE_PERSIAN_MAP[currentUser.role] || "کاربر";
 
       // Show Admin Tab if user is admin
       const adminNavBtn = document.getElementById("navItemAdmin");
       if (adminNavBtn) {
         adminNavBtn.style.display = currentUser.is_admin ? "flex" : "none";
       }
+
+      // Initialize Custom Admin Role Dropdown
+      initAdminRoleDropdown();
 
       // Setup stealth mode initial UI
       setupStealthModeUI();
@@ -2309,7 +2419,7 @@
           <div class="user-item-info">
             <div class="user-item-name">
               <span>${u.name}</span>
-              <span class="user-role-badge-admin">${u.role}</span>
+              <span class="user-role-badge-admin">${ROLE_PERSIAN_MAP[u.role] || u.role}</span>
             </div>
             <div class="user-item-id">ID: ${toPersianDigits(u.user_id)}</div>
           </div>
@@ -2324,7 +2434,7 @@
           document.getElementById("adminNewUserId").value = u.user_id;
           document.getElementById("adminNewUserId").readOnly = true;
           document.getElementById("adminNewUserName").value = u.name;
-          document.getElementById("adminNewUserRole").value = u.role;
+          setAdminRoleDropdown(u.role);
           const submitBtn = formAddAdminUser?.querySelector("button[type='submit']");
           if (submitBtn) submitBtn.textContent = "💾 ذخیره تغییرات کاربر";
 
@@ -2341,6 +2451,7 @@
               formAddAdminUser.reset();
               document.getElementById("adminNewUserId").readOnly = false;
               if (submitBtn) submitBtn.textContent = "افزودن دسترسی";
+              setAdminRoleDropdown("member");
               cancelBtn.remove();
             });
             formAddAdminUser.appendChild(cancelBtn);
@@ -2397,6 +2508,7 @@
       const submitBtn = formAddAdminUser.querySelector("button[type='submit']");
       if (submitBtn) submitBtn.textContent = "افزودن دسترسی";
       document.getElementById("btnCancelAdminEdit")?.remove();
+      setAdminRoleDropdown("member");
       loadAdminUsers();
       loadAdminStats();
     } catch (e) {

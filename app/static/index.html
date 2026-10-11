@@ -14,7 +14,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Vazirmatn:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="/static/app.css?v=2.9.0">
+  <link rel="stylesheet" href="/static/app.css?v=3.0.0">
 </head>
 
 <body>
@@ -32,6 +32,9 @@
         </div>
       </div>
       <div style="display: flex; align-items: center; gap: 8px;">
+        <button type="button" class="btn-theme-toggle" id="btnToggleTheme" title="تغییر تم (تاریک / روشن)">
+          <span class="theme-icon" id="themeIcon">☀️</span>
+        </button>
         <button type="button" class="btn-stealth-toggle" id="btnToggleStealth" title="حالت مخفی برای مکان‌های شلوغ">
           <span class="stealth-icon">🕶️</span>
           <span class="stealth-text">مخفی</span>
@@ -648,13 +651,32 @@
               </div>
             </div>
             <div class="form-group">
-              <label for="adminNewUserRole">نقش کاربری</label>
-              <select id="adminNewUserRole">
-                <option value="member">👤 عضو تیم (ثبت زمان و گزارش)</option>
-                <option value="manager">💼 مدیر تیم (ویرایش و حذف)</option>
-                <option value="admin">👑 مدیر کل (دسترسی کامل)</option>
-                <option value="guest">🌿 مهمان (فقط ثبت زمان)</option>
-              </select>
+              <label>نقش کاربری</label>
+              <div class="custom-dropdown" id="adminRoleDropdown">
+                <input type="hidden" id="adminNewUserRole" value="member">
+                <button type="button" class="custom-dropdown-trigger" id="adminRoleDropdownTrigger" aria-haspopup="listbox" aria-expanded="false">
+                  <span class="custom-dropdown-selected" id="adminRoleSelected">👤 عضو تیم (ثبت زمان و گزارش)</span>
+                  <span class="custom-dropdown-arrow">▾</span>
+                </button>
+                <div class="custom-dropdown-menu" id="adminRoleDropdownMenu" role="listbox">
+                  <div class="custom-dropdown-item active" data-value="member" role="option">
+                    <span class="item-title">👤 عضو تیم</span>
+                    <span class="item-desc">ثبت زمان و گزارش</span>
+                  </div>
+                  <div class="custom-dropdown-item" data-value="manager" role="option">
+                    <span class="item-title">💼 مدیر تیم</span>
+                    <span class="item-desc">ویرایش و حذف</span>
+                  </div>
+                  <div class="custom-dropdown-item" data-value="admin" role="option">
+                    <span class="item-title">👑 مدیر کل</span>
+                    <span class="item-desc">دسترسی کامل به سامانه</span>
+                  </div>
+                  <div class="custom-dropdown-item" data-value="guest" role="option">
+                    <span class="item-title">🌿 مهمان</span>
+                    <span class="item-desc">فقط ثبت زمان</span>
+                  </div>
+                </div>
+              </div>
             </div>
             <button type="submit" class="btn-primary" id="btnAdminSaveUser">
               <span>➕ افزودن یا ویرایش کاربر</span>
@@ -913,7 +935,7 @@
     <div id="toast" class="toast"></div>
   </div>
 
-  <script src="/static/app.js?v=2.9.0"></script>
+  <script src="/static/app.js?v=3.0.0"></script>
 </body>
 </html>
 
