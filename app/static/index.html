@@ -14,7 +14,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Vazirmatn:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="/static/app.css?v=3.0.0">
+  <link rel="stylesheet" href="/static/app.css?v=3.1.0">
 </head>
 
 <body>
@@ -243,20 +243,46 @@
 
             <div class="filter-row">
               <div class="filter-col">
-                <label for="lifeHistoryFilter">فعالیت:</label>
-                <select id="lifeHistoryFilter">
-                  <option value="">تمام فعالیت‌ها</option>
-                </select>
+                <label>فعالیت:</label>
+                <div class="custom-dropdown" id="lifeHistoryFilterDropdown">
+                  <input type="hidden" id="lifeHistoryFilter" value="">
+                  <button type="button" class="custom-dropdown-trigger" id="lifeHistoryFilterTrigger" aria-haspopup="listbox" aria-expanded="false">
+                    <span class="custom-dropdown-selected" id="lifeHistoryFilterSelected">🌱 تمام فعالیت‌ها</span>
+                    <span class="custom-dropdown-arrow">▾</span>
+                  </button>
+                  <div class="custom-dropdown-menu" id="lifeHistoryFilterMenu" role="listbox" style="max-height: 240px; overflow-y: auto;">
+                    <div class="custom-dropdown-item active" data-value="" role="option">
+                      <span class="item-title">🌱 تمام فعالیت‌ها</span>
+                    </div>
+                  </div>
+                </div>
               </div>
               <div class="filter-col">
-                <label for="lifeHistoryPeriodFilter">بازه زمانی:</label>
-                <select id="lifeHistoryPeriodFilter">
-                  <option value="all">تمام تاریخچه</option>
-                  <option value="7d">۷ روز اخیر</option>
-                  <option value="30d">۳۰ روز اخیر</option>
-                  <option value="month">ماه جاری</option>
-                  <option value="custom">📅 بازه زمانی دلخواه...</option>
-                </select>
+                <label>بازه زمانی:</label>
+                <div class="custom-dropdown" id="lifeHistoryPeriodDropdown">
+                  <input type="hidden" id="lifeHistoryPeriodFilter" value="all">
+                  <button type="button" class="custom-dropdown-trigger" id="lifeHistoryPeriodTrigger" aria-haspopup="listbox" aria-expanded="false">
+                    <span class="custom-dropdown-selected" id="lifeHistoryPeriodSelected">🗓️ تمام تاریخچه</span>
+                    <span class="custom-dropdown-arrow">▾</span>
+                  </button>
+                  <div class="custom-dropdown-menu" id="lifeHistoryPeriodMenu" role="listbox">
+                    <div class="custom-dropdown-item active" data-value="all" role="option">
+                      <span class="item-title">🗓️ تمام تاریخچه</span>
+                    </div>
+                    <div class="custom-dropdown-item" data-value="7d" role="option">
+                      <span class="item-title">⚡ ۷ روز اخیر</span>
+                    </div>
+                    <div class="custom-dropdown-item" data-value="30d" role="option">
+                      <span class="item-title">📊 ۳۰ روز اخیر</span>
+                    </div>
+                    <div class="custom-dropdown-item" data-value="month" role="option">
+                      <span class="item-title">🌙 ماه جاری</span>
+                    </div>
+                    <div class="custom-dropdown-item" data-value="custom" role="option">
+                      <span class="item-title">📅 بازه زمانی دلخواه...</span>
+                    </div>
+                  </div>
+                </div>
               </div>
             </div>
 
@@ -300,11 +326,6 @@
                 <span class="hero-title">عادات روزانه</span>
                 <div class="hero-sub" id="habitDateTitle">در حال دریافت...</div>
               </div>
-              <!-- Stealth Mode Toggle Button -->
-              <button type="button" class="btn-stealth-toggle" id="btnToggleStealth" title="حالت مخفی برای مکان‌های شلوغ">
-                <span class="stealth-icon">🕶️</span>
-                <span class="stealth-text">حالت مخفی</span>
-              </button>
             </div>
 
             <!-- Date Selector in Habits: امروز / دیروز / پریروز / تقویم -->
@@ -931,11 +952,61 @@
       </div>
     </div>
 
+    <!-- Modal for Editing Life Tracker Entry -->
+    <div id="lifeEditModal" class="modal-backdrop" style="display: none;">
+      <div class="modal-card">
+        <div class="modal-header">
+          <span class="modal-title">✏️ ویرایش رکورد روزمرگی</span>
+          <button class="btn-modal-close" id="btnLifeEditModalClose">&times;</button>
+        </div>
+        <div class="modal-body">
+          <form id="formEditLifeEntry" class="form-grid">
+            <input type="hidden" id="editLifeEntryId">
+
+            <div class="form-group">
+              <label>نوع فعالیت:</label>
+              <div class="custom-dropdown" id="editLifeTypeDropdown">
+                <input type="hidden" id="editLifeType" value="">
+                <button type="button" class="custom-dropdown-trigger" id="editLifeTypeTrigger" aria-haspopup="listbox" aria-expanded="false">
+                  <span class="custom-dropdown-selected" id="editLifeTypeSelected">انتخاب فعالیت...</span>
+                  <span class="custom-dropdown-arrow">▾</span>
+                </button>
+                <div class="custom-dropdown-menu" id="editLifeTypeMenu" role="listbox" style="max-height: 200px; overflow-y: auto;"></div>
+              </div>
+            </div>
+
+            <div class="form-group" id="editLifeModesContainer" style="display: none;">
+              <label>حالت / مود:</label>
+              <div id="editLifeModesGrid" style="display: flex; flex-wrap: wrap; gap: 6px;"></div>
+            </div>
+
+            <div class="form-group">
+              <label>تاریخ ثبت:</label>
+              <button type="button" class="btn-step" id="btnEditLifePickDate" style="width: 100%; text-align: center;">
+                <span id="editLifeDateDisplay">📅 انتخاب تاریخ شمسی</span>
+              </button>
+              <input type="hidden" id="editLifeDateIso">
+            </div>
+
+            <div class="form-group">
+              <label for="editLifeNotes">توضیحات و جزئیات:</label>
+              <textarea id="editLifeNotes" placeholder="توضیحات اختیاری..."></textarea>
+            </div>
+
+            <div style="display: flex; gap: 8px; margin-top: 10px;">
+              <button type="button" class="btn-step" id="btnCancelEditLife" style="flex: 1;">انصراف</button>
+              <button type="submit" class="btn-primary" id="btnSaveEditLife" style="flex: 2;">💾 ذخیره تغییرات</button>
+            </div>
+          </form>
+        </div>
+      </div>
+    </div>
+
     <!-- Toast Notification -->
     <div id="toast" class="toast"></div>
   </div>
 
-  <script src="/static/app.js?v=3.0.0"></script>
+  <script src="/static/app.js?v=3.1.0"></script>
 </body>
 </html>
 

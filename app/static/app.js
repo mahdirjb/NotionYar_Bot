@@ -333,6 +333,9 @@
 
       // Initialize Custom Admin Role Dropdown
       initAdminRoleDropdown();
+      initLifeHistoryPeriodDropdown();
+      initLifeHistoryFilterDropdown();
+      initLifeEditModal();
 
       // Setup stealth mode initial UI
       setupStealthModeUI();
@@ -532,6 +535,11 @@
         const btn = document.getElementById("btnSpBulkTo");
         if (btn) btn.innerHTML = `<span>📅 تا: ${toPersianDigits(jd)} ${PERSIAN_MONTH_NAMES[jm - 1]}</span>`;
         updateSpBulkRangeBadge();
+      } else if (activeDatePickerTarget === "edit_life") {
+        const isoInput = document.getElementById("editLifeDateIso");
+        const display = document.getElementById("editLifeDateDisplay");
+        if (isoInput) isoInput.value = isoDate;
+        if (display) display.textContent = `📅 ${toPersianDigits(jd)} ${PERSIAN_MONTH_NAMES[jm - 1]} ${toPersianDigits(jy)}`;
       }
 
       modal.style.display = "none";
@@ -557,7 +565,7 @@
     if (target === "life_to") currentIso = customLifeEndDate || currentDateIso;
     if (target === "spiritual_bulk_from") currentIso = spBulkCustomFromIso || currentDateIso;
     if (target === "spiritual_bulk_to") currentIso = spBulkCustomToIso || currentDateIso;
-
+    if (target === "edit_life") currentIso = document.getElementById("editLifeDateIso")?.value || currentDateIso;
 
     const parts = currentIso.split("-").map(Number);
     const [jy, jm, jd] = gregorianToJalali(parts[0], parts[1], parts[2]);
@@ -1159,28 +1167,332 @@
     }
   }
 
-  // History with Activity & Time Period Filter (Item 13)
-  function populateHistoryFilter() {
-    const sel = document.getElementById("lifeHistoryFilter");
-    if (!sel || !lifeOptionsData?.all_types) return;
-    sel.innerHTML = '<option value="">تمام فعالیت‌ها</option>';
-    Object.keys(lifeOptionsData.all_types).forEach((t) => {
-      const opt = document.createElement("option");
-      opt.value = t;
-      opt.textContent = `${lifeOptionsData.all_types[t].emoji} ${t}`;
-      sel.appendChild(opt);
+  // ==========================================
+  // 🌿 LIFE TRACKER CUSTOM DROPDOWNS & HISTORY
+  // ==========================================
+  function initLifeHistoryFilterDropdown() {
+    const dropdown = document.getElementById("lifeHistoryFilterDropdown");
+    const trigger = document.getElementById("lifeHistoryFilterTrigger");
+    if (!dropdown || !trigger) return;
+
+    trigger.addEventListener("click", (e) => {
+      e.stopPropagation();
+      const isOpen = dropdown.classList.toggle("open");
+      trigger.setAttribute("aria-expanded", isOpen);
+      haptic("light");
+    });
+
+    document.addEventListener("click", (e) => {
+      if (!dropdown.contains(e.target)) {
+        dropdown.classList.remove("open");
+        trigger.setAttribute("aria-expanded", "false");
+      }
     });
   }
 
-  document.getElementById("lifeHistoryFilter")?.addEventListener("change", () => renderFilteredLifeHistory());
-  document.getElementById("lifeHistoryPeriodFilter")?.addEventListener("change", (e) => {
-    const val = e.target.value;
+  function populateHistoryFilter() {
+    const menu = document.getElementById("lifeHistoryFilterMenu");
+    const hiddenInput = document.getElementById("lifeHistoryFilter");
+    const selectedSpan = document.getElementById("lifeHistoryFilterSelected");
+    const dropdown = document.getElementById("lifeHistoryFilterDropdown");
+    if (!menu || !lifeOptionsData?.all_types) return;
+
+    menu.innerHTML = `
+      <div class="custom-dropdown-item active" data-value="" role="option">
+        <span class="item-title">✨ تمام فعالیت‌ها</span>
+      </div>
+    `;
+
+    Object.keys(lifeOptionsData.all_types).forEach((t) => {
+      const typeMeta = lifeOptionsData.all_types[t];
+      const item = document.createElement("div");
+      item.className = "custom-dropdown-item";
+      item.setAttribute("data-value", t);
+      item.setAttribute("role", "option");
+      item.innerHTML = `<span class="item-title">${typeMeta.emoji} ${t}</span>`;
+      menu.appendChild(item);
+    });
+
+    menu.querySelectorAll(".custom-dropdown-item").forEach((item) => {
+      item.addEventListener("click", (e) => {
+        e.stopPropagation();
+        const val = item.getAttribute("data-value") || "";
+        const title = item.querySelector(".item-title")?.textContent || item.textContent;
+        if (hiddenInput) hiddenInput.value = val;
+        if (selectedSpan) selectedSpan.textContent = title;
+
+        menu.querySelectorAll(".custom-dropdown-item").forEach((it) => it.classList.remove("active"));
+        item.classList.add("active");
+        if (dropdown) dropdown.classList.remove("open");
+        const trigger = document.getElementById("lifeHistoryFilterTrigger");
+        if (trigger) trigger.setAttribute("aria-expanded", "false");
+
+        haptic("selection");
+        renderFilteredLifeHistory();
+      });
+    });
+  }
+
+  function initLifeHistoryPeriodDropdown() {
+    const dropdown = document.getElementById("lifeHistoryPeriodDropdown");
+    const trigger = document.getElementById("lifeHistoryPeriodTrigger");
+    const menu = document.getElementById("lifeHistoryPeriodMenu");
+    const hiddenInput = document.getElementById("lifeHistoryPeriodFilter");
+    const selectedSpan = document.getElementById("lifeHistoryPeriodSelected");
     const customRow = document.getElementById("lifeCustomDateRangeRow");
-    if (customRow) {
-      customRow.style.display = val === "custom" ? "block" : "none";
+    if (!dropdown || !trigger || !menu || !hiddenInput || !selectedSpan) return;
+
+    trigger.addEventListener("click", (e) => {
+      e.stopPropagation();
+      const isOpen = dropdown.classList.toggle("open");
+      trigger.setAttribute("aria-expanded", isOpen);
+      haptic("light");
+    });
+
+    menu.querySelectorAll(".custom-dropdown-item").forEach((item) => {
+      item.addEventListener("click", (e) => {
+        e.stopPropagation();
+        const val = item.getAttribute("data-value") || "all";
+        const title = item.querySelector(".item-title")?.textContent || item.textContent;
+        hiddenInput.value = val;
+        selectedSpan.textContent = title;
+
+        menu.querySelectorAll(".custom-dropdown-item").forEach((it) => it.classList.remove("active"));
+        item.classList.add("active");
+        dropdown.classList.remove("open");
+        trigger.setAttribute("aria-expanded", "false");
+
+        haptic("selection");
+        if (customRow) {
+          customRow.style.display = val === "custom" ? "block" : "none";
+        }
+        renderFilteredLifeHistory();
+      });
+    });
+
+    document.addEventListener("click", (e) => {
+      if (!dropdown.contains(e.target)) {
+        dropdown.classList.remove("open");
+        trigger.setAttribute("aria-expanded", "false");
+      }
+    });
+  }
+
+  // ==========================================
+  // ✏️ LIFE TRACKER EDIT ENTRY MODAL
+  // ==========================================
+  let editLifeSelectedModes = [];
+
+  function renderEditLifeModes(typeVal) {
+    const container = document.getElementById("editLifeModesContainer");
+    const grid = document.getElementById("editLifeModesGrid");
+    if (!container || !grid) return;
+
+    const typeMeta = lifeOptionsData?.all_types?.[typeVal];
+    if (typeMeta && typeMeta.modes && typeMeta.modes.length > 0) {
+      container.style.display = "block";
+      grid.innerHTML = "";
+      typeMeta.modes.forEach((m) => {
+        const chip = document.createElement("button");
+        chip.type = "button";
+        chip.className = "mode-chip" + (editLifeSelectedModes.includes(m.name) ? " active" : "");
+        chip.innerHTML = `<span>${m.emoji || "🔹"}</span> <span>${m.name}</span>`;
+        chip.addEventListener("click", () => {
+          const idx = editLifeSelectedModes.indexOf(m.name);
+          if (idx > -1) {
+            editLifeSelectedModes.splice(idx, 1);
+            chip.classList.remove("active");
+          } else {
+            editLifeSelectedModes.push(m.name);
+            chip.classList.add("active");
+          }
+          haptic("light");
+        });
+        grid.appendChild(chip);
+      });
+    } else {
+      container.style.display = "none";
+      grid.innerHTML = "";
+      editLifeSelectedModes = [];
     }
-    renderFilteredLifeHistory();
-  });
+  }
+
+  function openLifeEditModal(item) {
+    const modal = document.getElementById("lifeEditModal");
+    if (!modal) return;
+
+    document.getElementById("editLifeEntryId").value = item.id;
+    document.getElementById("editLifeNotes").value = item.notes || "";
+    document.getElementById("editLifeDateIso").value = item.date_iso || "";
+
+    const dateDisplay = document.getElementById("editLifeDateDisplay");
+    if (item.date_iso) {
+      const parts = item.date_iso.split("-").map(Number);
+      if (parts.length === 3) {
+        const [jy, jm, jd] = gregorianToJalali(parts[0], parts[1], parts[2]);
+        dateDisplay.textContent = `📅 ${toPersianDigits(jd)} ${PERSIAN_MONTH_NAMES[jm - 1]} ${toPersianDigits(jy)}`;
+      } else {
+        dateDisplay.textContent = item.date ? `📅 ${toPersianDigits(item.date)}` : "📅 انتخاب تاریخ لاگ";
+      }
+    } else {
+      dateDisplay.textContent = item.date ? `📅 ${toPersianDigits(item.date)}` : "📅 انتخاب تاریخ لاگ";
+    }
+
+    if (Array.isArray(item.modes) && item.modes.length > 0) {
+      editLifeSelectedModes = [...item.modes];
+    } else if (item.mode && typeof item.mode === "string") {
+      editLifeSelectedModes = item.mode.split("، ").map((s) => s.trim()).filter(Boolean);
+    } else {
+      editLifeSelectedModes = [];
+    }
+
+    const typeHidden = document.getElementById("editLifeType");
+    const typeSelected = document.getElementById("editLifeTypeSelected");
+    const typeMenu = document.getElementById("editLifeTypeMenu");
+    const typeDropdown = document.getElementById("editLifeTypeDropdown");
+
+    const currentType = item.type || "";
+    typeHidden.value = currentType;
+    const currentMeta = lifeOptionsData?.all_types?.[currentType];
+    const currentEmoji = currentMeta?.emoji || item.emoji || "🌱";
+    typeSelected.textContent = `${currentEmoji} ${currentType}`;
+
+    if (typeMenu && lifeOptionsData?.all_types) {
+      typeMenu.innerHTML = "";
+      Object.keys(lifeOptionsData.all_types).forEach((t) => {
+        const meta = lifeOptionsData.all_types[t];
+        const it = document.createElement("div");
+        it.className = "custom-dropdown-item" + (t === currentType ? " active" : "");
+        it.setAttribute("data-value", t);
+        it.setAttribute("role", "option");
+        it.innerHTML = `<span class="item-title">${meta.emoji} ${t}</span>`;
+        it.addEventListener("click", (e) => {
+          e.stopPropagation();
+          typeHidden.value = t;
+          typeSelected.textContent = `${meta.emoji} ${t}`;
+          typeMenu.querySelectorAll(".custom-dropdown-item").forEach((el) => el.classList.remove("active"));
+          it.classList.add("active");
+          if (typeDropdown) typeDropdown.classList.remove("open");
+          const trig = document.getElementById("editLifeTypeTrigger");
+          if (trig) trig.setAttribute("aria-expanded", "false");
+          editLifeSelectedModes = [];
+          renderEditLifeModes(t);
+          haptic("selection");
+        });
+        typeMenu.appendChild(it);
+      });
+    }
+
+    renderEditLifeModes(currentType);
+    modal.style.display = "flex";
+    haptic("light");
+  }
+
+  function initLifeEditModal() {
+    const modal = document.getElementById("lifeEditModal");
+    const closeBtn = document.getElementById("btnLifeEditModalClose");
+    const cancelBtn = document.getElementById("btnCancelEditLife");
+    const pickDateBtn = document.getElementById("btnEditLifePickDate");
+    const typeDropdown = document.getElementById("editLifeTypeDropdown");
+    const typeTrigger = document.getElementById("editLifeTypeTrigger");
+    const form = document.getElementById("formEditLifeEntry");
+    if (!modal) return;
+
+    if (typeTrigger && typeDropdown) {
+      typeTrigger.addEventListener("click", (e) => {
+        e.stopPropagation();
+        const isOpen = typeDropdown.classList.toggle("open");
+        typeTrigger.setAttribute("aria-expanded", isOpen);
+        haptic("light");
+      });
+
+      document.addEventListener("click", (e) => {
+        if (!typeDropdown.contains(e.target)) {
+          typeDropdown.classList.remove("open");
+          typeTrigger.setAttribute("aria-expanded", "false");
+        }
+      });
+    }
+
+    if (closeBtn) {
+      closeBtn.addEventListener("click", () => {
+        modal.style.display = "none";
+      });
+    }
+
+    if (cancelBtn) {
+      cancelBtn.addEventListener("click", () => {
+        modal.style.display = "none";
+      });
+    }
+
+    modal.addEventListener("click", (e) => {
+      if (e.target === modal) {
+        modal.style.display = "none";
+      }
+    });
+
+    if (pickDateBtn) {
+      pickDateBtn.addEventListener("click", () => {
+        openPersianDatePicker("edit_life");
+      });
+    }
+
+    if (form) {
+      form.addEventListener("submit", async (e) => {
+        e.preventDefault();
+        const entryId = document.getElementById("editLifeEntryId")?.value;
+        const typeVal = document.getElementById("editLifeType")?.value;
+        const dateIso = document.getElementById("editLifeDateIso")?.value;
+        const notes = document.getElementById("editLifeNotes")?.value?.trim() || "";
+
+        if (!entryId || !typeVal) {
+          showToast("لطفاً نوع فعالیت را مشخص کنید", "warning");
+          return;
+        }
+
+        const saveBtn = document.getElementById("btnSaveEditLife");
+        const origText = saveBtn ? saveBtn.textContent : "";
+        if (saveBtn) {
+          saveBtn.disabled = true;
+          saveBtn.textContent = "در حال ذخیره...";
+        }
+
+        try {
+          const res = await fetch(`/api/life-tracker/update/${entryId}`, {
+            method: "PUT",
+            headers: getHeaders(),
+            body: JSON.stringify({
+              event_type: typeVal,
+              date_iso: dateIso || null,
+              mode_list: editLifeSelectedModes,
+              notes: notes,
+            }),
+          });
+
+          if (!res.ok) {
+            const errData = await res.json().catch(() => ({}));
+            throw new Error(errData.detail || "خطا در ویرایش رکورد");
+          }
+
+          showToast("لاگ روزمرگی با موفقیت به‌روزرسانی شد! ✨", "success");
+          haptic("success");
+          modal.style.display = "none";
+          await loadLifeHistory();
+          if (typeof loadLifeRadar === "function") loadLifeRadar();
+        } catch (err) {
+          console.error(err);
+          showToast(err.message || "خطا در ذخیره ویرایش", "error");
+          haptic("error");
+        } finally {
+          if (saveBtn) {
+            saveBtn.disabled = false;
+            saveBtn.textContent = origText;
+          }
+        }
+      });
+    }
+  }
 
   async function loadLifeHistory() {
     const list = document.getElementById("lifeHistoryList");
@@ -1231,14 +1543,21 @@
       const div = document.createElement("div");
       div.className = "timeline-item";
       div.innerHTML = `
-        <div>
+        <div style="flex:1;">
           <div style="font-weight:700; font-size:13px;">${item.emoji} ${item.type} ${item.mode ? `(${item.mode})` : ""}</div>
           <div style="font-size:11px; color:var(--hint-color); margin-top:2px;">
             <span class="stealth-blur-target">📅 ${toPersianDigits(item.date)}</span> ${item.notes ? `| <span class="stealth-blur-target">📝 ${item.notes}</span>` : ""}
           </div>
         </div>
-        <button class="btn-item-delete" title="حذف رکورد">🗑️</button>
+        <div style="display:flex; align-items:center; gap:6px;">
+          <button class="btn-item-edit" title="ویرایش رکورد" style="background:none; border:none; font-size:16px; cursor:pointer; padding:4px 6px; border-radius:6px;">✏️</button>
+          <button class="btn-item-delete" title="حذف رکورد" style="background:none; border:none; font-size:16px; cursor:pointer; padding:4px 6px; border-radius:6px;">🗑️</button>
+        </div>
       `;
+
+      div.querySelector(".btn-item-edit").addEventListener("click", () => {
+        openLifeEditModal(item);
+      });
 
       div.querySelector(".btn-item-delete").addEventListener("click", async () => {
         if (!confirm(`آیا از حذف لاگ «${item.type}» مطمئن هستید؟`)) return;

@@ -33,6 +33,7 @@ from app.services.notion_service import (
     TYPE_EMOJIS,
     MODE_EMOJIS,
     add_life_tracker_entry,
+    update_life_tracker_entry,
     query_life_tracker_entries,
     get_or_create_habit_day,
     parse_habit_page,
@@ -159,6 +160,13 @@ class LifeTrackerCreateRequest(BaseModel):
     event_type: str
     mode_list: Optional[List[str]] = None
     mode: Optional[str] = None  # fallback for single string
+    date_iso: Optional[str] = None
+    notes: Optional[str] = None
+
+
+class LifeTrackerUpdateRequest(BaseModel):
+    event_type: Optional[str] = None
+    mode_list: Optional[List[str]] = None
     date_iso: Optional[str] = None
     notes: Optional[str] = None
 
@@ -423,6 +431,7 @@ async def get_life_tracker_history(
                 "type": t_name,
                 "emoji": TYPE_EMOJIS.get(t_name, "🌱"),
                 "mode": modes_str,
+                "modes": modes_list,
                 "date": shamsi_date,
                 "date_iso": iso_date,
                 "notes": item.get("notes", "")
@@ -441,6 +450,26 @@ async def delete_life_tracker_entry(
     success = await asyncio.to_thread(archive_notion_page, page_id)
     if not success:
         raise HTTPException(status_code=500, detail="خطا در حذف رکورد روزمرگی.")
+    return {"success": True}
+
+
+@app.put("/api/life-tracker/update/{page_id}")
+@app.post("/api/life-tracker/update/{page_id}")
+async def update_life_tracker_entry_endpoint(
+    page_id: str,
+    payload: LifeTrackerUpdateRequest,
+    user: Dict[str, Any] = Depends(get_current_user)
+):
+    success = await asyncio.to_thread(
+        update_life_tracker_entry,
+        page_id=page_id,
+        type_val=payload.event_type,
+        date_iso=payload.date_iso,
+        mode_list=payload.mode_list,
+        notes=payload.notes
+    )
+    if not success:
+        raise HTTPException(status_code=500, detail="خطا در ویرایش رکورد روزمرگی.")
     return {"success": True}
 
 

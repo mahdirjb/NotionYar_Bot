@@ -411,6 +411,31 @@ def add_life_tracker_entry(
     )
 
 
+def update_life_tracker_entry(
+    page_id: str,
+    type_val: Optional[str] = None,
+    date_iso: Optional[str] = None,
+    mode_list: Optional[List[str]] = None,
+    notes: Optional[str] = None
+) -> bool:
+    """Updates an existing row in the Life Tracker database in Notion."""
+    properties: Dict[str, Any] = {}
+    if type_val is not None:
+        properties["Type"] = {"select": {"name": type_val}}
+        if date_iso:
+            properties["Name"] = {"title": [{"text": {"content": f"{type_val} - {date_iso}"}}]}
+        else:
+            properties["Name"] = {"title": [{"text": {"content": type_val}}]}
+    if date_iso is not None:
+        properties["Date_"] = {"date": {"start": date_iso}}
+    if mode_list is not None:
+        properties["Mode"] = {"multi_select": [{"name": m} for m in mode_list]}
+    if notes is not None:
+        properties["Notes"] = {"rich_text": [{"text": {"content": notes}}]}
+
+    return update_notion_page_properties(page_id, properties)
+
+
 def query_life_tracker_entries(
     start_date_iso: Optional[str] = None,
     end_date_iso: Optional[str] = None,
