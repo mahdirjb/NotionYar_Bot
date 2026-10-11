@@ -420,14 +420,16 @@ def update_life_tracker_entry(
 ) -> bool:
     """Updates an existing row in the Life Tracker database in Notion."""
     properties: Dict[str, Any] = {}
+    clean_date = str(date_iso).split("T")[0].split(" ")[0].strip() if date_iso else None
+
     if type_val is not None:
         properties["Type"] = {"select": {"name": type_val}}
-        if date_iso:
-            properties["Name"] = {"title": [{"text": {"content": f"{type_val} - {date_iso}"}}]}
+        if clean_date:
+            properties["Name"] = {"title": [{"text": {"content": f"{type_val} - {clean_date}"}}]}
         else:
             properties["Name"] = {"title": [{"text": {"content": type_val}}]}
-    if date_iso is not None:
-        properties["Date_"] = {"date": {"start": date_iso}}
+    if clean_date:
+        properties["Date_"] = {"date": {"start": clean_date}}
     if mode_list is not None:
         properties["Mode"] = {"multi_select": [{"name": m} for m in mode_list]}
     if notes is not None:
@@ -514,6 +516,7 @@ def query_life_tracker_entries(
 
         date_prop = props.get("Date_", {}).get("date") or {}
         raw_date = date_prop.get("start")
+        clean_date = raw_date.split("T")[0].split(" ")[0].strip() if raw_date else ""
 
         notes_list = props.get("Notes", {}).get("rich_text", [])
         notes = notes_list[0].get("plain_text", "") if notes_list else ""
@@ -523,7 +526,7 @@ def query_life_tracker_entries(
             "name": name,
             "type": t_val,
             "modes": modes,
-            "date_iso": raw_date,
+            "date_iso": clean_date,
             "notes": notes,
             "url": page.get("url", "")
         })

@@ -202,7 +202,8 @@ def format_jalali_full_display(gregorian_iso: str) -> str:
     Example: 'یکشنبه ۱۵ شهریور ۱۴۰۵'
     """
     try:
-        g_date = date.fromisoformat(gregorian_iso)
+        clean_iso = str(gregorian_iso).split("T")[0].split(" ")[0].strip()
+        g_date = date.fromisoformat(clean_iso)
         j_date = jdatetime.date.fromgregorian(date=g_date)
         weekdays = [
             "شنبه",

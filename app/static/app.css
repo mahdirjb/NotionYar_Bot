@@ -1530,6 +1530,10 @@ select:-webkit-autofill:focus {
   animation: fadeIn 0.15s ease-out;
 }
 
+#persianDateModal {
+  z-index: 1000 !important;
+}
+
 .modal-card {
   width: 100%;
   background: var(--secondary-bg-color);

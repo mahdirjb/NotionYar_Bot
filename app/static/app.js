@@ -199,8 +199,9 @@
 
   function formatIsoToJalaliDisplay(isoStr) {
     if (!isoStr) return "";
-    const parts = isoStr.split("-").map(Number);
-    if (parts.length !== 3) return isoStr;
+    const clean = String(isoStr).split("T")[0].split(" ")[0].trim();
+    const parts = clean.split("-").map(Number);
+    if (parts.length !== 3 || isNaN(parts[0]) || isNaN(parts[1]) || isNaN(parts[2])) return isoStr;
     const [jy, jm, jd] = gregorianToJalali(parts[0], parts[1], parts[2]);
     return `${toPersianDigits(jd)} ${PERSIAN_MONTH_NAMES[jm - 1]} ${toPersianDigits(jy)}`;
   }
@@ -482,6 +483,12 @@
       modal.style.display = "none";
     });
 
+    modal?.addEventListener("click", (e) => {
+      if (e.target === modal) {
+        modal.style.display = "none";
+      }
+    });
+
     btnConfirm?.addEventListener("click", () => {
       const jy = parseInt(yearSelect.value, 10);
       const jm = parseInt(monthSelect.value, 10);
@@ -567,8 +574,17 @@
     if (target === "spiritual_bulk_to") currentIso = spBulkCustomToIso || currentDateIso;
     if (target === "edit_life") currentIso = document.getElementById("editLifeDateIso")?.value || currentDateIso;
 
-    const parts = currentIso.split("-").map(Number);
-    const [jy, jm, jd] = gregorianToJalali(parts[0], parts[1], parts[2]);
+    if (typeof currentIso === "string") {
+      currentIso = currentIso.split("T")[0].split(" ")[0].trim();
+    }
+    const parts = (currentIso || "").split("-").map(Number);
+    let jy, jm, jd;
+    if (parts.length === 3 && !isNaN(parts[0]) && !isNaN(parts[1]) && !isNaN(parts[2])) {
+      [jy, jm, jd] = gregorianToJalali(parts[0], parts[1], parts[2]);
+    } else {
+      const todayParts = currentDateIso.split("-").map(Number);
+      [jy, jm, jd] = gregorianToJalali(todayParts[0], todayParts[1], todayParts[2]);
+    }
 
     // Populate years around current Jalali year
     yearSelect.innerHTML = "";
@@ -1323,20 +1339,15 @@
 
     document.getElementById("editLifeEntryId").value = item.id;
     document.getElementById("editLifeNotes").value = item.notes || "";
-    document.getElementById("editLifeDateIso").value = item.date_iso || "";
+
+    let cleanIso = (item.date_iso || "").split("T")[0].split(" ")[0].trim();
+    if (!cleanIso || !/^\d{4}-\d{2}-\d{2}$/.test(cleanIso)) {
+      cleanIso = currentDateIso;
+    }
+    document.getElementById("editLifeDateIso").value = cleanIso;
 
     const dateDisplay = document.getElementById("editLifeDateDisplay");
-    if (item.date_iso) {
-      const parts = item.date_iso.split("-").map(Number);
-      if (parts.length === 3) {
-        const [jy, jm, jd] = gregorianToJalali(parts[0], parts[1], parts[2]);
-        dateDisplay.textContent = `📅 ${toPersianDigits(jd)} ${PERSIAN_MONTH_NAMES[jm - 1]} ${toPersianDigits(jy)}`;
-      } else {
-        dateDisplay.textContent = item.date ? `📅 ${toPersianDigits(item.date)}` : "📅 انتخاب تاریخ لاگ";
-      }
-    } else {
-      dateDisplay.textContent = item.date ? `📅 ${toPersianDigits(item.date)}` : "📅 انتخاب تاریخ لاگ";
-    }
+    dateDisplay.textContent = `📅 ${formatIsoToJalaliDisplay(cleanIso)}`;
 
     if (Array.isArray(item.modes) && item.modes.length > 0) {
       editLifeSelectedModes = [...item.modes];
