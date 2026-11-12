@@ -1,6 +1,7 @@
 # app/services/scheduler_service.py
 
 import logging
+import asyncio
 from datetime import datetime, timedelta, timezone
 from typing import List
 from aiogram import Bot
@@ -71,7 +72,7 @@ async def send_nightly_habit_checkin(bot: Bot, target_user_id: int | None = None
     """
     try:
         g_iso, full_jalali = _get_tehran_date_info()
-        page_data = get_or_create_habit_day(g_iso, day_title=full_jalali)
+        page_data = await asyncio.to_thread(get_or_create_habit_day, g_iso, full_jalali)
 
         habits = page_data.get("habits", {})
         prog_float = float(page_data.get("progress", 0.0))
@@ -138,11 +139,11 @@ async def send_nightly_habit_checkin(bot: Bot, target_user_id: int | None = None
 
 
 async def auto_initialize_daily_spiritual() -> None:
-    """Auto-creates today's Salah row with 5/5 Ada completion and today's habit day at midnight."""
+    """Creates blank daily Salah and habit rows shortly after midnight."""
     try:
         g_iso, full_jalali = _get_tehran_date_info()
-        get_or_create_salah_day(g_iso, day_title=f"Salah - {g_iso}")
-        get_or_create_habit_day(g_iso, day_title=full_jalali)
+        await asyncio.to_thread(get_or_create_salah_day, g_iso, f"Salah - {g_iso}")
+        await asyncio.to_thread(get_or_create_habit_day, g_iso, full_jalali)
         logger.info(f"Daily spiritual & habit records auto-initialized for {g_iso}")
     except Exception as e:
         logger.error(f"Error auto-initializing daily spiritual records: {e}", exc_info=True)

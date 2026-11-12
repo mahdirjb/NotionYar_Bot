@@ -17,6 +17,44 @@ from app.config import (
 
 notion = Client(auth=NOTION_TOKEN)
 
+
+def _query_all_pages(
+    query_callable: Any,
+    query_kwargs: Dict[str, Any],
+    limit_count: Optional[int] = None,
+) -> List[Dict[str, Any]]:
+    """Collects paginated Notion query results, optionally stopping at a limit."""
+    results: List[Dict[str, Any]] = []
+    cursor: Optional[str] = None
+
+    while True:
+        kwargs = dict(query_kwargs)
+        remaining = None if limit_count is None else limit_count - len(results)
+        if remaining is not None and remaining <= 0:
+            break
+
+        kwargs["page_size"] = min(100, remaining) if remaining is not None else 100
+        if cursor:
+            kwargs["start_cursor"] = cursor
+
+        response = query_callable(**kwargs)
+        if not isinstance(response, dict):
+            break
+
+        page_results = response.get("results", [])
+        if isinstance(page_results, list):
+            results.extend(page_results)
+            if limit_count is not None and len(results) >= limit_count:
+                return results[:limit_count]
+
+        if not response.get("has_more"):
+            break
+        cursor = response.get("next_cursor")
+        if not cursor:
+            break
+
+    return results
+
 # ==========================================
 # 🌿 LIFE TRACKER CONSTANTS & MAPPINGS
 # ==========================================
@@ -244,21 +282,18 @@ def query_time_tracker_entries(
 
     filter_payload = {"and": and_filters} if len(and_filters) > 1 else and_filters[0]
 
+    query_kwargs: Dict[str, Any] = {
+        "filter": filter_payload,
+        "sorts": [{"property": "Date", "direction": "descending"}],
+    }
     if hasattr(notion, "data_sources") and hasattr(notion.data_sources, "query"):
-        query_res = notion.data_sources.query(
-            data_source_id=ds_id,
-            filter=filter_payload,
-            sorts=[{"property": "Date", "direction": "descending"}]
-        )
+        query_kwargs["data_source_id"] = ds_id
+        results = _query_all_pages(notion.data_sources.query, query_kwargs)
     else:
-        query_res = notion.databases.query( # type: ignore
-            database_id=NOTION_DBID_TIME_TRACKER,
-            filter=filter_payload,
-            sorts=[{"property": "Date", "direction": "descending"}]
-        )
+        query_kwargs["database_id"] = NOTION_DBID_TIME_TRACKER
+        results = _query_all_pages(notion.databases.query, query_kwargs)  # type: ignore
 
     parsed_entries: List[Dict[str, Any]] = []
-    results = query_res.get("results", []) if isinstance(query_res, dict) else []
 
     for page in results:
         props = page.get("properties", {})
@@ -492,16 +527,13 @@ def query_life_tracker_entries(
         kwargs["filter"] = filter_payload
 
     if hasattr(notion, "data_sources") and hasattr(notion.data_sources, "query"):
-        query_res = notion.data_sources.query(**kwargs)
+        results = _query_all_pages(notion.data_sources.query, kwargs)
     else:
         kwargs.pop("data_source_id", None)
         kwargs["database_id"] = NOTION_DBID_LIFE_TRACKER
-        if filter_payload:
-            kwargs["filter"] = filter_payload
-        query_res = notion.databases.query(**kwargs) # type: ignore
+        results = _query_all_pages(notion.databases.query, kwargs)  # type: ignore
 
     parsed_entries: List[Dict[str, Any]] = []
-    results = query_res.get("results", []) if isinstance(query_res, dict) else []
 
     for page in results:
         props = page.get("properties", {})
@@ -510,7 +542,7 @@ def query_life_tracker_entries(
         name = title_list[0].get("plain_text", "بدون عنوان") if title_list else "بدون عنوان"
 
         t_val = (props.get("Type", {}).get("select") or {}).get("name", "نامشخص")
-        
+
         mode_items = props.get("Mode", {}).get("multi_select", [])
         modes = [m.get("name") for m in mode_items if m.get("name")]
 
@@ -547,7 +579,7 @@ def get_life_tracker_entry(page_id: str) -> Optional[Dict[str, Any]]:
         name = title_list[0].get("plain_text", "بدون عنوان") if title_list else "بدون عنوان"
 
         t_val = (props.get("Type", {}).get("select") or {}).get("name", "نامشخص")
-        
+
         mode_items = props.get("Mode", {}).get("multi_select", [])
         modes = [m.get("name") for m in mode_items if m.get("name")]
 
@@ -575,9 +607,31 @@ def get_life_tracker_entry(page_id: str) -> Optional[Dict[str, Any]]:
 # 🛠 GENERAL NOTION HELPERS
 # ==========================================
 
-def archive_notion_page(page_id: str) -> bool:
-    """Archives (deletes) a page from any Notion database."""
+def archive_notion_page(
+    page_id: str,
+    expected_database_id: Optional[str] = None,
+) -> bool:
+    """Archives a page after optionally verifying its owning database."""
     try:
+        if expected_database_id:
+            page = cast(Dict[str, Any], notion.pages.retrieve(page_id=page_id))
+            parent = page.get("parent", {})
+            parent_id = parent.get("database_id") or parent.get("data_source_id")
+
+            allowed_parent_ids = {expected_database_id}
+            db_info = cast(
+                Dict[str, Any],
+                notion.databases.retrieve(database_id=expected_database_id),
+            )
+            allowed_parent_ids.update(
+                str(item.get("id"))
+                for item in db_info.get("data_sources", [])
+                if item.get("id")
+            )
+
+            if not parent_id or str(parent_id) not in allowed_parent_ids:
+                raise PermissionError("Page does not belong to the expected database.")
+
         notion.pages.update(page_id=page_id, archived=True)
         return True
     except Exception as e:
@@ -593,7 +647,7 @@ def update_notion_page_properties(page_id: str, properties: Dict[str, Any]) -> b
     except Exception as e:
         print(f"Error updating Notion page {page_id}: {e}")
         return False
-    
+
 # ==========================================
 # 🎯 HABIT TRACKER CONSTANTS & FUNCTIONS (V2.2)
 # ==========================================
@@ -955,9 +1009,9 @@ def reset_habit_day(page_id: str) -> bool:
         return True
     except Exception as e:
         print(f"Error resetting habit day: {e}")
-        return False 
-    
-def query_habit_history(limit_count: int = 60) -> List[Dict[str, Any]]:
+        return False
+
+def query_habit_history(limit_count: Optional[int] = 60) -> List[Dict[str, Any]]:
     """
     Fetches recent historical habit days sorted descending by Date_ for analytics & streaks.
     """
@@ -968,20 +1022,19 @@ def query_habit_history(limit_count: int = 60) -> List[Dict[str, Any]]:
     filter_payload: Dict[str, Any] = {}
 
     kwargs: Dict[str, Any] = {
-        "page_size": min(100, max(1, limit_count)),
+        "page_size": min(100, max(1, limit_count)) if limit_count is not None else 100,
         "sorts": [{"property": "Date_", "direction": "descending"}],
     }
 
     try:
         if hasattr(notion, "data_sources") and hasattr(notion.data_sources, "query"):
             kwargs["data_source_id"] = ds_id
-            query_res = notion.data_sources.query(**kwargs)
+            results = _query_all_pages(notion.data_sources.query, kwargs, limit_count)
         else:
             kwargs.pop("data_source_id", None)
             kwargs["database_id"] = NOTION_DBID_HABITS
-            query_res = notion.databases.query(**kwargs)  # type: ignore
+            results = _query_all_pages(notion.databases.query, kwargs, limit_count)  # type: ignore
 
-        results = query_res.get("results", []) if isinstance(query_res, dict) else []
         return [parse_habit_page(page) for page in results]
     except Exception as e:
         print(f"Error querying habit history from Notion: {e}")
@@ -1122,6 +1175,7 @@ def parse_salah_page(page: Dict[str, Any]) -> Dict[str, Any]:
 
     return {
         "id": page_id,
+        "last_edited_time": str(page.get("last_edited_time", "")),
         "name": name,
         "date_iso": date_iso,
         "shamsi_date": shamsi_date,
@@ -1137,8 +1191,7 @@ def parse_salah_page(page: Dict[str, Any]) -> Dict[str, Any]:
 
 def get_or_create_salah_day(date_iso: str, day_title: str = "New Salah") -> Dict[str, Any]:
     """
-    Finds existing salah page for the given date, or creates a new row with all 5 prayers checked
-    and set to Ada (on-time) by default.
+    Finds an existing Salah page or creates a blank daily row.
     """
     if not NOTION_DBID_SALAH:
         raise ValueError("NOTION_DBID_SALAH is not defined in environment variables.")
@@ -1163,22 +1216,15 @@ def get_or_create_salah_day(date_iso: str, day_title: str = "New Salah") -> Dict
     if results:
         page = cast(Dict[str, Any], results[0])
     else:
-        # Default Auto-Completion: All 5 prayers checked and added to Ada?
         create_props: Dict[str, Any] = {
             "Name": {"title": [{"text": {"content": day_title}}]},
             "Date_": {"date": {"start": date_iso}},
-            "Sobh": {"checkbox": True},
-            "Zohr": {"checkbox": True},
-            "Asr": {"checkbox": True},
-            "Maghreb": {"checkbox": True},
-            "Eshsa": {"checkbox": True},
-            "Ada?": {"multi_select": [
-                {"name": "صبح"},
-                {"name": "ظهر"},
-                {"name": "عصر"},
-                {"name": "مغرب"},
-                {"name": "عشاء"},
-            ]},
+            "Sobh": {"checkbox": False},
+            "Zohr": {"checkbox": False},
+            "Asr": {"checkbox": False},
+            "Maghreb": {"checkbox": False},
+            "Eshsa": {"checkbox": False},
+            "Ada?": {"multi_select": []},
             "Notes": {"rich_text": []}
         }
         raw_created = notion.pages.create(
@@ -1367,7 +1413,7 @@ def update_salah_notes(page_id: str, notes_text: str) -> bool:
 def query_salah_entries(
     start_date_iso: Optional[str] = None,
     end_date_iso: Optional[str] = None,
-    limit_count: int = 30
+    limit_count: Optional[int] = None
 ) -> List[Dict[str, Any]]:
     """Queries history of Salah days."""
     if not NOTION_DBID_SALAH:
@@ -1390,7 +1436,7 @@ def query_salah_entries(
         filter_payload = {"and": and_filters}
 
     kwargs: Dict[str, Any] = {
-        "page_size": min(100, max(1, limit_count)),
+        "page_size": min(100, max(1, limit_count)) if limit_count is not None else 100,
         "sorts": [{"property": "Date_", "direction": "descending"}]
     }
     if filter_payload:
@@ -1399,13 +1445,12 @@ def query_salah_entries(
     try:
         if hasattr(notion, "data_sources") and hasattr(notion.data_sources, "query"):
             kwargs["data_source_id"] = ds_id
-            res = notion.data_sources.query(**kwargs)
+            results = _query_all_pages(notion.data_sources.query, kwargs, limit_count)
         else:
             kwargs.pop("data_source_id", None)
             kwargs["database_id"] = NOTION_DBID_SALAH
-            res = notion.databases.query(**kwargs)  # type: ignore
+            results = _query_all_pages(notion.databases.query, kwargs, limit_count)  # type: ignore
 
-        results = res.get("results", []) if isinstance(res, dict) else []
         return [parse_salah_page(p) for p in results]
     except Exception as e:
         print(f"Error querying salah entries: {e}")
@@ -1466,7 +1511,7 @@ def add_quran_reading_entry(
 def query_quran_entries(
     start_date_iso: Optional[str] = None,
     end_date_iso: Optional[str] = None,
-    limit_count: int = 20
+    limit_count: Optional[int] = None
 ) -> List[Dict[str, Any]]:
     """Queries recent Quran reading sessions."""
     if not NOTION_DBID_QURAN:
@@ -1489,7 +1534,7 @@ def query_quran_entries(
         filter_payload = {"and": and_filters}
 
     kwargs: Dict[str, Any] = {
-        "page_size": min(100, max(1, limit_count)),
+        "page_size": min(100, max(1, limit_count)) if limit_count is not None else 100,
         "sorts": [{"property": "Date_", "direction": "descending"}]
     }
     if filter_payload:
@@ -1498,13 +1543,12 @@ def query_quran_entries(
     try:
         if hasattr(notion, "data_sources") and hasattr(notion.data_sources, "query"):
             kwargs["data_source_id"] = ds_id
-            res = notion.data_sources.query(**kwargs)
+            results = _query_all_pages(notion.data_sources.query, kwargs, limit_count)
         else:
             kwargs.pop("data_source_id", None)
             kwargs["database_id"] = NOTION_DBID_QURAN
-            res = notion.databases.query(**kwargs)  # type: ignore
+            results = _query_all_pages(notion.databases.query, kwargs, limit_count)  # type: ignore
 
-        results = res.get("results", []) if isinstance(res, dict) else []
         return [parse_quran_page(p) for p in results]
     except Exception as e:
         print(f"Error querying quran entries: {e}")
@@ -1513,8 +1557,20 @@ def query_quran_entries(
 
 def get_spiritual_report(start_date_iso: str, end_date_iso: str) -> Dict[str, Any]:
     """Generates analytics report for Salah and Quran over a date range."""
-    salah_list = query_salah_entries(start_date_iso=start_date_iso, end_date_iso=end_date_iso, limit_count=100)
-    quran_list = query_quran_entries(start_date_iso=start_date_iso, end_date_iso=end_date_iso, limit_count=100)
+    raw_salah_list = query_salah_entries(start_date_iso=start_date_iso, end_date_iso=end_date_iso)
+    quran_list = query_quran_entries(start_date_iso=start_date_iso, end_date_iso=end_date_iso)
+
+    # Older versions could create more than one Salah page for the same date.
+    # Reports use the most recently edited row so a day is never counted twice.
+    salah_by_date: Dict[str, Dict[str, Any]] = {}
+    for item in raw_salah_list:
+        date_key = str(item.get("date_iso") or "")
+        if not date_key:
+            continue
+        previous = salah_by_date.get(date_key)
+        if previous is None or str(item.get("last_edited_time") or "") > str(previous.get("last_edited_time") or ""):
+            salah_by_date[date_key] = item
+    salah_list = sorted(salah_by_date.values(), key=lambda item: str(item.get("date_iso") or ""), reverse=True)
 
     total_days = len(salah_list)
     total_prayers_possible = total_days * 5
@@ -1552,5 +1608,6 @@ def get_spiritual_report(start_date_iso: str, end_date_iso: str) -> Dict[str, An
         "prayer_stats": prayer_stats,
         "quran_sessions_count": len(quran_list),
         "quran_sessions": quran_list,
+        "daily_salah": salah_list,
         "recent_salah": salah_list[:7]
-    }
+    }

@@ -286,6 +286,7 @@ def calculate_consistency_matrix(
             "progress": day_prog,
             "has_data": page is not None,
             "is_frozen": frz,
+            "habits": page.get("habits", {}) if page else {},
         })
 
         if page:

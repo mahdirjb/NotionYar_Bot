@@ -10,7 +10,7 @@ from aiogram import Bot, Dispatcher
 from aiogram.types import MenuButtonWebApp, WebAppInfo
 
 from app.config import BOT_TOKEN, WEBAPP_URL, PORT
-from app.handlers import common, time_tracker, reports, admin, life_tracker, habits, spiritual
+from app.handlers import common, reports, admin, life_tracker, habits, spiritual
 from app.services.scheduler_service import start_scheduler, shutdown_scheduler
 from app.webapp import app
 
@@ -36,7 +36,6 @@ async def lifespan(application):
 
     # Register routers
     dp.include_router(common.router)
-    dp.include_router(time_tracker.router)
     dp.include_router(reports.router)
     dp.include_router(admin.router)
     dp.include_router(life_tracker.router)

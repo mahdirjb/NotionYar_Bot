@@ -1,0 +1,20 @@
+{
+  "name": "نوشن‌یار",
+  "short_name": "نوشن‌یار",
+  "description": "مرکز روزانه عادت‌ها، روزمرگی و مسیر معنوی",
+  "lang": "fa",
+  "dir": "rtl",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "background_color": "#f8f7fb",
+  "theme_color": "#087f8c",
+  "icons": [
+    {
+      "src": "/static/icon.svg?v=5.0.2",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
+}

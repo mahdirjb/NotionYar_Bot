@@ -3,7 +3,10 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-  <title>نوشن‌یار | ثبت سریع و هوشمند</title>
+  <meta name="theme-color" content="#087f8c">
+  <title>نوشن‌یار | مرکز روزانه</title>
+  <link rel="manifest" href="/manifest.webmanifest">
+  <link rel="icon" href="/static/icon.svg" type="image/svg+xml">
   <!-- Telegram WebApp SDK -->
   <script src="https://telegram.org/js/telegram-web-app.js"></script>
   <!-- Cache Busting for Telegram WebApp -->
@@ -14,16 +17,40 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Vazirmatn:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="/static/app.css?v=3.1.2">
+  <link rel="stylesheet" href="/static/app.css?v=6.0.1">
 </head>
 
-<body>
+<body class="auth-pending">
+  <section class="login-screen" id="loginScreen" aria-labelledby="loginTitle">
+    <div class="login-brand">
+      <div class="login-mark">ن</div>
+      <div>
+        <span>نوشن‌یار</span>
+        <small>مرکز روزانه شخصی</small>
+      </div>
+    </div>
+    <div class="login-panel">
+      <span class="workspace-kicker">ورود امن</span>
+      <h1 id="loginTitle">به فضای روزانه‌ات برگرد</h1>
+      <p>برای دسترسی از مرورگر، اطلاعات ورود وب را وارد کن.</p>
+      <form id="webLoginForm" class="login-form">
+        <label for="webUsername">نام کاربری</label>
+        <input id="webUsername" name="username" type="text" autocomplete="username" required>
+        <label for="webPassword">رمز عبور</label>
+        <input id="webPassword" name="password" type="password" autocomplete="current-password" required>
+        <button type="submit" class="btn-primary" id="btnWebLogin">ورود به نوشن‌یار</button>
+        <div class="login-error" id="loginError" role="alert"></div>
+      </form>
+    </div>
+  </section>
+
   <div id="app">
     <!-- Header -->
     <header class="app-header">
       <div class="user-info">
-        <div class="user-avatar" id="userAvatar">🌿</div>
+        <div class="user-avatar" id="userAvatar">ن</div>
         <div>
+          <div class="brand-eyebrow">نوشن‌یار</div>
           <div class="user-name-row">
             <span class="user-name" id="userName">در حال دریافت...</span>
             <span class="user-role-badge" id="userRole">کاربر</span>
@@ -31,122 +58,36 @@
           <div class="current-date" id="currentDate">...</div>
         </div>
       </div>
-      <div style="display: flex; align-items: center; gap: 8px;">
+      <div class="header-actions">
+        <div class="sync-status is-online" id="syncStatus" title="وضعیت اتصال و همگام‌سازی">
+          <span class="sync-dot"></span>
+          <span id="syncStatusText">آنلاین</span>
+        </div>
+        <button class="btn-icon" id="btnRefresh" title="بروزرسانی داده‌ها" aria-label="بروزرسانی داده‌ها">
+          <i data-lucide="refresh-cw"></i>
+        </button>
         <button type="button" class="btn-theme-toggle" id="btnToggleTheme" title="تغییر تم (تاریک / روشن)">
-          <span class="theme-icon" id="themeIcon">☀️</span>
+          <span class="theme-icon" id="themeIcon"><i data-lucide="moon"></i></span>
         </button>
         <button type="button" class="btn-stealth-toggle" id="btnToggleStealth" title="حالت مخفی برای مکان‌های شلوغ">
-          <span class="stealth-icon">🕶️</span>
+          <span class="stealth-icon"><i data-lucide="eye-off"></i></span>
           <span class="stealth-text">مخفی</span>
         </button>
-        <button class="btn-icon" id="btnRefresh" title="بروزرسانی داده‌ها">
-          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-            <polyline points="23 4 23 10 17 10"></polyline>
-            <polyline points="1 20 1 14 7 14"></polyline>
-            <path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"></path>
-          </svg>
-        </button>
+        <button type="button" class="btn-icon" id="btnWebLogout" title="خروج از حساب وب" aria-label="خروج از حساب وب" style="display:none;"><i data-lucide="log-out"></i></button>
       </div>
     </header>
 
     <!-- Main Content Container -->
     <main class="app-content">
-
-      <!-- ================= TAB 1: TIME TRACKER ================= -->
-      <section id="tab-time" class="tab-panel active">
-        <div class="card">
-          <div class="card-title">
-            <span class="icon">⏱️</span>
-            <span>ثبت زمان کاری جدید</span>
-          </div>
-
-          <form id="formTimeTracker" class="form-grid">
-            <div class="form-group">
-              <label for="timeTitle">عنوان کار / تسک <span class="required">*</span></label>
-              <input type="text" id="timeTitle" placeholder="مثال: توسعه فیچر مینی‌اپ" required autocomplete="off">
-            </div>
-
-            <div class="form-group">
-              <label for="timePerson">انجام‌دهنده</label>
-              <select id="timePerson">
-                <option value="">در حال دریافت لیست افراد...</option>
-              </select>
-            </div>
-
-            <!-- Persian Date Selector -->
-            <div class="form-group">
-              <label>تاریخ ثبت</label>
-              <div class="date-quick-picker">
-                <button type="button" class="btn-pill active" data-date-offset="0">امروز</button>
-                <button type="button" class="btn-pill" data-date-offset="1">دیروز</button>
-                <button type="button" class="btn-pill" data-date-offset="2">پریروز</button>
-                <button type="button" class="btn-pill btn-custom-date" id="btnOpenTimePicker">📅 تقویم شمسی</button>
-              </div>
-              <div class="selected-date-badge" id="timeSelectedDateBadge">📅 تاریخ انتخاب‌شده: امروز</div>
-            </div>
-
-            <div class="form-row">
-              <div class="form-group">
-                <label>ساعت شروع</label>
-                <button type="button" class="btn-time-picker" id="btnOpenStartTimePicker">
-                  <span class="time-picker-icon">⏰</span>
-                  <span id="timeStartDisplay">انتخاب شروع...</span>
-                </button>
-                <input type="hidden" id="timeStart">
-              </div>
-              <div class="form-group">
-                <div style="display:flex; justify-content:space-between; align-items:center;">
-                  <label>ساعت پایان</label>
-                  <button type="button" class="btn-text-action" id="btnSetNowEnd">🕒 اکنون</button>
-                </div>
-                <button type="button" class="btn-time-picker" id="btnOpenEndTimePicker">
-                  <span class="time-picker-icon">⏰</span>
-                  <span id="timeEndDisplay">انتخاب پایان...</span>
-                </button>
-                <input type="hidden" id="timeEnd">
-              </div>
-            </div>
-
-            <div class="form-group">
-              <label for="timeDuration">مدت زمان (دقیقه)</label>
-              <div class="quick-duration-pills">
-                <button type="button" class="btn-chip" data-min="15">۱۵ د</button>
-                <button type="button" class="btn-chip" data-min="30">۳۰ د</button>
-                <button type="button" class="btn-chip" data-min="45">۴۵ د</button>
-                <button type="button" class="btn-chip" data-min="60">۱ س</button>
-                <button type="button" class="btn-chip" data-min="90">۱.۵ س</button>
-                <button type="button" class="btn-chip" data-min="120">۲ س</button>
-              </div>
-              <div class="duration-stepper-row">
-                <button type="button" class="btn-step" id="btnDecDuration">-۱۵</button>
-                <input type="number" id="timeDuration" min="1" placeholder="مثلاً ۹۰">
-                <button type="button" class="btn-step" id="btnIncDuration">+۱۵</button>
-              </div>
-            </div>
-
-            <div class="form-group">
-              <label>میزان رضایت</label>
-              <div class="rating-stars" id="timeSatisfaction">
-                <button type="button" class="btn-star" data-val="1" title="ضعیف">😞</button>
-                <button type="button" class="btn-star" data-val="2" title="قابل قبول">😐</button>
-                <button type="button" class="btn-star" data-val="3" title="خوب">🙂</button>
-                <button type="button" class="btn-star" data-val="4" title="خیلی خوب">😃</button>
-                <button type="button" class="btn-star active" data-val="5" title="عالی">🤩</button>
-              </div>
-            </div>
-
-            <div class="form-group">
-              <label for="timeDescription">توضیحات (اختیاری)</label>
-              <textarea id="timeDescription" rows="2" placeholder="جزییات، دستاوردها یا پیوندها..."></textarea>
-            </div>
-
-            <button type="submit" class="btn-primary" id="btnSubmitTime">
-              <span>ثبت در نوشن</span>
-              <span class="btn-arrow">←</span>
-            </button>
-          </form>
+      <section class="workspace-intro" aria-labelledby="workspaceTitle">
+        <div>
+          <span class="workspace-kicker" id="workspaceKicker">مرکز روزانه</span>
+          <h1 id="workspaceTitle">امروز را روشن و مرتب پیش ببر</h1>
+          <p id="workspaceDescription">روزمرگی‌ها، عادت‌ها و مسیر معنوی در یک نمای یکپارچه.</p>
         </div>
+        <div class="workspace-date-mark" id="workspaceMark" aria-hidden="true">روز من</div>
       </section>
+
 
       <!-- ================= TAB 2: LIFE TRACKER ================= -->
       <section id="tab-life" class="tab-panel">
@@ -238,10 +179,26 @@
           <div class="card">
             <div class="card-title">
               <span class="icon">📜</span>
-              <span>تاریخچه لاگ‌های روزمرگی</span>
+              <span>گزارش و تاریخچه روزمرگی</span>
             </div>
 
-            <div class="filter-row">
+            <div class="history-summary-grid" id="lifeHistorySummary">
+              <div class="history-summary-item"><strong>۰</strong><span>رکورد</span></div>
+              <div class="history-summary-item"><strong>۰</strong><span>روز فعال</span></div>
+              <div class="history-summary-item"><strong>۰</strong><span>فعالیت متفاوت</span></div>
+              <div class="history-summary-item"><strong>—</strong><span>پرتکرارترین</span></div>
+            </div>
+
+            <div class="history-search-row">
+              <label class="history-search-box" for="lifeHistorySearch">
+                <i data-lucide="search"></i>
+                <input id="lifeHistorySearch" type="search" placeholder="جست‌وجو در فعالیت، حالت و توضیحات">
+              </label>
+              <button type="button" class="btn-step" id="btnResetLifeHistory"><i data-lucide="filter-x"></i><span>پاک‌کردن فیلترها</span></button>
+              <button type="button" class="btn-step" id="btnExportLifeHistory"><i data-lucide="download"></i><span>CSV</span></button>
+            </div>
+
+            <div class="filter-row history-filter-grid">
               <div class="filter-col">
                 <label>فعالیت:</label>
                 <div class="custom-dropdown" id="lifeHistoryFilterDropdown">
@@ -284,10 +241,22 @@
                   </div>
                 </div>
               </div>
+              <div class="filter-col">
+                <label for="lifeHistoryModeFilter">حالت:</label>
+                <select id="lifeHistoryModeFilter"><option value="">تمام حالت‌ها</option></select>
+              </div>
+              <div class="filter-col">
+                <label for="lifeHistorySort">مرتب‌سازی:</label>
+                <select id="lifeHistorySort">
+                  <option value="newest">جدیدترین</option>
+                  <option value="oldest">قدیمی‌ترین</option>
+                  <option value="type">نام فعالیت</option>
+                </select>
+              </div>
             </div>
 
             <!-- Custom Date Range Selector (Hidden unless custom is chosen) -->
-            <div id="lifeCustomDateRangeRow" style="display: none; margin-bottom: 12px; background: var(--input-bg); border: 1px solid var(--card-border); border-radius: 12px; padding: 10px;">
+            <div id="lifeCustomDateRangeRow" style="display: none; margin-bottom: 12px; background: var(--input-bg); border: 1px solid var(--card-border); border-radius: 8px; padding: 10px;">
               <div style="font-size: 11px; font-weight: 700; color: var(--link-color); margin-bottom: 8px;">تعیین بازه تاریخی دلخواه (شمسی):</div>
               <div class="form-row">
                 <div class="form-group">
@@ -301,15 +270,25 @@
               </div>
             </div>
 
+            <div class="history-view-row">
+              <div class="segmented-control history-view-switch" aria-label="نحوه نمایش تاریخچه">
+                <button type="button" class="seg-btn active" data-life-history-view="date">گروه‌بندی روز</button>
+                <button type="button" class="seg-btn" data-life-history-view="type">گروه‌بندی فعالیت</button>
+                <button type="button" class="seg-btn" data-life-history-view="list">فهرست ساده</button>
+              </div>
+              <span id="lifeHistoryResultCount" class="history-result-count">۰ نتیجه</span>
+            </div>
+
             <div class="timeline-list" id="lifeHistoryList">
               <div class="loading-state">در حال بارگذاری تاریخچه...</div>
             </div>
+            <div class="history-pagination" id="lifeHistoryPagination" hidden></div>
           </div>
         </div>
       </section>
 
       <!-- ================= TAB 3: HABITS ================= -->
-      <section id="tab-habits" class="tab-panel">
+      <section id="tab-habits" class="tab-panel active">
         <!-- Sub-navigation Pills -->
         <div class="segmented-control">
           <button class="seg-btn active" data-subtab="habit-sub-today">🎯 چک‌لیست عادات</button>
@@ -406,13 +385,28 @@
             </div>
 
             <!-- Habit Rankings -->
-            <div class="analytics-section-title" style="margin-top: 16px;">📊 برترین عادات در ۷ روز اخیر</div>
+            <div class="analytics-toolbar">
+              <div class="analytics-section-title" id="habitRankingTitle">برترین عادات در ۷ روز اخیر</div>
+              <div class="report-period-selector matrix-periods" aria-label="بازه ماتریس">
+                <button type="button" class="btn-pill active" data-habit-analytics-period="7d">۷ روز</button>
+                <button type="button" class="btn-pill" data-habit-analytics-period="30d">۳۰ روز</button>
+                <button type="button" class="btn-pill" data-habit-analytics-period="month">ماه جاری</button>
+              </div>
+            </div>
             <div class="rankings-list" id="habitRankingsList">
               <div class="loading-state">در حال محاسبه آمار...</div>
             </div>
 
-            <!-- 7-Day Consistency Matrix -->
-            <div class="analytics-section-title" style="margin-top: 20px;">🗓️ ماتریکس مداومت ۷ روز اخیر</div>
+            <div class="matrix-heading-row">
+              <div class="analytics-section-title" id="habitMatrixTitle">ماتریس کامل مداومت ۷ روز اخیر</div>
+              <div class="matrix-legend">
+                <span><i class="done"></i>کامل</span>
+                <span><i class="partial"></i>سبک/نیمه</span>
+                <span><i class="reason"></i>با دلیل</span>
+                <span><i class="missed"></i>انجام‌نشده</span>
+                <span><i class="frozen"></i>فریز</span>
+              </div>
+            </div>
             <div class="heatmap-matrix-box" id="habitHeatmapContainer">
               <div class="loading-state">در حال بارگذاری ماتریکس...</div>
             </div>
@@ -642,6 +636,73 @@
       </section>
 
 
+      <!-- ================= REPORTS CENTER ================= -->
+      <section id="tab-reports" class="tab-panel">
+        <div class="reports-toolbar">
+          <div>
+            <span class="workspace-kicker">مرکز گزارش‌ها</span>
+            <h2>تصویر روشن از روندها و عملکرد</h2>
+            <p id="reportsPeriodCaption">داده‌های ۷ روز اخیر به تفکیک هر بخش</p>
+          </div>
+          <div class="reports-actions">
+            <button type="button" class="btn-step" id="btnExportReports" title="دریافت داده‌های گزارش در فایل CSV">خروجی CSV</button>
+            <button type="button" class="btn-icon" id="btnRefreshReports" title="بروزرسانی گزارش" aria-label="بروزرسانی گزارش"></button>
+          </div>
+        </div>
+
+        <div class="report-period-selector reports-periods" aria-label="انتخاب بازه گزارش">
+          <button type="button" class="btn-pill active" data-report-period="7d">۷ روز اخیر</button>
+          <button type="button" class="btn-pill" data-report-period="month">ماه جاری</button>
+          <button type="button" class="btn-pill" data-report-period="30d">۳۰ روز اخیر</button>
+        </div>
+
+        <div id="reportsWarnings" class="reports-warnings" hidden></div>
+        <div class="report-kpi-grid" id="reportsKpiGrid">
+          <div class="loading-state">در حال آماده‌سازی گزارش یکپارچه...</div>
+        </div>
+
+        <div class="reports-layout">
+          <section class="report-panel report-panel-wide" aria-labelledby="activityReportTitle">
+            <div class="report-panel-heading">
+              <div>
+                <span class="report-eyebrow">روند روزانه</span>
+                <h3 id="activityReportTitle">نمای مقایسه‌ای فعالیت‌ها</h3>
+              </div>
+              <div class="chart-legend">
+                <span><i class="legend-habit"></i>عادت‌ها</span>
+                <span><i class="legend-life"></i>روزمرگی</span>
+                <span><i class="legend-prayer"></i>نماز اداء</span>
+              </div>
+            </div>
+            <div class="report-chart" id="reportsDailyChart"></div>
+          </section>
+
+          <section class="report-panel" aria-labelledby="habitReportTitle">
+            <div class="report-panel-heading">
+              <div><span class="report-eyebrow">عادت‌ها</span><h3 id="habitReportTitle">مداومت و رتبه‌بندی</h3></div>
+            </div>
+            <div class="report-inline-stats" id="reportsHabitStats"></div>
+            <div class="report-list" id="reportsHabitRanking"></div>
+          </section>
+
+          <section class="report-panel" aria-labelledby="lifeReportTitle">
+            <div class="report-panel-heading">
+              <div><span class="report-eyebrow">روزمرگی</span><h3 id="lifeReportTitle">توزیع فعالیت‌ها</h3></div>
+            </div>
+            <div class="report-list" id="reportsLifeBreakdown"></div>
+          </section>
+
+          <section class="report-panel report-panel-wide" aria-labelledby="spiritualReportTitle">
+            <div class="report-panel-heading">
+              <div><span class="report-eyebrow">معنوی</span><h3 id="spiritualReportTitle">تفکیک نمازها و تلاوت</h3></div>
+            </div>
+            <div class="report-inline-stats" id="reportsSpiritualStats"></div>
+            <div class="prayer-report-grid" id="reportsPrayerBreakdown"></div>
+          </section>
+        </div>
+      </section>
+
+
       <!-- ================= TAB 5: ADMIN PANEL ================= -->
       <section id="tab-admin" class="tab-panel">
         <div class="card">
@@ -676,13 +737,13 @@
               <div class="custom-dropdown" id="adminRoleDropdown">
                 <input type="hidden" id="adminNewUserRole" value="member">
                 <button type="button" class="custom-dropdown-trigger" id="adminRoleDropdownTrigger" aria-haspopup="listbox" aria-expanded="false">
-                  <span class="custom-dropdown-selected" id="adminRoleSelected">👤 عضو تیم (ثبت زمان و گزارش)</span>
+                  <span class="custom-dropdown-selected" id="adminRoleSelected">👤 عضو تیم (مشاهده گزارش)</span>
                   <span class="custom-dropdown-arrow">▾</span>
                 </button>
                 <div class="custom-dropdown-menu" id="adminRoleDropdownMenu" role="listbox">
                   <div class="custom-dropdown-item active" data-value="member" role="option">
                     <span class="item-title">👤 عضو تیم</span>
-                    <span class="item-desc">ثبت زمان و گزارش</span>
+                    <span class="item-desc">مشاهده گزارش‌های قبلی</span>
                   </div>
                   <div class="custom-dropdown-item" data-value="manager" role="option">
                     <span class="item-title">💼 مدیر تیم</span>
@@ -694,7 +755,7 @@
                   </div>
                   <div class="custom-dropdown-item" data-value="guest" role="option">
                     <span class="item-title">🌿 مهمان</span>
-                    <span class="item-desc">فقط ثبت زمان</span>
+                    <span class="item-desc">دسترسی پایه به ربات</span>
                   </div>
                 </div>
               </div>
@@ -715,25 +776,25 @@
 
     <!-- Bottom Navigation Bar -->
     <nav class="bottom-nav">
-      <button class="nav-item active" data-tab="tab-time">
-        <span class="nav-icon">⏱️</span>
-        <span class="nav-label">زمان کاری</span>
-      </button>
-      <button class="nav-item" data-tab="tab-life">
-        <span class="nav-icon">🌱</span>
-        <span class="nav-label">روزمرگی</span>
-      </button>
-      <button class="nav-item" data-tab="tab-habits">
-        <span class="nav-icon">🎯</span>
+      <button class="nav-item active" data-tab="tab-habits">
+        <span class="nav-icon"><i data-lucide="circle-check-big"></i></span>
         <span class="nav-label">عادات</span>
       </button>
+      <button class="nav-item" data-tab="tab-life">
+        <span class="nav-icon"><i data-lucide="notebook-pen"></i></span>
+        <span class="nav-label">روزمرگی</span>
+      </button>
       <button class="nav-item" data-tab="tab-spiritual">
-        <span class="nav-icon">📿</span>
+        <span class="nav-icon"><i data-lucide="moon-star"></i></span>
         <span class="nav-label">معنوی</span>
+      </button>
+      <button class="nav-item" data-tab="tab-reports">
+        <span class="nav-icon"><i data-lucide="chart-no-axes-combined"></i></span>
+        <span class="nav-label">گزارش‌ها</span>
       </button>
 
       <button class="nav-item" id="navItemAdmin" data-tab="tab-admin" style="display: none;">
-        <span class="nav-icon">👑</span>
+        <span class="nav-icon"><i data-lucide="settings-2"></i></span>
         <span class="nav-label">مدیریت</span>
       </button>
     </nav>
@@ -867,50 +928,6 @@
       </div>
     </div>
 
-    <!-- Modal for Sleek Persian Time Picker -->
-    <div id="timePickerModal" class="modal-backdrop" style="display: none;">
-      <div class="modal-card">
-        <div class="modal-header">
-          <span class="modal-title" id="timePickerModalTitle">⏰ تنظیم ساعت</span>
-          <button class="btn-modal-close" id="btnTimePickerModalClose">&times;</button>
-        </div>
-        <div class="modal-body">
-          <div class="time-quick-pills">
-            <button type="button" class="btn-chip" id="btnTimeQuickNow">🕒 هم‌اکنون</button>
-            <button type="button" class="btn-chip" id="btnTimeQuickSub15">۱۵- د</button>
-            <button type="button" class="btn-chip" id="btnTimeQuickSub30">۳۰- د</button>
-            <button type="button" class="btn-chip" id="btnTimeQuickSub60">۱- ساعت</button>
-          </div>
-
-          <div class="time-picker-preview-box">
-            <span class="time-preview-large" id="timePickerDisplay">۰۰:۰۰</span>
-            <div class="time-preview-hint">ساعت : دقیقه</div>
-          </div>
-
-          <div class="time-manual-input-box" style="margin-top: 10px; display: flex; align-items: center; justify-content: center; gap: 8px; background: var(--input-bg); border: 1px solid var(--card-border); border-radius: 12px; padding: 6px 10px;">
-            <span style="font-size: 11px; color: var(--hint-color); font-weight: 600;">⌨️ نوشتن زمان دقیق:</span>
-            <input type="text" id="timePickerManualInput" placeholder="مثلاً ۱۸:۳۲" style="width: 85px; text-align: center; font-family: monospace, 'Vazirmatn'; font-size: 14px; font-weight: 700; padding: 4px 6px; border-radius: 8px; border: 1px solid var(--card-border); background: var(--bg-color); color: var(--text-color);">
-            <button type="button" class="btn-chip" id="btnApplyManualTime" style="padding: 4px 10px; font-size: 11px; font-weight: 700;">اعمال</button>
-          </div>
-
-          <div style="margin-top:14px;">
-            <div class="picker-section-label">ساعت (از ۰۰ تا ۲۳):</div>
-            <div class="hours-chips-grid" id="hoursChipsGrid"></div>
-          </div>
-
-          <div style="margin-top:12px;">
-            <div class="picker-section-label">دقیقه:</div>
-            <div class="minutes-chips-grid" id="minutesChipsGrid"></div>
-          </div>
-
-          <div style="display:flex; gap:8px; margin-top:16px;">
-            <button type="button" class="btn-step" id="btnClearTimePicker" style="flex:1;">پاک کردن</button>
-            <button type="button" class="btn-primary" id="btnConfirmTimePicker" style="flex:2;">تایید ساعت</button>
-          </div>
-        </div>
-      </div>
-    </div>
-
     <!-- Modal for Spiritual Bulk Range Ada -->
     <div id="spiritualBulkRangeModal" class="modal-backdrop" style="display: none;">
       <div class="modal-card">
@@ -1006,7 +1023,7 @@
     <div id="toast" class="toast"></div>
   </div>
 
-  <script src="/static/app.js?v=3.1.2"></script>
+  <script src="/static/vendor/lucide.min.js?v=1.72.0"></script>
+  <script src="/static/app.js?v=6.0.1"></script>
 </body>
 </html>
-

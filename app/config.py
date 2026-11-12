@@ -10,6 +10,19 @@ NOTION_TOKEN = os.getenv("NOTION_TOKEN")
 WEBAPP_URL = os.getenv("WEBAPP_URL", "").strip()
 PORT = int(os.getenv("PORT", "8000"))
 
+# Standalone web access. Prefer WEB_LOGIN_PASSWORD_HASH in production.
+WEB_LOGIN_USERNAME = os.getenv("WEB_LOGIN_USERNAME", "").strip()
+WEB_LOGIN_PASSWORD = os.getenv("WEB_LOGIN_PASSWORD", "")
+WEB_LOGIN_PASSWORD_HASH = os.getenv("WEB_LOGIN_PASSWORD_HASH", "").strip()
+WEB_SESSION_SECRET = os.getenv("WEB_SESSION_SECRET", "").strip()
+WEB_SESSION_DAYS = int(os.getenv("WEB_SESSION_DAYS", "30"))
+WEB_COOKIE_SECURE = os.getenv("WEB_COOKIE_SECURE", "true").lower() == "true"
+ALLOWED_HOSTS = [
+    host.strip()
+    for host in os.getenv("ALLOWED_HOSTS", "").split(",")
+    if host.strip()
+]
+
 
 def _clean_database_id(raw_id: str | None) -> str | None:
     """
@@ -26,8 +39,8 @@ def _clean_database_id(raw_id: str | None) -> str | None:
 
 
 NOTION_DBID_TIME_TRACKER = _clean_database_id(
-    os.getenv("NOTION_DBID_TIME_TRACKER") or 
-    os.getenv("NOTION_DBID_Time_Tracker") or 
+    os.getenv("NOTION_DBID_TIME_TRACKER") or
+    os.getenv("NOTION_DBID_Time_Tracker") or
     os.getenv("NOTION_DATABASE_ID")
 )
 
@@ -62,4 +75,4 @@ if not ADMIN_USERS and LEGACY_ALLOWED:
 if LEGACY_ALLOWED:
     for uid in LEGACY_ALLOWED:
         if uid not in ADMIN_USERS and uid not in MANAGER_USERS and uid not in MEMBER_USERS and uid not in GUEST_USERS:
-            MEMBER_USERS.append(uid)
+            MEMBER_USERS.append(uid)

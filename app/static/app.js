@@ -1,13 +1,208 @@
 // app/static/app.js
-// NotionYar Telegram Mini App v2.6 - Persian Digits, Stealth Mode Unblur, Presets & Admin Panel
+// NotionYar Telegram Mini App v6.0
 
 (function () {
   const tg = window.Telegram?.WebApp;
+  const nativeFetch = window.fetch.bind(window);
+  let offlineMutationQueued = false;
+  let pendingQueueCount = 0;
+  let originReachable = navigator.onLine;
+  let currentReportPeriod = "7d";
+  let currentReportData = null;
+
+  const UI_ICON_MAP = {
+    '[data-subtab="life-sub-log"]': "plus",
+    '[data-subtab="life-sub-radar"]': "activity",
+    '[data-subtab="life-sub-history"]': "history",
+    '[data-subtab="habit-sub-today"]': "list-checks",
+    '[data-subtab="habit-sub-analytics"]': "chart-column",
+    '[data-subtab="habit-sub-journal"]': "notebook-tabs",
+    '[data-subtab="spiritual-sub-day"]': "calendar-check-2",
+    '[data-subtab="spiritual-sub-quran"]': "book-open-text",
+    '[data-subtab="spiritual-sub-report"]': "chart-line",
+    "#btnOpenLifePicker": "calendar-days",
+    "#btnOpenHabitPicker": "calendar-days",
+    "#btnBulkComplete": "check-check",
+    "#btnOpenPresetsModal": "panels-top-left",
+    "#btnActionFreeze": "snowflake",
+    "#btnActionReset": "rotate-ccw",
+    "#btnExportReports": "download",
+    "#btnRefreshReports": "refresh-cw",
+  };
+  let iconObserver = null;
+  let iconRefreshQueued = false;
+
+  function stripDecorativeEmoji(root = document) {
+    const emojiPattern = /(?:\p{Extended_Pictographic}\uFE0F?(?:\u200D\p{Extended_Pictographic}\uFE0F?)*)/gu;
+    const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
+    const textNodes = [];
+    while (walker.nextNode()) textNodes.push(walker.currentNode);
+    textNodes.forEach((node) => {
+      if (node.parentElement?.closest("script, style, svg")) return;
+      const cleaned = node.nodeValue.replace(emojiPattern, "").replace(/\s{2,}/g, " ").trimStart();
+      if (cleaned !== node.nodeValue) node.nodeValue = cleaned;
+    });
+    root.querySelectorAll?.("[placeholder]").forEach((element) => {
+      const cleaned = element.placeholder.replace(emojiPattern, "").trim();
+      if (cleaned !== element.placeholder) element.placeholder = cleaned;
+    });
+  }
+
+  function installMappedIcons() {
+    Object.entries(UI_ICON_MAP).forEach(([selector, iconName]) => {
+      document.querySelectorAll(selector).forEach((element) => {
+        if (element.querySelector(":scope > .ui-icon")) return;
+        const icon = document.createElement("i");
+        icon.className = "ui-icon";
+        icon.setAttribute("data-lucide", iconName);
+        element.prepend(icon);
+      });
+    });
+  }
+
+  function refreshIconography() {
+    if (iconObserver) iconObserver.disconnect();
+    stripDecorativeEmoji(document);
+    installMappedIcons();
+    if (window.lucide) {
+      window.lucide.createIcons({ attrs: { "stroke-width": 1.8 } });
+    }
+    if (iconObserver) {
+      iconObserver.observe(document.body, { childList: true, subtree: true, characterData: true });
+    }
+  }
+
+  function setupIconography() {
+    refreshIconography();
+    iconObserver = new MutationObserver(() => {
+      if (iconRefreshQueued) return;
+      iconRefreshQueued = true;
+      requestAnimationFrame(() => {
+        iconRefreshQueued = false;
+        refreshIconography();
+      });
+    });
+    iconObserver.observe(document.body, { childList: true, subtree: true, characterData: true });
+  }
 
   if (tg) {
     tg.ready();
     tg.expand();
   }
+
+  window.fetch = async (...args) => {
+    const response = await nativeFetch(...args);
+    if (response.headers.get("X-Offline-Queued") === "1") {
+      offlineMutationQueued = true;
+    }
+    return response;
+  };
+
+  function setAuthState(state, message = "") {
+    document.body.classList.remove("auth-pending", "auth-required", "authenticated");
+    document.body.classList.add(state);
+    const error = document.getElementById("loginError");
+    if (error) error.textContent = message;
+  }
+
+  function updateSyncStatus({ online = originReachable, count = pendingQueueCount, syncing = false } = {}) {
+    const status = document.getElementById("syncStatus");
+    const text = document.getElementById("syncStatusText");
+    if (!status || !text) return;
+
+    originReachable = online;
+    pendingQueueCount = count;
+
+    status.classList.toggle("is-online", online && !count && !syncing);
+    status.classList.toggle("is-offline", !online);
+    status.classList.toggle("has-queue", count > 0);
+    status.classList.toggle("is-syncing", syncing);
+
+    if (!online) text.textContent = count > 0 ? `${count} مورد در صف` : "آفلاین";
+    else if (syncing) text.textContent = "در حال همگام‌سازی";
+    else if (count > 0) text.textContent = `${count} مورد در صف`;
+    else text.textContent = "همگام";
+  }
+
+  function postToServiceWorker(message) {
+    if (navigator.serviceWorker?.controller) {
+      navigator.serviceWorker.controller.postMessage(message);
+    }
+  }
+
+  async function setupOfflineSupport() {
+    updateSyncStatus();
+    if (!("serviceWorker" in navigator)) return;
+
+    try {
+      await navigator.serviceWorker.register("/service-worker.js", { scope: "/" });
+      await navigator.serviceWorker.ready;
+      postToServiceWorker({ type: "GET_QUEUE_STATUS" });
+    } catch (error) {
+      console.warn("Service worker registration failed", error);
+    }
+
+    navigator.serviceWorker.addEventListener("message", (event) => {
+      const data = event.data || {};
+      if (data.type === "QUEUE_STATUS") {
+        updateSyncStatus({ count: Number(data.count || 0) });
+      } else if (data.type === "SYNC_COMPLETE") {
+        updateSyncStatus({ count: 0 });
+        showToast(`${data.count} مورد آفلاین با موفقیت همگام شد`, "success");
+        initApp();
+      } else if (data.type === "SYNC_AUTH_REQUIRED") {
+        updateSyncStatus({ count: 1 });
+        showToast("برای ادامه همگام‌سازی دوباره وارد حساب وب شوید", "warning");
+      } else if (data.type === "NETWORK_UNAVAILABLE") {
+        updateSyncStatus({ online: false });
+      } else if (data.type === "NETWORK_RESTORED") {
+        updateSyncStatus({ online: true });
+      }
+    });
+  }
+
+  window.addEventListener("online", () => {
+    updateSyncStatus({ online: true, syncing: true });
+    postToServiceWorker({ type: "FLUSH_QUEUE" });
+  });
+  window.addEventListener("offline", () => updateSyncStatus({ online: false }));
+
+  document.getElementById("webLoginForm")?.addEventListener("submit", async (event) => {
+    event.preventDefault();
+    const button = document.getElementById("btnWebLogin");
+    const username = document.getElementById("webUsername")?.value.trim() || "";
+    const password = document.getElementById("webPassword")?.value || "";
+    const errorBox = document.getElementById("loginError");
+    if (button) button.disabled = true;
+    if (errorBox) errorBox.textContent = "";
+
+    try {
+      const response = await nativeFetch("/api/auth/login", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({ username, password }),
+      });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(data.detail || "ورود انجام نشد.");
+      document.getElementById("webPassword").value = "";
+      await initApp();
+      postToServiceWorker({ type: "FLUSH_QUEUE" });
+    } catch (error) {
+      if (errorBox) errorBox.textContent = error.message;
+    } finally {
+      if (button) button.disabled = false;
+    }
+  });
+
+  document.getElementById("btnWebLogout")?.addEventListener("click", async () => {
+    try {
+      await nativeFetch("/api/auth/logout", { method: "POST", credentials: "include" });
+    } finally {
+      postToServiceWorker({ type: "CLEAR_LOCAL_DATA" });
+      setAuthState("auth-required");
+    }
+  });
 
   // ==========================================
   // 🌓 THEME SWITCHER (DARK / LIGHT MODE)
@@ -17,23 +212,24 @@
     const iconSpan = document.getElementById("themeIcon");
 
     function getInitialTheme() {
-      const saved = localStorage.getItem("notionyar_theme");
+      const saved = localStorage.getItem("notionyar_theme_v4");
       if (saved === "light" || saved === "dark") return saved;
-      return "dark";
+      return "light";
     }
 
     function applyTheme(theme) {
       document.documentElement.setAttribute("data-theme", theme);
       document.body.setAttribute("data-theme", theme);
       if (iconSpan) {
-        iconSpan.textContent = theme === "dark" ? "☀️" : "🌙";
+        iconSpan.innerHTML = `<i class="ui-icon" data-lucide="${theme === "dark" ? "sun" : "moon"}"></i>`;
+        refreshIconography();
       }
       if (btnToggle) {
         btnToggle.setAttribute("title", theme === "dark" ? "تغییر به تم روشن" : "تغییر به تم تاریک");
       }
 
       if (tg) {
-        const bgHex = theme === "dark" ? "#0b1120" : "#f8fafc";
+        const bgHex = theme === "dark" ? "#121816" : "#f4f7f6";
         try {
           if (typeof tg.setHeaderColor === "function") tg.setHeaderColor(bgHex);
           if (typeof tg.setBackgroundColor === "function") tg.setBackgroundColor(bgHex);
@@ -46,13 +242,14 @@
 
     btnToggle?.addEventListener("click", () => {
       currentTheme = currentTheme === "dark" ? "light" : "dark";
-      localStorage.setItem("notionyar_theme", currentTheme);
+      localStorage.setItem("notionyar_theme_v4", currentTheme);
       applyTheme(currentTheme);
       haptic("medium");
     });
   }
 
   // Run theme immediately
+  setupIconography();
   initTheme();
 
   // ==========================================
@@ -66,10 +263,10 @@
   };
 
   const ROLE_OPTIONS_MAP = {
-    member: { title: "👤 عضو تیم", desc: "ثبت زمان و گزارش" },
+    member: { title: "👤 عضو تیم", desc: "مشاهده گزارش" },
     manager: { title: "💼 مدیر تیم", desc: "ویرایش و حذف" },
     admin: { title: "👑 مدیر کل", desc: "دسترسی کامل به سامانه" },
-    guest: { title: "🌿 مهمان", desc: "فقط ثبت زمان" }
+    guest: { title: "🌿 مهمان", desc: "دسترسی پایه به ربات" }
   };
 
   function setAdminRoleDropdown(roleValue) {
@@ -231,9 +428,6 @@
   // ==========================================
   let currentUser = null;
   let currentDateIso = new Date().toISOString().split("T")[0];
-  let selectedTimeDate = getDateFromOffset(0);
-  let selectedTimeSatisfaction = "5";
-
   let selectedLifeDate = getDateFromOffset(0);
   let selectedLifeType = null;
   let selectedLifeModes = []; // supports 0, 1, or multiple modes
@@ -241,9 +435,13 @@
   let allLifeEntriesCache = []; // for local fast date filtering
   let customLifeStartDate = null;
   let customLifeEndDate = null;
+  let lifeHistoryView = "date";
+  let lifeHistoryPage = 1;
+  const LIFE_HISTORY_PAGE_SIZE = 60;
 
   let currentHabitDateIso = getDateFromOffset(0);
   let habitDayData = null;
+  let currentHabitAnalyticsPeriod = "7d";
   let isStealthMode = localStorage.getItem("notionyar_stealth") === "true";
 
   // Spiritual Tracker State
@@ -289,6 +487,12 @@
     const toast = document.getElementById("toast");
     if (!toast) return;
 
+    if (type === "success" && offlineMutationQueued) {
+      message = "آفلاین ذخیره شد؛ بعد از اتصال همگام می‌شود";
+      type = "info";
+      offlineMutationQueued = false;
+    }
+
     toast.className = `toast ${type} show`;
     const icon = type === "success" ? "✅ " : type === "error" ? "❌ " : "ℹ️ ";
     toast.textContent = icon + toPersianDigits(message);
@@ -308,13 +512,18 @@
     try {
       const res = await fetch("/api/me", { headers: getHeaders() });
       if (!res.ok) {
-        showToast("خطا در تایید هویت کاربر", "error");
+        const data = await res.json().catch(() => ({}));
+        if (!tg?.initData && [401, 403].includes(res.status)) {
+          setAuthState("auth-required", data.detail || "برای ادامه وارد حساب وب شوید.");
+        } else {
+          setAuthState("auth-required", data.detail || "خطا در تایید هویت کاربر");
+        }
         return;
       }
       const data = await res.json();
+      setAuthState("authenticated");
       currentUser = data.user;
       currentDateIso = data.today_iso;
-      selectedTimeDate = data.today_iso;
       selectedLifeDate = data.today_iso;
       currentHabitDateIso = data.today_iso;
       currentSpiritualDateIso = data.today_iso;
@@ -326,6 +535,11 @@
       const roleBadge = document.getElementById("userRole");
       roleBadge.textContent = ROLE_PERSIAN_MAP[currentUser.role] || "کاربر";
 
+      const logoutButton = document.getElementById("btnWebLogout");
+      if (logoutButton) {
+        logoutButton.style.display = currentUser.auth_source === "web" ? "inline-flex" : "none";
+      }
+
       // Show Admin Tab if user is admin
       const adminNavBtn = document.getElementById("navItemAdmin");
       if (adminNavBtn) {
@@ -336,13 +550,13 @@
       initAdminRoleDropdown();
       initLifeHistoryPeriodDropdown();
       initLifeHistoryFilterDropdown();
+      initLifeHistoryControls();
       initLifeEditModal();
 
       // Setup stealth mode initial UI
       setupStealthModeUI();
 
       // Update date badges
-      updateDateBadge("time", 0);
       updateDateBadge("life", 0);
       updateSpiritualDateBadge(0);
       updateQuranDateBadge(0);
@@ -350,7 +564,6 @@
       autoExpandTextareas();
 
       await Promise.all([
-        loadTimeTrackerMeta(),
         loadLifeTrackerOptions(),
         loadHabitsForDate(currentHabitDateIso),
         loadSpiritualDay(currentSpiritualDateIso),
@@ -369,10 +582,7 @@
     else if (offset === 2) text = `پریروز (${formatIsoToJalaliDisplay(getDateFromOffset(2))})`;
     else if (customIso) text = formatIsoToJalaliDisplay(customIso);
 
-    if (target === "time") {
-      const badge = document.getElementById("timeSelectedDateBadge");
-      if (badge) badge.textContent = `📅 تاریخ انتخاب‌شده: ${text}`;
-    } else if (target === "life") {
+    if (target === "life") {
       const badge = document.getElementById("lifeSelectedDateBadge");
       if (badge) badge.textContent = `📅 تاریخ انتخاب‌شده: ${text}`;
     }
@@ -383,6 +593,27 @@
   // ==========================================
   const navItems = document.querySelectorAll(".nav-item");
   const tabPanels = document.querySelectorAll(".tab-panel");
+  const WORKSPACE_COPY = {
+    "tab-habits": ["ریتم روز", "عادت‌های امروز را آگاهانه پیش ببر", "کیفیت انجام، جزئیات و روند عادت‌ها را یک‌جا ثبت کن.", "امروز"],
+    "tab-life": ["روزمرگی", "اتفاق‌های کوچک روز را از دست نده", "ثبت‌های روزمره را سریع وارد کن و فاصله‌ها را زیر نظر بگیر.", "ثبت سریع"],
+    "tab-spiritual": ["مسیر معنوی", "نماز و تلاوت را با آرامش دنبال کن", "وضعیت روزانه و جزئیات مسیر معنوی در دسترس توست.", "مسیر من"],
+    "tab-reports": ["گزارش‌ها", "روندها را روشن و قابل مقایسه ببین", "خلاصه و جزئیات همه بخش‌ها در بازه دلخواه.", "تحلیل"],
+    "tab-admin": ["مدیریت", "سامانه و دسترسی‌ها را مدیریت کن", "وضعیت سرویس و نقش اعضا را از اینجا کنترل کن.", "مدیریت"],
+  };
+
+  function updateWorkspaceIntro(targetTabId) {
+    const copy = WORKSPACE_COPY[targetTabId] || WORKSPACE_COPY["tab-habits"];
+    const kicker = document.getElementById("workspaceKicker");
+    const title = document.getElementById("workspaceTitle");
+    const description = document.getElementById("workspaceDescription");
+    const mark = document.getElementById("workspaceMark");
+    if (kicker) kicker.textContent = copy[0];
+    if (title) title.textContent = copy[1];
+    if (description) description.textContent = copy[2];
+    if (mark) mark.textContent = copy[3];
+    document.body.classList.toggle("reports-view", targetTabId === "tab-reports");
+    document.body.dataset.section = targetTabId.replace("tab-", "");
+  }
 
   navItems.forEach((btn) => {
     btn.addEventListener("click", () => {
@@ -393,6 +624,7 @@
       btn.classList.add("active");
       const targetPanel = document.getElementById(targetTabId);
       if (targetPanel) targetPanel.classList.add("active");
+      updateWorkspaceIntro(targetTabId);
 
       haptic("light");
 
@@ -402,8 +634,12 @@
       if (targetTabId === "tab-spiritual") {
         loadSpiritualDay(currentSpiritualDateIso);
       }
+      if (targetTabId === "tab-reports") {
+        loadReportsDashboard(currentReportPeriod);
+      }
     });
   });
+  updateWorkspaceIntro("tab-habits");
 
   // Segmented Controls (Sub-tabs)
   document.querySelectorAll(".segmented-control").forEach((segControl) => {
@@ -497,11 +733,7 @@
       const [gy, gm, gd] = jalaliToGregorian(jy, jm, jd);
       const isoDate = `${gy}-${String(gm).padStart(2, "0")}-${String(gd).padStart(2, "0")}`;
 
-      if (activeDatePickerTarget === "time") {
-        selectedTimeDate = isoDate;
-        document.querySelectorAll("[data-date-offset]").forEach((b) => b.classList.remove("active"));
-        updateDateBadge("time", null, isoDate);
-      } else if (activeDatePickerTarget === "life") {
+      if (activeDatePickerTarget === "life") {
         selectedLifeDate = isoDate;
         document.querySelectorAll("[data-life-offset]").forEach((b) => b.classList.remove("active"));
         updateDateBadge("life", null, isoDate);
@@ -563,7 +795,6 @@
     const yearSelect = document.getElementById("shamsiYearSelect");
 
     let currentIso = currentDateIso;
-    if (target === "time") currentIso = selectedTimeDate;
     if (target === "life") currentIso = selectedLifeDate;
     if (target === "habits") currentIso = currentHabitDateIso;
     if (target === "spiritual") currentIso = currentSpiritualDateIso;
@@ -616,7 +847,6 @@
     haptic("light");
   }
 
-  document.getElementById("btnOpenTimePicker")?.addEventListener("click", () => openPersianDatePicker("time"));
   document.getElementById("btnOpenLifePicker")?.addEventListener("click", () => openPersianDatePicker("life"));
   document.getElementById("btnOpenHabitPicker")?.addEventListener("click", () => openPersianDatePicker("habits"));
   document.getElementById("btnLifeRangeFrom")?.addEventListener("click", () => openPersianDatePicker("life_from"));
@@ -628,333 +858,6 @@
 
 
   initPersianDatePickerModal();
-
-  // ==========================================
-  // 4. TIME TRACKER (ENHANCED STEPPER & TIME)
-  // ==========================================
-  async function loadTimeTrackerMeta() {
-    try {
-      const res = await fetch("/api/time-tracker/meta", { headers: getHeaders() });
-      if (!res.ok) return;
-      const data = await res.json();
-
-      const select = document.getElementById("timePerson");
-      select.innerHTML = '<option value="">انتخاب انجام‌دهنده (اختیاری)</option>';
-
-      if (data.persons?.length > 0) {
-        data.persons.forEach((p) => {
-          const opt = document.createElement("option");
-          opt.value = p.id;
-          opt.textContent = p.name;
-          select.appendChild(opt);
-        });
-      }
-    } catch (e) {
-      console.error(e);
-    }
-  }
-
-  document.querySelectorAll("[data-date-offset]").forEach((btn) => {
-    btn.addEventListener("click", () => {
-      document.querySelectorAll("[data-date-offset]").forEach((b) => b.classList.remove("active"));
-      btn.classList.add("active");
-      const offset = parseInt(btn.getAttribute("data-date-offset"), 10);
-      selectedTimeDate = getDateFromOffset(offset);
-      updateDateBadge("time", offset);
-      haptic("light");
-    });
-  });
-
-  // Duration Quick Pills
-  document.querySelectorAll(".quick-duration-pills .btn-chip").forEach((btn) => {
-    btn.addEventListener("click", () => {
-      document.querySelectorAll(".quick-duration-pills .btn-chip").forEach((b) => b.classList.remove("active"));
-      btn.classList.add("active");
-      const mins = parseInt(btn.getAttribute("data-min"), 10);
-      document.getElementById("timeDuration").value = mins;
-      haptic("light");
-    });
-  });
-
-  // Duration Stepper (-15 / +15)
-  document.getElementById("btnDecDuration")?.addEventListener("click", () => {
-    const input = document.getElementById("timeDuration");
-    const current = parseInt(input.value, 10) || 0;
-    input.value = Math.max(0, current - 15);
-    haptic("light");
-  });
-
-  document.getElementById("btnIncDuration")?.addEventListener("click", () => {
-    const input = document.getElementById("timeDuration");
-    const current = parseInt(input.value, 10) || 0;
-    input.value = current + 15;
-    haptic("light");
-  });
-
-  // ==========================================
-  // CUSTOM PERSIAN TIME PICKER MODAL
-  // ==========================================
-  let currentTimeTarget = "start"; // "start" | "end"
-  let pickerSelectedHour = 12;
-  let pickerSelectedMinute = 0;
-
-  const timeStart = document.getElementById("timeStart");
-  const timeEnd = document.getElementById("timeEnd");
-
-  function autoCalculateDuration() {
-    if (timeStart?.value && timeEnd?.value) {
-      const [h1, m1] = timeStart.value.split(":").map(Number);
-      const [h2, m2] = timeEnd.value.split(":").map(Number);
-      const startMin = h1 * 60 + m1;
-      const endMin = h2 * 60 + m2;
-      let diff = endMin - startMin;
-      if (diff < 0) diff += 24 * 60;
-      if (diff > 0) document.getElementById("timeDuration").value = diff;
-    }
-  }
-
-  function initTimePickerModal() {
-    const modal = document.getElementById("timePickerModal");
-    const title = document.getElementById("timePickerModalTitle");
-    const display = document.getElementById("timePickerDisplay");
-    const hoursGrid = document.getElementById("hoursChipsGrid");
-    const minutesGrid = document.getElementById("minutesChipsGrid");
-
-    const manualInput = document.getElementById("timePickerManualInput");
-    const btnApplyManual = document.getElementById("btnApplyManualTime");
-
-    function parseManualTime(str) {
-      if (!str) return null;
-      let s = str.replace(/[۰-۹]/g, (d) => "۰۱۲۳۴۵۶۷۸۹".indexOf(d)).trim();
-      let parts = s.split(/[:\s-]+/);
-      if (parts.length === 2) {
-        let h = parseInt(parts[0], 10);
-        let m = parseInt(parts[1], 10);
-        if (!isNaN(h) && !isNaN(m) && h >= 0 && h <= 23 && m >= 0 && m <= 59) {
-          return { h, m };
-        }
-      } else if (s.length === 4 && /^\d+$/.test(s)) {
-        let h = parseInt(s.slice(0, 2), 10);
-        let m = parseInt(s.slice(2, 4), 10);
-        if (h >= 0 && h <= 23 && m >= 0 && m <= 59) return { h, m };
-      }
-      return null;
-    }
-
-    function applyManualTimeIfValid(showFeedback = false) {
-      const parsed = parseManualTime(manualInput?.value);
-      if (parsed) {
-        pickerSelectedHour = parsed.h;
-        pickerSelectedMinute = parsed.m;
-        updatePickerSelection(false);
-        haptic("light");
-        if (showFeedback) showToast(`ساعت ${toPersianDigits(String(parsed.h).padStart(2, "0"))}:${toPersianDigits(String(parsed.m).padStart(2, "0"))} تنظیم شد`, "info");
-        return true;
-      }
-      if (showFeedback) showToast("لطفاً ساعت را با فرمت صحیح (مثلاً ۱۸:۳۲) وارد کنید", "error");
-      return false;
-    }
-
-    btnApplyManual?.addEventListener("click", () => applyManualTimeIfValid(true));
-    manualInput?.addEventListener("change", () => applyManualTimeIfValid(false));
-    manualInput?.addEventListener("keyup", (e) => {
-      if (e.key === "Enter") applyManualTimeIfValid(true);
-    });
-
-    if (hoursGrid) {
-      hoursGrid.innerHTML = "";
-      for (let h = 0; h < 24; h++) {
-        const chip = document.createElement("button");
-        chip.type = "button";
-        chip.className = "time-chip";
-        chip.setAttribute("data-hour", h);
-        chip.textContent = toPersianDigits(String(h).padStart(2, "0"));
-        chip.addEventListener("click", () => {
-          pickerSelectedHour = h;
-          updatePickerSelection(true);
-        });
-        hoursGrid.appendChild(chip);
-      }
-    }
-
-    if (minutesGrid) {
-      minutesGrid.innerHTML = "";
-      for (let m = 0; m < 60; m += 5) {
-        const chip = document.createElement("button");
-        chip.type = "button";
-        chip.className = "time-chip";
-        chip.setAttribute("data-minute", m);
-        chip.textContent = toPersianDigits(String(m).padStart(2, "0"));
-        chip.addEventListener("click", () => {
-          pickerSelectedMinute = m;
-          updatePickerSelection(true);
-        });
-        minutesGrid.appendChild(chip);
-      }
-    }
-
-    function updatePickerSelection(syncManualInput = true) {
-      const hStr = String(pickerSelectedHour).padStart(2, "0");
-      const mStr = String(pickerSelectedMinute).padStart(2, "0");
-      if (display) {
-        display.textContent = `${toPersianDigits(hStr)}:${toPersianDigits(mStr)}`;
-      }
-      if (syncManualInput && manualInput) {
-        manualInput.value = `${toPersianDigits(hStr)}:${toPersianDigits(mStr)}`;
-      }
-      hoursGrid?.querySelectorAll(".time-chip").forEach((c) => {
-        c.classList.toggle("active", parseInt(c.getAttribute("data-hour"), 10) === pickerSelectedHour);
-      });
-      minutesGrid?.querySelectorAll(".time-chip").forEach((c) => {
-        c.classList.toggle("active", parseInt(c.getAttribute("data-minute"), 10) === pickerSelectedMinute);
-      });
-    }
-
-    function setTimeToNow(offsetMinutes = 0) {
-      const d = new Date();
-      if (offsetMinutes) d.setMinutes(d.getMinutes() + offsetMinutes);
-      pickerSelectedHour = d.getHours();
-      pickerSelectedMinute = d.getMinutes();
-      updatePickerSelection(true);
-    }
-
-    document.getElementById("btnTimeQuickNow")?.addEventListener("click", () => { setTimeToNow(0); haptic("light"); });
-    document.getElementById("btnTimeQuickSub15")?.addEventListener("click", () => { setTimeToNow(-15); haptic("light"); });
-    document.getElementById("btnTimeQuickSub30")?.addEventListener("click", () => { setTimeToNow(-30); haptic("light"); });
-    document.getElementById("btnTimeQuickSub60")?.addEventListener("click", () => { setTimeToNow(-60); haptic("light"); });
-
-    document.getElementById("btnTimePickerModalClose")?.addEventListener("click", () => {
-      if (modal) modal.style.display = "none";
-    });
-
-    document.getElementById("btnClearTimePicker")?.addEventListener("click", () => {
-      if (currentTimeTarget === "start") {
-        document.getElementById("timeStart").value = "";
-        document.getElementById("timeStartDisplay").textContent = "انتخاب شروع...";
-      } else {
-        document.getElementById("timeEnd").value = "";
-        document.getElementById("timeEndDisplay").textContent = "انتخاب پایان...";
-      }
-      autoCalculateDuration();
-      if (modal) modal.style.display = "none";
-      haptic("light");
-    });
-
-    document.getElementById("btnConfirmTimePicker")?.addEventListener("click", () => {
-      applyManualTimeIfValid(false);
-      const hStr = String(pickerSelectedHour).padStart(2, "0");
-      const mStr = String(pickerSelectedMinute).padStart(2, "0");
-      const timeVal = `${hStr}:${mStr}`;
-      const timePersian = `${toPersianDigits(hStr)}:${toPersianDigits(mStr)}`;
-
-      if (currentTimeTarget === "start") {
-        document.getElementById("timeStart").value = timeVal;
-        document.getElementById("timeStartDisplay").textContent = timePersian;
-      } else {
-        document.getElementById("timeEnd").value = timeVal;
-        document.getElementById("timeEndDisplay").textContent = timePersian;
-      }
-      autoCalculateDuration();
-      if (modal) modal.style.display = "none";
-      haptic("medium");
-    });
-
-    function openCustomTimePicker(target) {
-      currentTimeTarget = target;
-      if (title) {
-        title.textContent = target === "start" ? "⏰ تنظیم ساعت شروع" : "⏰ تنظیم ساعت پایان";
-      }
-
-      const inputVal = (target === "start" ? document.getElementById("timeStart")?.value : document.getElementById("timeEnd")?.value) || "";
-      if (inputVal && inputVal.includes(":")) {
-        const [h, m] = inputVal.split(":").map(Number);
-        pickerSelectedHour = !isNaN(h) ? h : 12;
-        pickerSelectedMinute = !isNaN(m) ? m : 0;
-      } else {
-        const d = new Date();
-        pickerSelectedHour = d.getHours();
-        pickerSelectedMinute = d.getMinutes();
-      }
-
-      updatePickerSelection(true);
-      if (modal) modal.style.display = "flex";
-      haptic("light");
-    }
-
-    document.getElementById("btnOpenStartTimePicker")?.addEventListener("click", () => openCustomTimePicker("start"));
-    document.getElementById("btnOpenEndTimePicker")?.addEventListener("click", () => openCustomTimePicker("end"));
-  }
-
-  initTimePickerModal();
-
-  document.querySelectorAll("#timeSatisfaction .btn-star").forEach((btn) => {
-    btn.addEventListener("click", () => {
-      document.querySelectorAll("#timeSatisfaction .btn-star").forEach((b) => b.classList.remove("active"));
-      btn.classList.add("active");
-      selectedTimeSatisfaction = btn.getAttribute("data-val");
-      haptic("light");
-    });
-  });
-
-  const formTimeTracker = document.getElementById("formTimeTracker");
-  formTimeTracker?.addEventListener("submit", async (e) => {
-    e.preventDefault();
-    const title = document.getElementById("timeTitle").value.trim();
-    if (!title) {
-      showToast("لطفاً عنوان تسک را وارد کنید", "error");
-      return;
-    }
-
-    const btnSubmit = document.getElementById("btnSubmitTime");
-    btnSubmit.disabled = true;
-    btnSubmit.querySelector("span").textContent = "در حال ثبت در نوشن...";
-
-    const personSelect = document.getElementById("timePerson");
-    const personId = personSelect.value || null;
-    const personName = personSelect.options[personSelect.selectedIndex]?.text || null;
-    const durationVal = document.getElementById("timeDuration").value;
-    const duration = durationVal ? parseInt(durationVal, 10) : null;
-    const desc = document.getElementById("timeDescription").value.trim() || null;
-
-    try {
-      const res = await fetch("/api/time-tracker/create", {
-        method: "POST",
-        headers: getHeaders(),
-        body: JSON.stringify({
-          name: title,
-          person_id: personId,
-          person_name: personName,
-          date_iso: selectedTimeDate,
-          start_time: timeStart.value || null,
-          end_time: timeEnd.value || null,
-          manual_duration: duration,
-          satisfaction: selectedTimeSatisfaction,
-          description: desc,
-        }),
-      });
-
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.detail || "خطا در ثبت زمان");
-
-      showToast("زمان کاری با موفقیت در نوشن ثبت شد! 🎉", "success");
-      formTimeTracker.reset();
-      document.getElementById("timeDuration").value = "";
-      document.getElementById("timeStart").value = "";
-      document.getElementById("timeStartDisplay").textContent = "انتخاب شروع...";
-      document.getElementById("timeEnd").value = "";
-      document.getElementById("timeEndDisplay").textContent = "انتخاب پایان...";
-      selectedTimeSatisfaction = "5";
-      document.querySelectorAll("#timeSatisfaction .btn-star").forEach((b) => {
-        b.classList.toggle("active", b.getAttribute("data-val") === "5");
-      });
-      if (typeof loadLifeHistory === "function") loadLifeHistory();
-    } catch (err) {
-      showToast(err.message, "error");
-    } finally {
-      btnSubmit.disabled = false;
-      btnSubmit.querySelector("span").textContent = "ثبت در نوشن";
-    }
-  });
 
   // ==========================================
   // 5. LIFE TRACKER (MULTI-MODE & PERIOD FILTER)
@@ -1244,6 +1147,7 @@
         if (trigger) trigger.setAttribute("aria-expanded", "false");
 
         haptic("selection");
+        lifeHistoryPage = 1;
         renderFilteredLifeHistory();
       });
     });
@@ -1282,6 +1186,7 @@
         if (customRow) {
           customRow.style.display = val === "custom" ? "block" : "none";
         }
+        lifeHistoryPage = 1;
         renderFilteredLifeHistory();
       });
     });
@@ -1291,6 +1196,69 @@
         dropdown.classList.remove("open");
         trigger.setAttribute("aria-expanded", "false");
       }
+    });
+  }
+
+  function initLifeHistoryControls() {
+    const root = document.getElementById("life-sub-history");
+    if (!root || root.dataset.controlsReady === "1") return;
+    root.dataset.controlsReady = "1";
+
+    ["lifeHistorySearch", "lifeHistoryModeFilter", "lifeHistorySort"].forEach((id) => {
+      document.getElementById(id)?.addEventListener(id === "lifeHistorySearch" ? "input" : "change", () => {
+        lifeHistoryPage = 1;
+        renderFilteredLifeHistory();
+      });
+    });
+
+    document.querySelectorAll("[data-life-history-view]").forEach((button) => {
+      button.addEventListener("click", () => {
+        lifeHistoryView = button.dataset.lifeHistoryView || "date";
+        lifeHistoryPage = 1;
+        document.querySelectorAll("[data-life-history-view]").forEach((item) => item.classList.remove("active"));
+        button.classList.add("active");
+        renderFilteredLifeHistory();
+      });
+    });
+
+    document.getElementById("btnResetLifeHistory")?.addEventListener("click", () => {
+      const search = document.getElementById("lifeHistorySearch");
+      const mode = document.getElementById("lifeHistoryModeFilter");
+      const sort = document.getElementById("lifeHistorySort");
+      const type = document.getElementById("lifeHistoryFilter");
+      const period = document.getElementById("lifeHistoryPeriodFilter");
+      if (search) search.value = "";
+      if (mode) mode.value = "";
+      if (sort) sort.value = "newest";
+      if (type) type.value = "";
+      if (period) period.value = "all";
+      customLifeStartDate = null;
+      customLifeEndDate = null;
+      lifeHistoryPage = 1;
+      const customRow = document.getElementById("lifeCustomDateRangeRow");
+      if (customRow) customRow.style.display = "none";
+      const typeLabel = document.getElementById("lifeHistoryFilterSelected");
+      const periodLabel = document.getElementById("lifeHistoryPeriodSelected");
+      if (typeLabel) typeLabel.textContent = "تمام فعالیت‌ها";
+      if (periodLabel) periodLabel.textContent = "تمام تاریخچه";
+      document.querySelectorAll("#lifeHistoryFilterMenu .custom-dropdown-item, #lifeHistoryPeriodMenu .custom-dropdown-item").forEach((item) => item.classList.toggle("active", !item.dataset.value || item.dataset.value === "all"));
+      renderFilteredLifeHistory();
+    });
+
+    document.getElementById("btnExportLifeHistory")?.addEventListener("click", () => {
+      const rows = getFilteredLifeHistory();
+      if (!rows.length) {
+        showToast("داده‌ای برای خروجی وجود ندارد", "warning");
+        return;
+      }
+      const csvRows = [["تاریخ", "فعالیت", "حالت‌ها", "توضیحات"]];
+      rows.forEach((item) => csvRows.push([item.date_iso || "", item.type || "", (item.modes || []).join(" | "), item.notes || ""]));
+      const csv = csvRows.map((row) => row.map((cell) => `"${String(cell).replace(/"/g, '""')}"`).join(",")).join("\n");
+      const link = document.createElement("a");
+      link.href = URL.createObjectURL(new Blob(["\ufeff" + csv], { type: "text/csv;charset=utf-8" }));
+      link.download = `notionyar-life-history-${getDateFromOffset(0)}.csv`;
+      link.click();
+      URL.revokeObjectURL(link.href);
     });
   }
 
@@ -1507,6 +1475,7 @@
 
   async function loadLifeHistory() {
     const list = document.getElementById("lifeHistoryList");
+    if (!list) return;
     list.innerHTML = '<div class="loading-state">در حال دریافت لاگ‌ها...</div>';
 
     try {
@@ -1514,28 +1483,39 @@
       if (!res.ok) throw new Error();
       const data = await res.json();
       allLifeEntriesCache = data.entries || [];
+      const modeSelect = document.getElementById("lifeHistoryModeFilter");
+      if (modeSelect) {
+        const currentMode = modeSelect.value;
+        const modes = [...new Set(allLifeEntriesCache.flatMap((item) => item.modes || []).filter(Boolean))].sort((a, b) => a.localeCompare(b, "fa"));
+        modeSelect.innerHTML = '<option value="">تمام حالت‌ها</option>' + modes.map((mode) => `<option value="${escapeReportText(mode)}">${escapeReportText(mode)}</option>`).join("");
+        modeSelect.value = modes.includes(currentMode) ? currentMode : "";
+      }
       renderFilteredLifeHistory();
     } catch (e) {
       list.innerHTML = '<div class="loading-state" style="color:var(--danger-color)">خطا در بارگذاری تاریخچه</div>';
     }
   }
 
-  function renderFilteredLifeHistory() {
-    const list = document.getElementById("lifeHistoryList");
+  function getFilteredLifeHistory() {
     const actFilter = document.getElementById("lifeHistoryFilter")?.value || "";
     const periodFilter = document.getElementById("lifeHistoryPeriodFilter")?.value || "all";
-
-    const now = new Date();
-    const cutoff7d = new Date(); cutoff7d.setDate(now.getDate() - 7);
-    const cutoff30d = new Date(); cutoff30d.setDate(now.getDate() - 30);
-    const currentMonthPrefix = now.toISOString().slice(0, 7);
+    const modeFilter = document.getElementById("lifeHistoryModeFilter")?.value || "";
+    const search = document.getElementById("lifeHistorySearch")?.value?.trim().toLocaleLowerCase("fa") || "";
+    const sort = document.getElementById("lifeHistorySort")?.value || "newest";
+    const cutoff7d = getDateFromOffset(6);
+    const cutoff30d = getDateFromOffset(29);
+    const currentMonthPrefix = getDateFromOffset(0).slice(0, 7);
 
     const filtered = allLifeEntriesCache.filter((item) => {
       if (actFilter && item.type !== actFilter) return false;
+      if (modeFilter && !(item.modes || []).includes(modeFilter)) return false;
+      if (search) {
+        const haystack = [item.type, item.mode, item.notes, item.date, ...(item.modes || [])].join(" ").toLocaleLowerCase("fa");
+        if (!haystack.includes(search)) return false;
+      }
       if (!item.date_iso) return true;
-      const d = new Date(item.date_iso);
-      if (periodFilter === "7d" && d < cutoff7d) return false;
-      if (periodFilter === "30d" && d < cutoff30d) return false;
+      if (periodFilter === "7d" && item.date_iso < cutoff7d) return false;
+      if (periodFilter === "30d" && item.date_iso < cutoff30d) return false;
       if (periodFilter === "month" && !item.date_iso.startsWith(currentMonthPrefix)) return false;
       if (periodFilter === "custom") {
         if (customLifeStartDate && item.date_iso < customLifeStartDate) return false;
@@ -1544,46 +1524,124 @@
       return true;
     });
 
+    return filtered.sort((a, b) => {
+      if (sort === "oldest") return (a.date_iso || "").localeCompare(b.date_iso || "");
+      if (sort === "type") return (a.type || "").localeCompare(b.type || "", "fa") || (b.date_iso || "").localeCompare(a.date_iso || "");
+      return (b.date_iso || "").localeCompare(a.date_iso || "");
+    });
+  }
+
+  function createLifeHistoryRow(item) {
+    const div = document.createElement("div");
+    div.className = "timeline-item history-entry-row";
+    div.innerHTML = `
+      <div class="history-entry-main">
+        <div class="history-entry-title">${escapeReportText(item.type)} ${item.mode ? `<span>${escapeReportText(item.mode)}</span>` : ""}</div>
+        <div class="history-entry-meta">
+          <span class="stealth-blur-target">${escapeReportText(toPersianDigits(item.date))}</span>
+          ${item.notes ? `<span class="stealth-blur-target">${escapeReportText(item.notes)}</span>` : ""}
+        </div>
+      </div>
+      <div class="history-entry-actions">
+        <button type="button" class="btn-icon btn-item-edit" title="ویرایش رکورد" aria-label="ویرایش رکورد"><i data-lucide="pencil"></i></button>
+        <button type="button" class="btn-icon btn-item-delete" title="حذف رکورد" aria-label="حذف رکورد"><i data-lucide="trash-2"></i></button>
+      </div>`;
+
+    div.querySelector(".btn-item-edit")?.addEventListener("click", () => openLifeEditModal(item));
+    div.querySelector(".btn-item-delete")?.addEventListener("click", async () => {
+      if (!confirm(`آیا از حذف لاگ «${item.type}» مطمئن هستید؟`)) return;
+      haptic("warning");
+      try {
+        const response = await fetch(`/api/life-tracker/delete/${item.id}`, { method: "DELETE", headers: getHeaders() });
+        if (!response.ok) throw new Error();
+        showToast("رکورد حذف شد", "success");
+        allLifeEntriesCache = allLifeEntriesCache.filter((entry) => entry.id !== item.id);
+        renderFilteredLifeHistory();
+      } catch (error) {
+        showToast("خطا در حذف رکورد", "error");
+      }
+    });
+    return div;
+  }
+
+  function renderLifeHistorySummary(filtered) {
+    const target = document.getElementById("lifeHistorySummary");
+    if (!target) return;
+    const activeDays = new Set(filtered.map((item) => item.date_iso).filter(Boolean)).size;
+    const typeCounts = filtered.reduce((acc, item) => {
+      acc[item.type] = (acc[item.type] || 0) + 1;
+      return acc;
+    }, {});
+    const topType = Object.entries(typeCounts).sort((a, b) => b[1] - a[1])[0];
+    target.innerHTML = `
+      <div class="history-summary-item"><strong>${toPersianDigits(filtered.length)}</strong><span>رکورد</span></div>
+      <div class="history-summary-item"><strong>${toPersianDigits(activeDays)}</strong><span>روز فعال</span></div>
+      <div class="history-summary-item"><strong>${toPersianDigits(Object.keys(typeCounts).length)}</strong><span>فعالیت متفاوت</span></div>
+      <div class="history-summary-item"><strong>${escapeReportText(topType?.[0] || "—")}</strong><span>${topType ? `${toPersianDigits(topType[1])} بار` : "پرتکرارترین"}</span></div>`;
+  }
+
+  function renderFilteredLifeHistory() {
+    const list = document.getElementById("lifeHistoryList");
+    if (!list) return;
+    const filtered = getFilteredLifeHistory();
+    renderLifeHistorySummary(filtered);
+    const resultCount = document.getElementById("lifeHistoryResultCount");
+    if (resultCount) resultCount.textContent = `${toPersianDigits(filtered.length)} نتیجه`;
+    const totalPages = Math.max(1, Math.ceil(filtered.length / LIFE_HISTORY_PAGE_SIZE));
+    lifeHistoryPage = Math.min(Math.max(1, lifeHistoryPage), totalPages);
+    const pageItems = filtered.slice((lifeHistoryPage - 1) * LIFE_HISTORY_PAGE_SIZE, lifeHistoryPage * LIFE_HISTORY_PAGE_SIZE);
+    renderLifeHistoryPagination(totalPages, filtered.length);
+
     list.innerHTML = "";
     if (filtered.length === 0) {
       list.innerHTML = '<div class="loading-state">موردی متناسب با فیلتر یافت نشد</div>';
       return;
     }
 
-    filtered.forEach((item) => {
-      const div = document.createElement("div");
-      div.className = "timeline-item";
-      div.innerHTML = `
-        <div style="flex:1;">
-          <div style="font-weight:700; font-size:13px;">${item.emoji} ${item.type} ${item.mode ? `(${item.mode})` : ""}</div>
-          <div style="font-size:11px; color:var(--hint-color); margin-top:2px;">
-            <span class="stealth-blur-target">📅 ${toPersianDigits(item.date)}</span> ${item.notes ? `| <span class="stealth-blur-target">📝 ${item.notes}</span>` : ""}
-          </div>
-        </div>
-        <div style="display:flex; align-items:center; gap:6px;">
-          <button class="btn-item-edit" title="ویرایش رکورد" style="background:none; border:none; font-size:16px; cursor:pointer; padding:4px 6px; border-radius:6px;">✏️</button>
-          <button class="btn-item-delete" title="حذف رکورد" style="background:none; border:none; font-size:16px; cursor:pointer; padding:4px 6px; border-radius:6px;">🗑️</button>
-        </div>
-      `;
+    if (lifeHistoryView === "list") {
+      pageItems.forEach((item) => list.appendChild(createLifeHistoryRow(item)));
+      return;
+    }
 
-      div.querySelector(".btn-item-edit").addEventListener("click", () => {
-        openLifeEditModal(item);
-      });
+    const grouped = new Map();
+    pageItems.forEach((item) => {
+      const key = lifeHistoryView === "type" ? (item.type || "بدون دسته") : (item.date_iso || "بدون تاریخ");
+      if (!grouped.has(key)) grouped.set(key, []);
+      grouped.get(key).push(item);
+    });
+    grouped.forEach((items, key) => {
+      const section = document.createElement("section");
+      section.className = "history-group";
+      const label = lifeHistoryView === "type" ? key : (items[0]?.date || key);
+      section.innerHTML = `<header><strong>${escapeReportText(toPersianDigits(label))}</strong><span>${toPersianDigits(items.length)} مورد</span></header>`;
+      items.forEach((item) => section.appendChild(createLifeHistoryRow(item)));
+      list.appendChild(section);
+    });
+  }
 
-      div.querySelector(".btn-item-delete").addEventListener("click", async () => {
-        if (!confirm(`آیا از حذف لاگ «${item.type}» مطمئن هستید؟`)) return;
-        haptic("warning");
-        try {
-          await fetch(`/api/life-tracker/delete/${item.id}`, { method: "DELETE", headers: getHeaders() });
-          showToast("رکورد حذف شد", "success");
-          allLifeEntriesCache = allLifeEntriesCache.filter((e) => e.id !== item.id);
-          div.remove();
-        } catch (e) {
-          showToast("خطا در حذف رکورد", "error");
-        }
-      });
-
-      list.appendChild(div);
+  function renderLifeHistoryPagination(totalPages, totalItems) {
+    const pagination = document.getElementById("lifeHistoryPagination");
+    if (!pagination) return;
+    pagination.hidden = totalPages <= 1;
+    if (totalPages <= 1) {
+      pagination.innerHTML = "";
+      return;
+    }
+    const start = (lifeHistoryPage - 1) * LIFE_HISTORY_PAGE_SIZE + 1;
+    const end = Math.min(totalItems, lifeHistoryPage * LIFE_HISTORY_PAGE_SIZE);
+    pagination.innerHTML = `
+      <button type="button" class="btn-step" data-history-page="prev" ${lifeHistoryPage <= 1 ? "disabled" : ""}><i data-lucide="chevron-right"></i><span>قبلی</span></button>
+      <span>${toPersianDigits(start)} تا ${toPersianDigits(end)} از ${toPersianDigits(totalItems)} · صفحه ${toPersianDigits(lifeHistoryPage)} از ${toPersianDigits(totalPages)}</span>
+      <button type="button" class="btn-step" data-history-page="next" ${lifeHistoryPage >= totalPages ? "disabled" : ""}><span>بعدی</span><i data-lucide="chevron-left"></i></button>`;
+    pagination.querySelector('[data-history-page="prev"]')?.addEventListener("click", () => {
+      lifeHistoryPage -= 1;
+      renderFilteredLifeHistory();
+      document.getElementById("lifeHistorySummary")?.scrollIntoView({ behavior: "smooth", block: "start" });
+    });
+    pagination.querySelector('[data-history-page="next"]')?.addEventListener("click", () => {
+      lifeHistoryPage += 1;
+      renderFilteredLifeHistory();
+      document.getElementById("lifeHistorySummary")?.scrollIntoView({ behavior: "smooth", block: "start" });
     });
   }
 
@@ -1787,7 +1845,7 @@
           detailBox.className = "habit-inline-detail-box";
           const currentVal = habitDayData?.quran_detail || "";
           detailBox.innerHTML = `
-            <input type="text" class="habit-inline-input" placeholder="📖 صفحه، سوره یا آیات خوانده‌شده..." value="${currentVal.replace(/"/g, '&quot;')}">
+            <input type="text" class="habit-inline-input" placeholder="📖 صفحه، سوره یا آیات خوانده‌شده..." value="${escapeReportText(currentVal)}">
             <button type="button" class="btn-inline-save">ذخیره</button>
           `;
 
@@ -1838,7 +1896,7 @@
           detailBox.className = "habit-inline-detail-box";
           const currentVal = habitDayData?.book_detail || "";
           detailBox.innerHTML = `
-            <input type="text" class="habit-inline-input" placeholder="📚 نام کتاب، فصل یا صفحات مطالعه‌شده..." value="${currentVal.replace(/"/g, '&quot;')}">
+            <input type="text" class="habit-inline-input" placeholder="📚 نام کتاب، فصل یا صفحات مطالعه‌شده..." value="${escapeReportText(currentVal)}">
             <button type="button" class="btn-inline-save">ذخیره</button>
           `;
 
@@ -1881,6 +1939,31 @@
           });
 
           card.appendChild(detailBox);
+        }
+
+        if (h.key === "rq" || h.key === "rb") {
+          card.classList.add("has-details");
+          const toggle = document.createElement("button");
+          toggle.type = "button";
+          toggle.className = "habit-detail-toggle";
+          toggle.setAttribute("aria-expanded", "false");
+          toggle.innerHTML = '<span>جزئیات</span><i data-lucide="chevron-down"></i>';
+          const detailBox = card.querySelector(".habit-inline-detail-box");
+          card.insertBefore(toggle, detailBox);
+
+          const toggleDetails = () => {
+            const isOpen = card.classList.toggle("details-open");
+            toggle.setAttribute("aria-expanded", String(isOpen));
+            haptic("light");
+          };
+          toggle.addEventListener("click", (event) => {
+            event.stopPropagation();
+            toggleDetails();
+          });
+          card.addEventListener("click", (event) => {
+            if (event.target.closest("button, input")) return;
+            toggleDetails();
+          });
         }
 
         groupDiv.appendChild(card);
@@ -2375,22 +2458,28 @@
   // ==========================================
   // 8. HABIT ANALYTICS & STREAKS (PERSIAN WEEKDAYS)
   // ==========================================
-  async function loadHabitsAnalytics() {
+  async function loadHabitsAnalytics(period = currentHabitAnalyticsPeriod) {
+    currentHabitAnalyticsPeriod = period;
     try {
-      const res = await fetch("/api/habits/analytics?period=7d", { headers: getHeaders() });
+      const res = await fetch(`/api/habits/analytics?period=${encodeURIComponent(period)}`, { headers: getHeaders() });
       if (!res.ok) return;
       const data = await res.json();
 
       const streaks = data.streaks || {};
       const matrix = data.matrix || {};
+      const periodLabel = matrix.period_label || "بازه انتخابی";
+      const rankingTitle = document.getElementById("habitRankingTitle");
+      const matrixTitle = document.getElementById("habitMatrixTitle");
+      if (rankingTitle) rankingTitle.textContent = `رتبه‌بندی کامل عادت‌ها در ${periodLabel}`;
+      if (matrixTitle) matrixTitle.textContent = `ماتریس کامل مداومت در ${periodLabel}`;
 
-      document.getElementById("overallCurrentStreak").textContent = `${toPersianDigits(streaks.overall_streak?.current || 0)} روز`;
-      document.getElementById("overallBestStreak").textContent = `${toPersianDigits(streaks.overall_streak?.best || 0)} روز`;
+      document.getElementById("overallCurrentStreak").textContent = `${toPersianDigits(streaks.overall?.current || 0)} روز`;
+      document.getElementById("overallBestStreak").textContent = `${toPersianDigits(streaks.overall?.best || 0)} روز`;
 
       // Render Rankings
       const rankList = document.getElementById("habitRankingsList");
       rankList.innerHTML = "";
-      (matrix.habit_rankings || []).slice(0, 6).forEach((item) => {
+      (matrix.habit_rankings || []).forEach((item) => {
         const div = document.createElement("div");
         div.className = "ranking-item stealth-blur-target";
         div.innerHTML = `
@@ -2411,7 +2500,8 @@
       // Render 7-day consistency Heatmap with 100% Persian weekdays (Item 9)
       const heatmapContainer = document.getElementById("habitHeatmapContainer");
       if (matrix.daily_timeline && matrix.daily_timeline.length > 0) {
-        let tableHtml = '<table class="heatmap-table"><thead><tr><th>عادت</th>';
+        const daysCount = matrix.daily_timeline.length;
+        let tableHtml = `<table class="heatmap-table" style="--matrix-days:${daysCount};min-width:${Math.max(460, 112 + daysCount * 46)}px"><thead><tr><th>عادت</th>`;
         matrix.daily_timeline.forEach((day) => {
           let weekdayStr = day.weekday || "";
           if (EN_TO_FA_WEEKDAYS[weekdayStr]) weekdayStr = EN_TO_FA_WEEKDAYS[weekdayStr];
@@ -2436,10 +2526,15 @@
           matrix.daily_timeline.forEach((day) => {
             const hStatus = day.habits?.[item.key];
             let cellClass = "none";
+            let cellLabel = "ثبت‌نشده";
             if (hStatus === "1-💪 کامل") cellClass = "done";
             else if (hStatus === "2-🏃‍♂️ نیمه‌کامل" || hStatus === "3-🐢 سبک") cellClass = "partial";
+            else if (hStatus === "4-❌ با دلیل") cellClass = "reason";
+            else if (hStatus === "5-⛔ بدون دلیل") cellClass = "missed";
             else if (day.is_frozen) cellClass = "frozen";
-            tableHtml += `<td><div class="heatmap-cell ${cellClass}"></div></td>`;
+            if (hStatus) cellLabel = hStatus.replace(/^[0-9]-/, "");
+            else if (day.is_frozen) cellLabel = "روز فریز";
+            tableHtml += `<td><div class="heatmap-cell ${cellClass}" title="${escapeReportText(item.info?.fa || item.key)}، ${escapeReportText(day.weekday || "")} ${escapeReportText(day.jalali_str || "")}: ${escapeReportText(cellLabel)}"></div></td>`;
           });
           tableHtml += "</tr>";
         });
@@ -2451,6 +2546,14 @@
       console.error(e);
     }
   }
+
+  document.querySelectorAll("[data-habit-analytics-period]").forEach((button) => {
+    button.addEventListener("click", () => {
+      document.querySelectorAll("[data-habit-analytics-period]").forEach((item) => item.classList.remove("active"));
+      button.classList.add("active");
+      loadHabitsAnalytics(button.dataset.habitAnalyticsPeriod || "7d");
+    });
+  });
 
   // Freeze Day Action
   const freezeModal = document.getElementById("freezeModal");
@@ -2708,8 +2811,8 @@
           <span class="admin-stat-lbl">👥 کل کاربران مجاز</span>
         </div>
         <div class="admin-stat-card">
-          <span class="admin-stat-val">${toPersianDigits(stats.recent_time_count)}</span>
-          <span class="admin-stat-lbl">⏱️ ساعات کاری اخیر</span>
+          <span class="admin-stat-val">${toPersianDigits(stats.recent_life_count)}</span>
+          <span class="admin-stat-lbl">🌱 لاگ‌های امروز</span>
         </div>
         <div class="admin-stat-card">
           <span class="admin-stat-val" style="font-size:13px; color:var(--success-color);">${stats.server_status}</span>
@@ -3384,7 +3487,203 @@
 
 
   // ==========================================
+  // 12. UNIFIED REPORTS CENTER
+  // ==========================================
+  function escapeReportText(value) {
+    return String(value ?? "")
+      .replace(/&/g, "&amp;")
+      .replace(/</g, "&lt;")
+      .replace(/>/g, "&gt;")
+      .replace(/"/g, "&quot;")
+      .replace(/'/g, "&#039;");
+  }
+
+  function renderReportRows(target, items, valueLabel, color = "var(--button-color)") {
+    if (!target) return;
+    if (!items.length) {
+      target.innerHTML = '<div class="report-empty">برای این بازه داده‌ای ثبت نشده است.</div>';
+      return;
+    }
+    target.innerHTML = items.map((item) => `
+      <div class="report-list-row">
+        <span class="report-list-name">${escapeReportText(item.label)}</span>
+        <div class="report-list-track"><div class="report-list-fill" style="width:${Math.max(0, Math.min(100, item.pct || 0))}%;background:${color}"></div></div>
+        <span class="report-list-value">${escapeReportText(valueLabel(item))}</span>
+      </div>
+    `).join("");
+  }
+
+  function renderReportsDashboard(data) {
+    currentReportData = data;
+    const summary = data.summary || {};
+    const period = data.period || {};
+    const habits = data.habits || {};
+    const matrix = habits.matrix || {};
+    const streaks = habits.streaks || {};
+    const spiritual = data.spiritual || {};
+
+    const caption = document.getElementById("reportsPeriodCaption");
+    if (caption) {
+      caption.textContent = `${period.label || "بازه انتخابی"}، از ${formatIsoToJalaliDisplay(period.start_date)} تا ${formatIsoToJalaliDisplay(period.end_date)}`;
+    }
+
+    const warnings = document.getElementById("reportsWarnings");
+    const warningItems = data.warnings || [];
+    if (warnings) {
+      warnings.hidden = warningItems.length === 0;
+      warnings.innerHTML = warningItems.map((item) => `<div>• ${escapeReportText(item)}</div>`).join("");
+    }
+
+    const kpis = document.getElementById("reportsKpiGrid");
+    if (kpis) {
+      kpis.innerHTML = `
+        <div class="report-kpi" style="--kpi-color:var(--success-color)">
+          <div class="report-kpi-top"><span>مداومت عادت‌ها</span><span class="report-kpi-icon"><i data-lucide="circle-check-big"></i></span></div>
+          <strong>${toPersianDigits(summary.habit_consistency_pct || 0)}٪</strong>
+          <small>${toPersianDigits(summary.habit_logged_days || 0)} روز دارای ثبت</small>
+        </div>
+        <div class="report-kpi" style="--kpi-color:var(--info-color)">
+          <div class="report-kpi-top"><span>ثبت‌های روزمرگی</span><span class="report-kpi-icon"><i data-lucide="notebook-pen"></i></span></div>
+          <strong>${toPersianDigits(summary.life_records || 0)}</strong>
+          <small>در ${toPersianDigits(summary.life_active_days || 0)} روز فعال</small>
+        </div>
+        <div class="report-kpi" style="--kpi-color:var(--warning-color)">
+          <div class="report-kpi-top"><span>نماز ادای به‌موقع</span><span class="report-kpi-icon"><i data-lucide="clock-3"></i></span></div>
+          <strong>${toPersianDigits(summary.prayer_ada_rate || 0)}٪</strong>
+          <small>${toPersianDigits(spiritual.perfect_days || 0)} روز کامل</small>
+        </div>
+        <div class="report-kpi" style="--kpi-color:var(--purple-color)">
+          <div class="report-kpi-top"><span>جلسات تلاوت</span><span class="report-kpi-icon"><i data-lucide="book-open-text"></i></span></div>
+          <strong>${toPersianDigits(summary.quran_sessions || 0)}</strong>
+          <small>جلسه در بازه انتخابی</small>
+        </div>
+      `;
+    }
+
+    const timeline = data.daily_timeline || [];
+    const chart = document.getElementById("reportsDailyChart");
+    if (chart) {
+      const maxLife = Math.max(1, ...timeline.map((day) => Number(day.life_count || 0)));
+      chart.innerHTML = timeline.length ? timeline.map((day) => {
+        const lifeHeight = Math.round((Number(day.life_count || 0) / maxLife) * 100);
+        const prayerHeight = Math.round((Number(day.prayer_ada || 0) / 5) * 100);
+        const shortDate = String(formatIsoToJalaliDisplay(day.date_iso)).split(" ")[0];
+        return `
+          <div class="report-chart-day" title="${escapeReportText(day.date_label)} | عادت ${toPersianDigits(day.habit_pct)}٪ | ${toPersianDigits(day.life_count)} روزمرگی | ${toPersianDigits(day.prayer_ada)} نماز اداء">
+            <div class="report-chart-bars">
+              <i class="report-chart-bar habit" style="height:${Math.max(2, Number(day.habit_pct || 0))}%"></i>
+              <i class="report-chart-bar life" style="height:${Math.max(2, lifeHeight)}%"></i>
+              <i class="report-chart-bar prayer" style="height:${Math.max(2, prayerHeight)}%"></i>
+            </div>
+            <span class="report-chart-label">${toPersianDigits(shortDate)}</span>
+          </div>`;
+      }).join("") : '<div class="report-empty">داده‌ای برای نمایش روند وجود ندارد.</div>';
+      chart.scrollLeft = chart.scrollWidth;
+    }
+
+    const overall = streaks.overall || {};
+    const habitStats = document.getElementById("reportsHabitStats");
+    if (habitStats) {
+      habitStats.innerHTML = `
+        <div class="report-mini-stat"><strong>${toPersianDigits(overall.current || 0)}</strong><span>زنجیره فعلی</span></div>
+        <div class="report-mini-stat"><strong>${toPersianDigits(overall.best || 0)}</strong><span>بهترین زنجیره</span></div>
+        <div class="report-mini-stat"><strong>${toPersianDigits(matrix.total_completed || 0)}</strong><span>انجام موفق</span></div>`;
+    }
+    const habitRows = (matrix.habit_rankings || []).slice(0, 7).map((item) => ({
+      label: `${item.info?.emoji || ""} ${item.info?.fa || item.key}`,
+      pct: Math.round(item.pct || 0),
+    }));
+    renderReportRows(
+      document.getElementById("reportsHabitRanking"),
+      habitRows,
+      (item) => `${toPersianDigits(item.pct)}٪`,
+      "var(--success-color)"
+    );
+
+    const lifeRows = (data.life?.breakdown || []).slice(0, 8).map((item) => ({
+      label: `${item.emoji || ""} ${item.name}`,
+      pct: item.pct || 0,
+      count: item.count || 0,
+    }));
+    renderReportRows(
+      document.getElementById("reportsLifeBreakdown"),
+      lifeRows,
+      (item) => toPersianDigits(item.count),
+      "var(--info-color)"
+    );
+
+    const spiritualStats = document.getElementById("reportsSpiritualStats");
+    if (spiritualStats) {
+      spiritualStats.innerHTML = `
+        <div class="report-mini-stat"><strong style="color:var(--success-color)">${toPersianDigits(spiritual.total_ada || 0)}</strong><span>اداء</span></div>
+        <div class="report-mini-stat"><strong style="color:var(--warning-color)">${toPersianDigits(spiritual.total_qaza || 0)}</strong><span>قضاء</span></div>
+        <div class="report-mini-stat"><strong style="color:var(--danger-color)">${toPersianDigits(spiritual.total_missed || 0)}</strong><span>ثبت‌نشده</span></div>`;
+    }
+    const prayerContainer = document.getElementById("reportsPrayerBreakdown");
+    const prayerStats = spiritual.prayer_stats || {};
+    if (prayerContainer) {
+      const prayerIcons = { sobh: "sunrise", zohr: "sun", asr: "cloud-sun", maghreb: "sunset", eshsa: "moon" };
+      prayerContainer.innerHTML = Object.keys(prayerStats).length ? ["sobh", "zohr", "asr", "maghreb", "eshsa"].map((key) => {
+        const item = prayerStats[key] || {};
+        return `<div class="prayer-report-item">
+          <span><i data-lucide="${prayerIcons[key]}"></i>${escapeReportText(item.name || key)}</span>
+          <strong>${toPersianDigits(item.rate || 0)}٪</strong>
+          <small>${toPersianDigits(item.ada || 0)} اداء · ${toPersianDigits(item.qaza || 0)} قضاء</small>
+        </div>`;
+      }).join("") : '<div class="report-empty">برای این بازه گزارش نماز موجود نیست.</div>';
+    }
+  }
+
+  async function loadReportsDashboard(period = currentReportPeriod) {
+    currentReportPeriod = period;
+    const kpis = document.getElementById("reportsKpiGrid");
+    if (kpis) kpis.innerHTML = '<div class="loading-state">در حال آماده‌سازی گزارش یکپارچه...</div>';
+    try {
+      const response = await fetch(`/api/reports/dashboard?period=${encodeURIComponent(period)}`, { headers: getHeaders() });
+      if (!response.ok) throw new Error("گزارش دریافت نشد");
+      renderReportsDashboard(await response.json());
+    } catch (error) {
+      console.error(error);
+      if (kpis) kpis.innerHTML = '<div class="report-empty">دریافت گزارش ممکن نشد. اتصال و تنظیمات دیتابیس را بررسی کنید.</div>';
+    }
+  }
+
+  document.querySelectorAll("[data-report-period]").forEach((button) => {
+    button.addEventListener("click", () => {
+      document.querySelectorAll("[data-report-period]").forEach((item) => item.classList.remove("active"));
+      button.classList.add("active");
+      loadReportsDashboard(button.getAttribute("data-report-period") || "7d");
+      haptic("light");
+    });
+  });
+
+  document.getElementById("btnRefreshReports")?.addEventListener("click", () => {
+    loadReportsDashboard(currentReportPeriod);
+  });
+
+  document.getElementById("btnExportReports")?.addEventListener("click", () => {
+    const rows = currentReportData?.daily_timeline || [];
+    if (!rows.length) {
+      showToast("داده‌ای برای خروجی گرفتن وجود ندارد", "warning");
+      return;
+    }
+    const csvRows = [
+      ["date", "habit_percent", "life_records", "prayer_ada", "prayer_qaza", "quran_sessions"],
+      ...rows.map((row) => [row.date_iso, row.habit_pct, row.life_count, row.prayer_ada, row.prayer_qaza, row.quran_count]),
+    ];
+    const csv = "\uFEFF" + csvRows.map((row) => row.join(",")).join("\n");
+    const url = URL.createObjectURL(new Blob([csv], { type: "text/csv;charset=utf-8" }));
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = `notionyar-report-${currentReportPeriod}.csv`;
+    link.click();
+    URL.revokeObjectURL(url);
+    showToast("خروجی گزارش آماده شد", "success");
+  });
+
+  // ==========================================
   // START APPLICATION
   // ==========================================
+  setupOfflineSupport();
   initApp();
 })();

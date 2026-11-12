@@ -1,18 +1,38 @@
 # app/webapp.py
 
 import os
-import json
 import asyncio
+import logging
+import base64
+import hashlib
+import hmac
+import json
+import time
+from collections import Counter
 from datetime import datetime, timezone, timedelta
 from typing import Optional, Dict, Any, List
 
-from fastapi import FastAPI, Depends, HTTPException, Header, status, Query
+from fastapi import FastAPI, Depends, HTTPException, Header, status, Query, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.middleware.trustedhost import TrustedHostMiddleware
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse, JSONResponse
-from pydantic import BaseModel, Field
+from pydantic import BaseModel
 
-from app.config import BOT_TOKEN, ADMIN_USERS
+from app.config import (
+    BOT_TOKEN,
+    ADMIN_USERS,
+    NOTION_DBID_LIFE_TRACKER,
+    NOTION_DBID_HABITS,
+    NOTION_DBID_QURAN,
+    WEB_LOGIN_USERNAME,
+    WEB_LOGIN_PASSWORD,
+    WEB_LOGIN_PASSWORD_HASH,
+    WEB_SESSION_SECRET,
+    WEB_SESSION_DAYS,
+    WEB_COOKIE_SECURE,
+    ALLOWED_HOSTS,
+)
 from app.services.auth_service import (
     is_user_registered,
     get_user_role,
@@ -25,9 +45,6 @@ from app.services.auth_service import (
     PERM_ADMIN
 )
 from app.services.notion_service import (
-    get_workspace_persons,
-    add_time_tracker_entry,
-    query_time_tracker_entries,
     LIFE_TRACKER_TYPES,
     TYPE_MODE_MAPPING,
     TYPE_EMOJIS,
@@ -35,8 +52,8 @@ from app.services.notion_service import (
     add_life_tracker_entry,
     update_life_tracker_entry,
     query_life_tracker_entries,
+    query_habit_history,
     get_or_create_habit_day,
-    parse_habit_page,
     update_habit_entry,
     bulk_update_all_habits,
     batch_update_habit_dict,
@@ -60,33 +77,127 @@ from app.services.notion_service import (
     add_quran_reading_entry,
     query_quran_entries,
     get_spiritual_report,
-    PRAYER_KEYS,
-    PRAYER_META
 )
-from app.services.date_helper import format_jalali_full_display, get_jalali_date_info, get_preset_date_range
+from app.services.date_helper import format_jalali_full_display, get_preset_date_range
 from app.services.insights_service import calculate_habit_insights
 from app.services.habit_analytics_service import calculate_habit_streaks, calculate_consistency_matrix
 
-from aiogram.utils.web_app import safe_parse_webapp_init_data, check_webapp_signature
+from aiogram.utils.web_app import safe_parse_webapp_init_data
 
-app = FastAPI(title="NotionYar Telegram Mini App API", version="2.6.0")
+app = FastAPI(title="NotionYar Web & Telegram API", version="3.0.0")
+logger = logging.getLogger(__name__)
+SESSION_COOKIE_NAME = "notionyar_session"
+_login_attempts: Dict[str, List[float]] = {}
 
 
 # Enable CORS
+cors_origins = [
+    origin.strip()
+    for origin in os.getenv("CORS_ORIGINS", "").split(",")
+    if origin.strip()
+]
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
-    allow_credentials=True,
+    allow_origins=cors_origins,
+    allow_credentials=bool(cors_origins),
     allow_methods=["*"],
     allow_headers=["*"],
 )
+if ALLOWED_HOSTS:
+    app.add_middleware(TrustedHostMiddleware, allowed_hosts=ALLOWED_HOSTS)
 
 
 # ==========================================
 # 🔐 AUTHENTICATION & DEPENDENCY
 # ==========================================
 
+def _web_login_is_configured() -> bool:
+    has_password = bool(WEB_LOGIN_PASSWORD_HASH or WEB_LOGIN_PASSWORD)
+    return bool(WEB_LOGIN_USERNAME and has_password and len(WEB_SESSION_SECRET) >= 32)
+
+
+def _verify_web_password(password: str) -> bool:
+    if WEB_LOGIN_PASSWORD_HASH:
+        try:
+            algorithm, iterations_raw, salt_raw, digest_raw = WEB_LOGIN_PASSWORD_HASH.split("$", 3)
+            if algorithm != "pbkdf2_sha256":
+                return False
+            iterations = int(iterations_raw)
+            salt = base64.urlsafe_b64decode(salt_raw.encode("ascii"))
+            expected = base64.urlsafe_b64decode(digest_raw.encode("ascii"))
+            actual = hashlib.pbkdf2_hmac("sha256", password.encode("utf-8"), salt, iterations)
+            return hmac.compare_digest(actual, expected)
+        except (ValueError, TypeError):
+            return False
+    return bool(WEB_LOGIN_PASSWORD) and hmac.compare_digest(password, WEB_LOGIN_PASSWORD)
+
+
+def _create_web_session(username: str) -> str:
+    payload = {
+        "sub": username,
+        "exp": int(time.time()) + (WEB_SESSION_DAYS * 86400),
+    }
+    encoded = base64.urlsafe_b64encode(
+        json.dumps(payload, separators=(",", ":")).encode("utf-8")
+    ).decode("ascii").rstrip("=")
+    signature = hmac.new(
+        WEB_SESSION_SECRET.encode("utf-8"),
+        encoded.encode("ascii"),
+        hashlib.sha256,
+    ).hexdigest()
+    return f"{encoded}.{signature}"
+
+
+def _verify_web_session(token: Optional[str]) -> Optional[str]:
+    if not token or not _web_login_is_configured():
+        return None
+    try:
+        encoded, signature = token.rsplit(".", 1)
+        expected = hmac.new(
+            WEB_SESSION_SECRET.encode("utf-8"),
+            encoded.encode("ascii"),
+            hashlib.sha256,
+        ).hexdigest()
+        if not hmac.compare_digest(signature, expected):
+            return None
+        padding = "=" * (-len(encoded) % 4)
+        payload = json.loads(base64.urlsafe_b64decode(encoded + padding))
+        if int(payload.get("exp", 0)) < int(time.time()):
+            return None
+        username = str(payload.get("sub", ""))
+        return username if hmac.compare_digest(username, WEB_LOGIN_USERNAME) else None
+    except (ValueError, TypeError, json.JSONDecodeError):
+        return None
+
+
+def _web_admin_user(username: str) -> Dict[str, Any]:
+    return {
+        "id": ADMIN_USERS[0] if ADMIN_USERS else 0,
+        "first_name": username,
+        "last_name": "",
+        "username": username,
+        "role": "admin",
+        "can_add_time": False,
+        "can_view_reports": True,
+        "is_admin": True,
+        "auth_source": "web",
+    }
+
+
+def _check_login_rate_limit(client_key: str) -> None:
+    now = time.time()
+    recent = [attempt for attempt in _login_attempts.get(client_key, []) if now - attempt < 600]
+    if len(recent) >= 5:
+        raise HTTPException(
+            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+            detail="تعداد تلاش‌های ورود بیش از حد مجاز است. کمی بعد دوباره تلاش کنید.",
+        )
+    recent.append(now)
+    _login_attempts[client_key] = recent
+
+
 async def get_current_user(
+    request: Request,
     x_telegram_init_data: Optional[str] = Header(None, alias="X-Telegram-Init-Data")
 ) -> Dict[str, Any]:
     """
@@ -101,6 +212,11 @@ async def get_current_user(
                     raise HTTPException(
                         status_code=status.HTTP_403_FORBIDDEN,
                         detail="شما اجازه دسترسی به این ربات را ندارید."
+                    )
+                if not has_permission(user_id, PERM_ADMIN):
+                    raise HTTPException(
+                        status_code=status.HTTP_403_FORBIDDEN,
+                        detail="مینی‌اپ در حال حاضر فقط برای مدیران فعال است."
                     )
                 role = get_user_role(user_id) or "member"
                 return {
@@ -118,8 +234,12 @@ async def get_current_user(
         except Exception:
             pass
 
+    web_username = _verify_web_session(request.cookies.get(SESSION_COOKIE_NAME))
+    if web_username:
+        return _web_admin_user(web_username)
+
     # Development Fallback
-    allow_dev_bypass = os.getenv("ALLOW_DEV_BYPASS", "true").lower() == "true"
+    allow_dev_bypass = os.getenv("ALLOW_DEV_BYPASS", "false").lower() == "true"
     if allow_dev_bypass:
         mock_id = ADMIN_USERS[0] if ADMIN_USERS else 999999999
         return {
@@ -136,25 +256,13 @@ async def get_current_user(
 
     raise HTTPException(
         status_code=status.HTTP_401_UNAUTHORIZED,
-        detail="اعتبارسنجی تلگرام ناموفق بود."
+        detail="برای ادامه وارد حساب وب شوید."
     )
 
 
 # ==========================================
 # 📦 REQUEST MODELS
 # ==========================================
-
-class TimeTrackerCreateRequest(BaseModel):
-    name: str = Field(..., min_length=1)
-    person_id: Optional[str] = None
-    person_name: Optional[str] = None
-    date_iso: Optional[str] = None
-    start_time: Optional[str] = None
-    end_time: Optional[str] = None
-    manual_duration: Optional[int] = None
-    satisfaction: Optional[str] = None
-    description: Optional[str] = None
-
 
 class LifeTrackerCreateRequest(BaseModel):
     event_type: str
@@ -243,10 +351,56 @@ class QuranCreateRequest(BaseModel):
     session_name: Optional[str] = None
 
 
+class WebLoginRequest(BaseModel):
+    username: str
+    password: str
+
+
 
 # ==========================================
 # 🚀 COMMON & PROFILE ENDPOINTS
 # ==========================================
+
+@app.post("/api/auth/login")
+async def web_login(payload: WebLoginRequest, request: Request, response: Response):
+    if not _web_login_is_configured():
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="ورود وب هنوز روی سرور تنظیم نشده است.",
+        )
+
+    client_key = request.client.host if request.client else "unknown"
+    _check_login_rate_limit(client_key)
+    valid_username = hmac.compare_digest(payload.username.strip(), WEB_LOGIN_USERNAME)
+    if not valid_username or not _verify_web_password(payload.password):
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="نام کاربری یا رمز عبور صحیح نیست.",
+        )
+
+    _login_attempts.pop(client_key, None)
+    response.set_cookie(
+        key=SESSION_COOKIE_NAME,
+        value=_create_web_session(WEB_LOGIN_USERNAME),
+        max_age=WEB_SESSION_DAYS * 86400,
+        httponly=True,
+        secure=WEB_COOKIE_SECURE,
+        samesite="lax",
+        path="/",
+    )
+    return {"success": True}
+
+
+@app.post("/api/auth/logout")
+async def web_logout(response: Response):
+    response.delete_cookie(
+        key=SESSION_COOKIE_NAME,
+        path="/",
+        secure=WEB_COOKIE_SECURE,
+        httponly=True,
+        samesite="lax",
+    )
+    return {"success": True}
 
 @app.get("/api/me")
 async def get_me(user: Dict[str, Any] = Depends(get_current_user)):
@@ -259,66 +413,6 @@ async def get_me(user: Dict[str, Any] = Depends(get_current_user)):
         "today_iso": today_iso,
         "today_jalali": jalali_today
     }
-
-
-# ==========================================
-# ⏱ TIME TRACKER ENDPOINTS
-# ==========================================
-
-@app.get("/api/time-tracker/meta")
-async def get_time_tracker_meta(user: Dict[str, Any] = Depends(get_current_user)):
-    persons = await asyncio.to_thread(get_workspace_persons)
-    satisfaction_options = [
-        {"value": "1", "label": "۱ - ضعیف", "emoji": "😞"},
-        {"value": "2", "label": "۲ - قابل قبول", "emoji": "😐"},
-        {"value": "3", "label": "۳ - خوب", "emoji": "🙂"},
-        {"value": "4", "label": "۴ - خیلی خوب", "emoji": "😃"},
-        {"value": "5", "label": "۵ - عالی", "emoji": "🤩"},
-    ]
-    return {
-        "persons": persons,
-        "satisfaction_options": satisfaction_options
-    }
-
-
-@app.post("/api/time-tracker/create")
-async def create_time_tracker_entry(
-    payload: TimeTrackerCreateRequest,
-    user: Dict[str, Any] = Depends(get_current_user)
-):
-    if not user.get("can_add_time"):
-        raise HTTPException(status_code=403, detail="شما مجوز ثبت زمان را ندارید.")
-
-    tz = timezone(timedelta(hours=3, minutes=30))
-    date_str = payload.date_iso or datetime.now(tz).strftime("%Y-%m-%d")
-
-    res = await asyncio.to_thread(
-        add_time_tracker_entry,
-        task_name=payload.name.strip(),
-        person_id=payload.person_id,
-        date_str=date_str,
-        start_time=payload.start_time,
-        end_time=payload.end_time,
-        manual_duration=payload.manual_duration,
-        satisfaction=payload.satisfaction,
-        description=payload.description
-    )
-
-    if not res:
-        raise HTTPException(status_code=500, detail="خطا در ثبت رکورد در نوشن.")
-
-    return {"success": True, "page_id": res.get("id")}
-
-
-@app.delete("/api/time-tracker/delete/{page_id}")
-async def delete_time_tracker_entry(
-    page_id: str,
-    user: Dict[str, Any] = Depends(get_current_user)
-):
-    success = await asyncio.to_thread(archive_notion_page, page_id)
-    if not success:
-        raise HTTPException(status_code=500, detail="خطا در حذف رکورد زمان.")
-    return {"success": True}
 
 
 # ==========================================
@@ -447,7 +541,11 @@ async def delete_life_tracker_entry(
     page_id: str,
     user: Dict[str, Any] = Depends(get_current_user)
 ):
-    success = await asyncio.to_thread(archive_notion_page, page_id)
+    success = await asyncio.to_thread(
+        archive_notion_page,
+        page_id,
+        NOTION_DBID_LIFE_TRACKER,
+    )
     if not success:
         raise HTTPException(status_code=500, detail="خطا در حذف رکورد روزمرگی.")
     return {"success": True}
@@ -642,13 +740,18 @@ async def get_habits_analytics(
 ):
     """Returns streaks, 7-day consistency heatmap, and habit rankings."""
     try:
-        streaks = await asyncio.to_thread(calculate_habit_streaks, None, 100)
-    except Exception as e:
+        history = await asyncio.to_thread(query_habit_history, None)
+    except Exception:
+        history = []
+
+    try:
+        streaks = await asyncio.to_thread(calculate_habit_streaks, history, 0)
+    except Exception:
         streaks = {}
 
     try:
-        matrix = await asyncio.to_thread(calculate_consistency_matrix, period, None)
-    except Exception as e:
+        matrix = await asyncio.to_thread(calculate_consistency_matrix, period, history)
+    except Exception:
         matrix = {}
 
     return {
@@ -738,6 +841,10 @@ async def update_habit_text(
     else:
         raise HTTPException(status_code=400, detail="فیلد نامعتبر است.")
 
+    if not success:
+        raise HTTPException(status_code=500, detail="خطا در ذخیره اطلاعات عادت.")
+    return {"success": True}
+
 
 @app.post("/api/habits/batch-update")
 async def batch_update_habits(
@@ -806,15 +913,15 @@ async def admin_get_stats(user: Dict[str, Any] = Depends(get_current_user)):
         raise HTTPException(status_code=403, detail="دسترسی غیرمجاز است.")
     all_users = get_all_users()
     try:
-        today_str = datetime.now().strftime("%Y-%m-%d")
-        recent_time = query_time_tracker_entries(start_date_iso=today_str)
-        recent_count = len(recent_time)
+        today_str = datetime.now(timezone(timedelta(hours=3, minutes=30))).strftime("%Y-%m-%d")
+        recent_life = query_life_tracker_entries(start_date_iso=today_str)
+        recent_count = len(recent_life)
     except Exception:
         recent_count = 0
 
     return {
         "total_users": len(all_users),
-        "recent_time_count": recent_count,
+        "recent_life_count": recent_count,
         "server_status": "🟢 آنلاین و فعال",
         "scheduler_status": "🟢 فعال (ساعت ۲۲:۳۰)"
     }
@@ -827,27 +934,10 @@ async def admin_get_stats(user: Dict[str, Any] = Depends(get_current_user)):
 @app.get("/api/recent-logs")
 async def get_recent_logs(user: Dict[str, Any] = Depends(get_current_user)):
     try:
-        time_entries = await asyncio.to_thread(query_time_tracker_entries, page_size=5)
-    except Exception:
-        time_entries = []
-
-    try:
         life_entries = await asyncio.to_thread(query_life_tracker_entries)
         life_entries = life_entries[:5] if life_entries else []
     except Exception:
         life_entries = []
-
-    recent_time = []
-    for item in time_entries:
-        recent_time.append({
-            "id": item.get("id"),
-            "name": item.get("name", "بدون عنوان"),
-            "date": item.get("date", "—"),
-            "time_range": f"{item.get('start_time') or ''} - {item.get('end_time') or ''}".strip(" -"),
-            "duration": item.get("duration", "—"),
-            "person": item.get("person", "—"),
-            "satisfaction": item.get("satisfaction", "—")
-        })
 
     recent_life = []
     for item in life_entries:
@@ -864,7 +954,6 @@ async def get_recent_logs(user: Dict[str, Any] = Depends(get_current_user)):
         })
 
     return {
-        "time_tracker": recent_time,
         "life_tracker": recent_life
     }
 
@@ -880,7 +969,7 @@ async def get_spiritual_day(
 ):
     """
     Returns Salah page for the specified date.
-    Auto-creates the entry with all 5 prayers set to Ada (on-time) by default.
+    Auto-creates a blank entry when the selected day does not exist.
     """
     tz = timezone(timedelta(hours=3, minutes=30))
     if not date_iso:
@@ -1043,7 +1132,7 @@ async def api_create_quran_session(
 async def api_get_quran_history(user: Dict[str, Any] = Depends(get_current_user)):
     """Retrieves recent Quran reading logs."""
     try:
-        entries = await asyncio.to_thread(query_quran_entries, limit_count=15)
+        entries = await asyncio.to_thread(query_quran_entries)
         return {"entries": entries}
     except Exception as e:
         return {"entries": [], "error": str(e)}
@@ -1055,7 +1144,11 @@ async def api_delete_quran_entry(
     user: Dict[str, Any] = Depends(get_current_user)
 ):
     """Deletes/archives a Quran log."""
-    success = await asyncio.to_thread(archive_notion_page, page_id)
+    success = await asyncio.to_thread(
+        archive_notion_page,
+        page_id,
+        NOTION_DBID_QURAN,
+    )
     if not success:
         raise HTTPException(status_code=500, detail="خطا در حذف لاگ قرآن.")
     return {"success": True}
@@ -1089,6 +1182,139 @@ async def api_get_spiritual_report(
         return {"report": {}, "error": str(e)}
 
 
+@app.get("/api/reports/dashboard")
+async def api_get_reports_dashboard(
+    period: str = Query("7d"),
+    user: Dict[str, Any] = Depends(get_current_user),
+):
+    """Builds one report payload for habits, life logs, and spiritual activity."""
+    tz = timezone(timedelta(hours=3, minutes=30))
+    today_d = datetime.now(tz).date()
+    if period == "month":
+        start_iso, end_iso, _ = get_preset_date_range("this_month")
+        period_label = "ماه جاری"
+    elif period == "30d":
+        start_iso = (today_d - timedelta(days=29)).isoformat()
+        end_iso = today_d.isoformat()
+        period_label = "۳۰ روز اخیر"
+    else:
+        period = "7d"
+        start_iso, end_iso, _ = get_preset_date_range("last_7_days")
+        period_label = "۷ روز اخیر"
+
+    warnings: List[str] = []
+    life_entries: List[Dict[str, Any]] = []
+    habit_history: List[Dict[str, Any]] = []
+    spiritual_report: Dict[str, Any] = {}
+
+    async def load_life() -> List[Dict[str, Any]]:
+        return await asyncio.to_thread(query_life_tracker_entries, start_iso, end_iso)
+
+    async def load_spiritual() -> Dict[str, Any]:
+        return await asyncio.to_thread(get_spiritual_report, start_iso, end_iso)
+
+    life_result, spiritual_result = await asyncio.gather(
+        load_life(),
+        load_spiritual(),
+        return_exceptions=True,
+    )
+    if isinstance(life_result, Exception):
+        warnings.append("دیتابیس روزمرگی تنظیم نشده یا در دسترس نیست.")
+    else:
+        life_entries = life_result
+    if isinstance(spiritual_result, Exception):
+        warnings.append("گزارش معنوی در دسترس نیست.")
+    else:
+        spiritual_report = spiritual_result
+
+    if NOTION_DBID_HABITS:
+        try:
+            habit_history = await asyncio.to_thread(query_habit_history, 100)
+        except Exception:
+            warnings.append("داده‌های عادت‌ها دریافت نشد.")
+    else:
+        warnings.append("شناسه دیتابیس عادت‌ها در تنظیمات سرور وارد نشده است.")
+
+    habit_matrix: Dict[str, Any] = {}
+    habit_streaks: Dict[str, Any] = {}
+    if habit_history:
+        habit_matrix = calculate_consistency_matrix(period, habit_history)
+        habit_streaks = calculate_habit_streaks(habit_history, 100)
+
+    type_counts = Counter(str(item.get("type") or "نامشخص") for item in life_entries)
+    life_breakdown = [
+        {
+            "name": name,
+            "count": count,
+            "emoji": TYPE_EMOJIS.get(name, "🏷️"),
+            "pct": round((count / len(life_entries)) * 100, 1) if life_entries else 0,
+        }
+        for name, count in type_counts.most_common()
+    ]
+
+    habit_days = {
+        str(item.get("date_iso")): item
+        for item in habit_matrix.get("daily_timeline", [])
+        if item.get("date_iso")
+    }
+    life_days = Counter(str(item.get("date_iso") or "") for item in life_entries)
+    salah_days = {
+        str(item.get("date_iso")): item
+        for item in spiritual_report.get("daily_salah", [])
+        if item.get("date_iso")
+    }
+    quran_days = Counter(
+        str(item.get("date_iso") or "").split("T")[0]
+        for item in spiritual_report.get("quran_sessions", [])
+    )
+
+    daily_timeline: List[Dict[str, Any]] = []
+    cursor = datetime.strptime(start_iso, "%Y-%m-%d").date()
+    end_date = datetime.strptime(end_iso, "%Y-%m-%d").date()
+    while cursor <= end_date:
+        iso = cursor.isoformat()
+        habit_day = habit_days.get(iso, {})
+        salah_day = salah_days.get(iso, {})
+        daily_timeline.append({
+            "date_iso": iso,
+            "date_label": format_jalali_full_display(iso),
+            "habit_pct": round(float(habit_day.get("progress", 0)) * 100),
+            "life_count": life_days.get(iso, 0),
+            "prayer_ada": int(salah_day.get("ada_count", 0)),
+            "prayer_qaza": int(salah_day.get("qaza_count", 0)),
+            "quran_count": quran_days.get(iso, 0),
+        })
+        cursor += timedelta(days=1)
+
+    return {
+        "period": {
+            "key": period,
+            "label": period_label,
+            "start_date": start_iso,
+            "end_date": end_iso,
+        },
+        "summary": {
+            "habit_consistency_pct": round(float(habit_matrix.get("overall_consistency_pct", 0)), 1),
+            "habit_logged_days": int(habit_matrix.get("logged_days_count", 0)),
+            "life_records": len(life_entries),
+            "life_active_days": len({item.get("date_iso") for item in life_entries if item.get("date_iso")}),
+            "prayer_ada_rate": float(spiritual_report.get("overall_ada_rate", 0)),
+            "quran_sessions": int(spiritual_report.get("quran_sessions_count", 0)),
+        },
+        "habits": {
+            "matrix": habit_matrix,
+            "streaks": habit_streaks,
+        },
+        "life": {
+            "breakdown": life_breakdown,
+            "recent": life_entries[:12],
+        },
+        "spiritual": spiritual_report,
+        "daily_timeline": daily_timeline,
+        "warnings": warnings,
+    }
+
+
 # ==========================================
 # 🌐 STATIC FILES & FRONTEND
 # ==========================================
@@ -1099,6 +1325,23 @@ if not os.path.exists(STATIC_DIR):
     os.makedirs(STATIC_DIR, exist_ok=True)
 
 app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
+
+
+@app.get("/manifest.webmanifest", include_in_schema=False)
+async def serve_manifest():
+    return FileResponse(
+        os.path.join(STATIC_DIR, "manifest.webmanifest"),
+        media_type="application/manifest+json",
+    )
+
+
+@app.get("/service-worker.js", include_in_schema=False)
+async def serve_service_worker():
+    return FileResponse(
+        os.path.join(STATIC_DIR, "service-worker.js"),
+        media_type="application/javascript",
+        headers={"Cache-Control": "no-cache, no-store, must-revalidate"},
+    )
 
 
 @app.get("/")
@@ -1114,4 +1357,3 @@ async def serve_index():
             }
         )
     return JSONResponse({"status": "running", "message": "NotionYar Mini App API is ready"})
-
