@@ -1,5 +1,5 @@
-const SHELL_CACHE = "notionyar-shell-v6.0.1";
-const API_CACHE = "notionyar-api-v6.0.1";
+const SHELL_CACHE = "notionyar-shell-v6.1.0";
+const API_CACHE = "notionyar-api-v6.1.0";
 const DB_NAME = "notionyar-offline";
 const DB_VERSION = 1;
 const QUEUE_STORE = "mutation-queue";
@@ -7,9 +7,9 @@ const QUEUE_STORE = "mutation-queue";
 const SHELL_ASSETS = [
   "/",
   "/manifest.webmanifest",
-  "/static/app.css?v=6.0.1",
+  "/static/app.css?v=6.1.0",
   "/static/vendor/lucide.min.js?v=1.72.0",
-  "/static/app.js?v=6.0.1",
+  "/static/app.js?v=6.1.0",
   "/static/icon.svg?v=5.0.2",
 ];
 
@@ -142,6 +142,9 @@ async function broadcastQueueCount() {
 async function flushQueue() {
   const items = await getQueuedItems();
   let synced = 0;
+  let failedStatus = null;
+
+  if (items.length) await notifyClients({ type: "SYNC_STARTED", count: items.length });
 
   for (const item of items) {
     try {
@@ -156,7 +159,10 @@ async function flushQueue() {
         await notifyClients({ type: "SYNC_AUTH_REQUIRED" });
         break;
       }
-      if (!response.ok) break;
+      if (!response.ok) {
+        failedStatus = response.status;
+        break;
+      }
 
       await deleteQueuedItem(item.id);
       synced += 1;
@@ -167,6 +173,7 @@ async function flushQueue() {
 
   await broadcastQueueCount();
   if (synced > 0) await notifyClients({ type: "SYNC_COMPLETE", count: synced });
+  if (failedStatus) await notifyClients({ type: "SYNC_FAILED", status: failedStatus });
 }
 
 async function handleMutation(request) {
@@ -174,6 +181,7 @@ async function handleMutation(request) {
     return await fetch(request.clone());
   } catch (_) {
     await queueMutation(request);
+    await notifyClients({ type: "NETWORK_UNAVAILABLE" });
     return new Response(JSON.stringify({ success: true, queued: true }), {
       status: 202,
       headers: {

@@ -31,6 +31,7 @@ from app.config import (
     WEB_SESSION_SECRET,
     WEB_SESSION_DAYS,
     WEB_COOKIE_SECURE,
+    WEB_CREDENTIALS_FILE,
     ALLOWED_HOSTS,
 )
 from app.services.auth_service import (
@@ -88,6 +89,7 @@ app = FastAPI(title="NotionYar Web & Telegram API", version="3.0.0")
 logger = logging.getLogger(__name__)
 SESSION_COOKIE_NAME = "notionyar_session"
 _login_attempts: Dict[str, List[float]] = {}
+_seed_password_hash_cache: Optional[str] = None
 
 
 # Enable CORS
@@ -111,15 +113,81 @@ if ALLOWED_HOSTS:
 # 🔐 AUTHENTICATION & DEPENDENCY
 # ==========================================
 
-def _web_login_is_configured() -> bool:
-    has_password = bool(WEB_LOGIN_PASSWORD_HASH or WEB_LOGIN_PASSWORD)
-    return bool(WEB_LOGIN_USERNAME and has_password and len(WEB_SESSION_SECRET) >= 32)
+def _seed_web_credentials() -> Optional[Dict[str, Any]]:
+    global _seed_password_hash_cache
+    password_hash = WEB_LOGIN_PASSWORD_HASH
+    if not password_hash and WEB_LOGIN_PASSWORD:
+        if not _seed_password_hash_cache:
+            _seed_password_hash_cache = _hash_web_password(WEB_LOGIN_PASSWORD)
+        password_hash = _seed_password_hash_cache
+    if not WEB_LOGIN_USERNAME or not password_hash:
+        return None
+    return {
+        "username": WEB_LOGIN_USERNAME,
+        "password_hash": password_hash,
+        "session_version": 1,
+    }
 
 
-def _verify_web_password(password: str) -> bool:
-    if WEB_LOGIN_PASSWORD_HASH:
+def _hash_web_password(password: str) -> str:
+    iterations = 600_000
+    salt = os.urandom(16)
+    digest = hashlib.pbkdf2_hmac("sha256", password.encode("utf-8"), salt, iterations)
+    return "$".join([
+        "pbkdf2_sha256",
+        str(iterations),
+        base64.urlsafe_b64encode(salt).decode("ascii"),
+        base64.urlsafe_b64encode(digest).decode("ascii"),
+    ])
+
+
+def _load_web_credentials() -> Optional[Dict[str, Any]]:
+    if WEB_CREDENTIALS_FILE and os.path.exists(WEB_CREDENTIALS_FILE):
         try:
-            algorithm, iterations_raw, salt_raw, digest_raw = WEB_LOGIN_PASSWORD_HASH.split("$", 3)
+            with open(WEB_CREDENTIALS_FILE, "r", encoding="utf-8") as credentials_file:
+                stored = json.load(credentials_file)
+            if stored.get("username") and stored.get("password_hash"):
+                return {
+                    "username": str(stored["username"]),
+                    "password_hash": str(stored["password_hash"]),
+                    "session_version": int(stored.get("session_version", 1)),
+                }
+        except (OSError, ValueError, TypeError, json.JSONDecodeError) as error:
+            logger.error("Could not read web credentials file: %s", error)
+    return _seed_web_credentials()
+
+
+def _save_web_credentials(username: str, password_hash: str, session_version: int) -> None:
+    if not WEB_CREDENTIALS_FILE:
+        raise OSError("WEB_CREDENTIALS_FILE is not configured")
+    directory = os.path.dirname(os.path.abspath(WEB_CREDENTIALS_FILE))
+    os.makedirs(directory, exist_ok=True)
+    temporary_path = f"{WEB_CREDENTIALS_FILE}.tmp"
+    payload = {
+        "username": username,
+        "password_hash": password_hash,
+        "session_version": session_version,
+        "updated_at": datetime.now(timezone.utc).isoformat(),
+    }
+    with open(temporary_path, "w", encoding="utf-8") as credentials_file:
+        json.dump(payload, credentials_file, ensure_ascii=False, indent=2)
+    os.replace(temporary_path, WEB_CREDENTIALS_FILE)
+    try:
+        os.chmod(WEB_CREDENTIALS_FILE, 0o600)
+    except OSError:
+        pass
+
+
+def _web_login_is_configured() -> bool:
+    return bool(_load_web_credentials() and len(WEB_SESSION_SECRET) >= 32)
+
+
+def _verify_web_password(password: str, credentials: Optional[Dict[str, Any]] = None) -> bool:
+    credentials = credentials or _load_web_credentials()
+    password_hash = credentials.get("password_hash", "") if credentials else ""
+    if password_hash:
+        try:
+            algorithm, iterations_raw, salt_raw, digest_raw = password_hash.split("$", 3)
             if algorithm != "pbkdf2_sha256":
                 return False
             iterations = int(iterations_raw)
@@ -129,13 +197,15 @@ def _verify_web_password(password: str) -> bool:
             return hmac.compare_digest(actual, expected)
         except (ValueError, TypeError):
             return False
-    return bool(WEB_LOGIN_PASSWORD) and hmac.compare_digest(password, WEB_LOGIN_PASSWORD)
+    return False
 
 
 def _create_web_session(username: str) -> str:
+    credentials = _load_web_credentials() or {}
     payload = {
         "sub": username,
         "exp": int(time.time()) + (WEB_SESSION_DAYS * 86400),
+        "ver": int(credentials.get("session_version", 1)),
     }
     encoded = base64.urlsafe_b64encode(
         json.dumps(payload, separators=(",", ":")).encode("utf-8")
@@ -164,8 +234,13 @@ def _verify_web_session(token: Optional[str]) -> Optional[str]:
         payload = json.loads(base64.urlsafe_b64decode(encoded + padding))
         if int(payload.get("exp", 0)) < int(time.time()):
             return None
+        credentials = _load_web_credentials()
+        if not credentials:
+            return None
         username = str(payload.get("sub", ""))
-        return username if hmac.compare_digest(username, WEB_LOGIN_USERNAME) else None
+        version_matches = int(payload.get("ver", 0)) == int(credentials.get("session_version", 1))
+        username_matches = hmac.compare_digest(username, str(credentials["username"]))
+        return username if version_matches and username_matches else None
     except (ValueError, TypeError, json.JSONDecodeError):
         return None
 
@@ -356,6 +431,13 @@ class WebLoginRequest(BaseModel):
     password: str
 
 
+class WebCredentialsUpdateRequest(BaseModel):
+    username: str
+    current_password: Optional[str] = None
+    new_password: str
+    confirm_password: str
+
+
 
 # ==========================================
 # 🚀 COMMON & PROFILE ENDPOINTS
@@ -371,8 +453,12 @@ async def web_login(payload: WebLoginRequest, request: Request, response: Respon
 
     client_key = request.client.host if request.client else "unknown"
     _check_login_rate_limit(client_key)
-    valid_username = hmac.compare_digest(payload.username.strip(), WEB_LOGIN_USERNAME)
-    if not valid_username or not _verify_web_password(payload.password):
+    credentials = _load_web_credentials()
+    valid_username = bool(credentials) and hmac.compare_digest(
+        payload.username.strip(),
+        str(credentials["username"]),
+    )
+    if not valid_username or not _verify_web_password(payload.password, credentials):
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="نام کاربری یا رمز عبور صحیح نیست.",
@@ -381,7 +467,7 @@ async def web_login(payload: WebLoginRequest, request: Request, response: Respon
     _login_attempts.pop(client_key, None)
     response.set_cookie(
         key=SESSION_COOKIE_NAME,
-        value=_create_web_session(WEB_LOGIN_USERNAME),
+        value=_create_web_session(str(credentials["username"])),
         max_age=WEB_SESSION_DAYS * 86400,
         httponly=True,
         secure=WEB_COOKIE_SECURE,
@@ -401,6 +487,77 @@ async def web_logout(response: Response):
         samesite="lax",
     )
     return {"success": True}
+
+
+@app.get("/api/auth/settings")
+async def get_web_auth_settings(user: Dict[str, Any] = Depends(get_current_user)):
+    credentials = _load_web_credentials()
+    return {
+        "configured": bool(credentials and len(WEB_SESSION_SECRET) >= 32),
+        "username": credentials.get("username", "") if credentials else "",
+        "requires_current_password": user.get("auth_source") == "web",
+    }
+
+
+@app.put("/api/auth/credentials")
+async def update_web_auth_credentials(
+    payload: WebCredentialsUpdateRequest,
+    response: Response,
+    user: Dict[str, Any] = Depends(get_current_user),
+):
+    username = payload.username.strip()
+    if len(WEB_SESSION_SECRET) < 32:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="ابتدا WEB_SESSION_SECRET را با حداقل ۳۲ کاراکتر در Railway تنظیم کنید.",
+        )
+    if len(username) < 3 or len(username) > 64 or any(char.isspace() for char in username):
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="نام کاربری باید بین ۳ تا ۶۴ کاراکتر و بدون فاصله باشد.",
+        )
+    if len(payload.new_password) < 8:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="رمز عبور جدید باید حداقل ۸ کاراکتر باشد.",
+        )
+    if payload.new_password != payload.confirm_password:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="تکرار رمز عبور با رمز جدید یکسان نیست.",
+        )
+
+    current_credentials = _load_web_credentials()
+    if user.get("auth_source") == "web":
+        if not current_credentials or not _verify_web_password(
+            payload.current_password or "",
+            current_credentials,
+        ):
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="رمز عبور فعلی صحیح نیست.",
+            )
+
+    next_version = int((current_credentials or {}).get("session_version", 0)) + 1
+    try:
+        _save_web_credentials(username, _hash_web_password(payload.new_password), next_version)
+    except OSError as error:
+        logger.error("Could not save web credentials: %s", error)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="ذخیره اطلاعات ورود ممکن نشد؛ تنظیمات Volume سرور را بررسی کنید.",
+        ) from error
+
+    response.set_cookie(
+        key=SESSION_COOKIE_NAME,
+        value=_create_web_session(username),
+        max_age=WEB_SESSION_DAYS * 86400,
+        httponly=True,
+        secure=WEB_COOKIE_SECURE,
+        samesite="lax",
+        path="/",
+    )
+    return {"success": True, "username": username}
 
 @app.get("/api/me")
 async def get_me(user: Dict[str, Any] = Depends(get_current_user)):

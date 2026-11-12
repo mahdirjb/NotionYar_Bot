@@ -1,5 +1,5 @@
 // app/static/app.js
-// NotionYar Telegram Mini App v6.0
+// NotionYar Telegram Mini App v6.1
 
 (function () {
   const tg = window.Telegram?.WebApp;
@@ -146,10 +146,15 @@
       const data = event.data || {};
       if (data.type === "QUEUE_STATUS") {
         updateSyncStatus({ count: Number(data.count || 0) });
+      } else if (data.type === "SYNC_STARTED") {
+        updateSyncStatus({ online: true, count: Number(data.count || pendingQueueCount), syncing: true });
       } else if (data.type === "SYNC_COMPLETE") {
-        updateSyncStatus({ count: 0 });
+        updateSyncStatus({ online: true, count: pendingQueueCount });
         showToast(`${data.count} مورد آفلاین با موفقیت همگام شد`, "success");
         initApp();
+      } else if (data.type === "SYNC_FAILED") {
+        updateSyncStatus({ online: true, count: pendingQueueCount });
+        showToast("بعضی موارد هنوز همگام نشده‌اند؛ دوباره تلاش کن", "warning");
       } else if (data.type === "SYNC_AUTH_REQUIRED") {
         updateSyncStatus({ count: 1 });
         showToast("برای ادامه همگام‌سازی دوباره وارد حساب وب شوید", "warning");
@@ -162,10 +167,28 @@
   }
 
   window.addEventListener("online", () => {
-    updateSyncStatus({ online: true, syncing: true });
-    postToServiceWorker({ type: "FLUSH_QUEUE" });
+    if (pendingQueueCount > 0) {
+      updateSyncStatus({ online: true, count: pendingQueueCount, syncing: true });
+      postToServiceWorker({ type: "FLUSH_QUEUE" });
+    } else {
+      updateSyncStatus({ online: true, count: 0 });
+    }
   });
   window.addEventListener("offline", () => updateSyncStatus({ online: false }));
+
+  document.getElementById("syncStatus")?.addEventListener("click", () => {
+    if (!navigator.onLine) {
+      showToast("اتصال اینترنت هنوز برقرار نیست", "warning");
+      return;
+    }
+    if (pendingQueueCount === 0) {
+      updateSyncStatus({ online: true, count: 0 });
+      showToast("همه اطلاعات همگام هستند", "success");
+      return;
+    }
+    updateSyncStatus({ online: true, count: pendingQueueCount, syncing: true });
+    postToServiceWorker({ type: "FLUSH_QUEUE" });
+  });
 
   document.getElementById("webLoginForm")?.addEventListener("submit", async (event) => {
     event.preventDefault();
@@ -2793,7 +2816,89 @@
   async function loadAdminPanel() {
     loadAdminStats();
     loadAdminUsers();
+    loadWebAuthSettings();
   }
+
+  async function loadWebAuthSettings() {
+    const usernameInput = document.getElementById("settingsWebUsername");
+    const currentPasswordGroup = document.getElementById("currentWebPasswordGroup");
+    const currentPasswordInput = document.getElementById("settingsCurrentPassword");
+    const feedback = document.getElementById("webCredentialsFeedback");
+    if (!usernameInput) return;
+
+    try {
+      const response = await fetch("/api/auth/settings", { headers: getHeaders() });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(data.detail || "دریافت تنظیمات ورود ممکن نشد.");
+      usernameInput.value = data.username || "";
+      currentPasswordGroup.style.display = data.requires_current_password ? "flex" : "none";
+      currentPasswordInput.required = Boolean(data.requires_current_password);
+      if (feedback) {
+        feedback.textContent = data.configured
+          ? "ورود مستقل وب فعال است."
+          : "برای فعال‌شدن ورود وب، WEB_SESSION_SECRET را در سرور تنظیم کن.";
+        feedback.classList.toggle("is-warning", !data.configured);
+      }
+    } catch (error) {
+      if (feedback) {
+        feedback.textContent = error.message;
+        feedback.classList.add("is-error");
+      }
+    }
+  }
+
+  document.getElementById("formWebCredentials")?.addEventListener("submit", async (event) => {
+    event.preventDefault();
+    const button = document.getElementById("btnSaveWebCredentials");
+    const feedback = document.getElementById("webCredentialsFeedback");
+    const username = document.getElementById("settingsWebUsername")?.value.trim() || "";
+    const currentPassword = document.getElementById("settingsCurrentPassword")?.value || "";
+    const newPassword = document.getElementById("settingsNewPassword")?.value || "";
+    const confirmPassword = document.getElementById("settingsConfirmPassword")?.value || "";
+
+    if (newPassword !== confirmPassword) {
+      if (feedback) feedback.textContent = "تکرار رمز عبور با رمز جدید یکسان نیست.";
+      feedback?.classList.add("is-error");
+      return;
+    }
+
+    if (button) button.disabled = true;
+    if (feedback) {
+      feedback.textContent = "در حال ذخیره اطلاعات ورود...";
+      feedback.classList.remove("is-error", "is-warning", "is-success");
+    }
+    try {
+      const response = await nativeFetch("/api/auth/credentials", {
+        method: "PUT",
+        headers: getHeaders(),
+        credentials: "include",
+        body: JSON.stringify({
+          username,
+          current_password: currentPassword || null,
+          new_password: newPassword,
+          confirm_password: confirmPassword,
+        }),
+      });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(data.detail || "ذخیره اطلاعات ورود ممکن نشد.");
+      document.getElementById("settingsCurrentPassword").value = "";
+      document.getElementById("settingsNewPassword").value = "";
+      document.getElementById("settingsConfirmPassword").value = "";
+      if (feedback) {
+        feedback.textContent = "نام کاربری و رمز عبور با موفقیت تغییر کرد.";
+        feedback.classList.add("is-success");
+      }
+      showToast("اطلاعات ورود وب ذخیره شد", "success");
+    } catch (error) {
+      if (feedback) {
+        feedback.textContent = error.message;
+        feedback.classList.add("is-error");
+      }
+      showToast(error.message, "error");
+    } finally {
+      if (button) button.disabled = false;
+    }
+  });
 
   async function loadAdminStats() {
     const grid = document.getElementById("adminStatsGrid");

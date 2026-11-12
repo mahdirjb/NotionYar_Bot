@@ -51,9 +51,12 @@ nightly scheduler, so multiple workers would duplicate bot updates and reminders
    ALLOWED_HOSTS=app.example.com
    CORS_ORIGINS=https://app.example.com
    WEB_COOKIE_SECURE=true
+   WEB_CREDENTIALS_FILE=/app/data/web_credentials.json
    ```
 
-5. Redeploy or restart the service. On startup, NotionYar updates Telegram's chat
+5. Add a Railway Volume mounted at `/app/data`. This keeps username and password
+   changes made in the Admin panel across deploys and restarts.
+6. Redeploy or restart the service. On startup, NotionYar updates Telegram's chat
    menu button to `WEBAPP_URL`, so the Mini App and browser use the same deployment.
 
 Railway does not publish a static IP for custom domains; do not create an `A` record
@@ -80,7 +83,10 @@ cookies, Telegram Mini Apps and service workers outside `localhost`.
 After the first successful online visit, the PWA caches its shell and recently read
 API data. Create, update and delete requests made without a connection are stored in
 IndexedDB. They are replayed in order when the browser reconnects. The header badge
-shows offline, queued and syncing states.
+shows offline, queued and syncing states and can be pressed to retry synchronization.
+
+Web credentials can be changed from `Admin -> Web login and account security`.
+Password changes rotate the session version and invalidate older browser sessions.
 
 Use the web logout button on shared devices. Logout clears cached API data and the
 local mutation queue.

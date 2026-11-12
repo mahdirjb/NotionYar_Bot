@@ -17,7 +17,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Vazirmatn:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="/static/app.css?v=6.0.1">
+  <link rel="stylesheet" href="/static/app.css?v=6.1.0">
 </head>
 
 <body class="auth-pending">
@@ -59,10 +59,10 @@
         </div>
       </div>
       <div class="header-actions">
-        <div class="sync-status is-online" id="syncStatus" title="وضعیت اتصال و همگام‌سازی">
+        <button type="button" class="sync-status is-online" id="syncStatus" title="وضعیت اتصال؛ برای همگام‌سازی دستی بزنید" aria-label="همگام‌سازی داده‌های آفلاین">
           <span class="sync-dot"></span>
           <span id="syncStatusText">آنلاین</span>
-        </div>
+        </button>
         <button class="btn-icon" id="btnRefresh" title="بروزرسانی داده‌ها" aria-label="بروزرسانی داده‌ها">
           <i data-lucide="refresh-cw"></i>
         </button>
@@ -717,6 +717,39 @@
 
         <div class="card">
           <div class="card-title">
+            <span class="icon"><i data-lucide="key-round"></i></span>
+            <span>ورود وب و امنیت حساب</span>
+          </div>
+          <p class="settings-help">نام کاربری و رمز ورود مستقیم از مرورگر را از اینجا تغییر بده. با تغییر رمز، نشست‌های قبلی از حساب خارج می‌شوند.</p>
+          <form id="formWebCredentials" class="form-grid">
+            <div class="form-group">
+              <label for="settingsWebUsername">نام کاربری وب</label>
+              <input id="settingsWebUsername" type="text" minlength="3" maxlength="64" autocomplete="username" required>
+            </div>
+            <div class="form-group" id="currentWebPasswordGroup">
+              <label for="settingsCurrentPassword">رمز عبور فعلی</label>
+              <input id="settingsCurrentPassword" type="password" autocomplete="current-password">
+            </div>
+            <div class="form-row">
+              <div class="form-group">
+                <label for="settingsNewPassword">رمز عبور جدید</label>
+                <input id="settingsNewPassword" type="password" minlength="8" autocomplete="new-password" required>
+              </div>
+              <div class="form-group">
+                <label for="settingsConfirmPassword">تکرار رمز جدید</label>
+                <input id="settingsConfirmPassword" type="password" minlength="8" autocomplete="new-password" required>
+              </div>
+            </div>
+            <div class="settings-feedback" id="webCredentialsFeedback" role="status"></div>
+            <button type="submit" class="btn-primary" id="btnSaveWebCredentials">
+              <i data-lucide="shield-check"></i>
+              <span>ذخیره اطلاعات ورود</span>
+            </button>
+          </form>
+        </div>
+
+        <div class="card">
+          <div class="card-title">
             <span class="icon">👥</span>
             <span>مدیریت کاربران و دسترسی‌ها</span>
           </div>
@@ -1024,6 +1057,6 @@
   </div>
 
   <script src="/static/vendor/lucide.min.js?v=1.72.0"></script>
-  <script src="/static/app.js?v=6.0.1"></script>
+  <script src="/static/app.js?v=6.1.0"></script>
 </body>
 </html>

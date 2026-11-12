@@ -17,6 +17,10 @@ WEB_LOGIN_PASSWORD_HASH = os.getenv("WEB_LOGIN_PASSWORD_HASH", "").strip()
 WEB_SESSION_SECRET = os.getenv("WEB_SESSION_SECRET", "").strip()
 WEB_SESSION_DAYS = int(os.getenv("WEB_SESSION_DAYS", "30"))
 WEB_COOKIE_SECURE = os.getenv("WEB_COOKIE_SECURE", "true").lower() == "true"
+WEB_CREDENTIALS_FILE = os.getenv(
+    "WEB_CREDENTIALS_FILE",
+    os.path.join("data", "web_credentials.json"),
+).strip()
 ALLOWED_HOSTS = [
     host.strip()
     for host in os.getenv("ALLOWED_HOSTS", "").split(",")

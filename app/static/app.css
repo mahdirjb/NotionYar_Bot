@@ -4183,6 +4183,8 @@ body.auth-required .login-screen {
   font-size: 10px;
   font-weight: 700;
   white-space: nowrap;
+  font-family: inherit;
+  cursor: pointer;
 }
 
 .sync-dot {
@@ -4205,6 +4207,44 @@ body.auth-required .login-screen {
 .sync-status.is-syncing .sync-dot {
   background: var(--info-color);
   animation: syncPulse 1s ease-in-out infinite;
+}
+
+.settings-help {
+  margin: -2px 0 16px;
+  color: var(--hint-color);
+  font-size: 12px;
+  line-height: 1.8;
+}
+
+.settings-feedback {
+  min-height: 20px;
+  color: var(--hint-color);
+  font-size: 11px;
+  line-height: 1.7;
+}
+
+.settings-feedback.is-success {
+  color: var(--success-color);
+}
+
+.settings-feedback.is-warning {
+  color: var(--warning-color);
+}
+
+.settings-feedback.is-error {
+  color: var(--danger-color);
+}
+
+#btnSaveWebCredentials {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+}
+
+#btnSaveWebCredentials svg {
+  width: 17px;
+  height: 17px;
 }
 
 @keyframes syncPulse {
