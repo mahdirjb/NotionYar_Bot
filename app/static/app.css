@@ -4963,3 +4963,159 @@ body.reports-view .app-content {
   .habit-card.has-details .habit-info { min-width: 120px; }
   .habit-card.details-open .habit-inline-detail-box { align-items: stretch; flex-direction: column; }
 }
+
+/* ==========================================================
+   V6.2 CONSISTENT CONTROLS & READABLE TYPE
+   ========================================================== */
+:root {
+  --control-radius: 8px;
+  --surface-radius: 8px;
+}
+
+button,
+input,
+select,
+textarea {
+  font-family: inherit;
+}
+
+.segmented-control,
+.report-period-selector,
+#tab-spiritual .segmented-control {
+  border-radius: var(--control-radius);
+  padding: 4px;
+  gap: 4px;
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+
+.segmented-control::-webkit-scrollbar,
+.report-period-selector::-webkit-scrollbar {
+  display: none;
+}
+
+.seg-btn,
+.btn-pill,
+#tab-spiritual .seg-btn,
+#tab-spiritual .btn-pill {
+  min-height: 38px;
+  min-width: 104px;
+  flex: 1 0 auto;
+  border-radius: var(--control-radius);
+  font-size: 13px;
+  line-height: 1.35;
+}
+
+.seg-btn .ui-icon,
+.btn-pill .ui-icon {
+  width: 16px;
+  height: 16px;
+  flex: 0 0 auto;
+}
+
+.card,
+.hero-progress-card,
+.report-panel,
+.report-kpi,
+.login-panel,
+#tab-spiritual .card,
+.prayer-card,
+.streak-card,
+.sp-stat-card,
+.admin-stat-card,
+.radar-card,
+.history-group,
+.custom-dropdown-menu,
+.heatmap-matrix-box {
+  border-radius: var(--surface-radius);
+}
+
+.btn-primary,
+.btn-submit,
+.btn-save,
+.btn-step,
+.btn-presets-menu,
+.btn-freeze-day,
+.btn-reset-day,
+.btn-sp-magic-bulk,
+.btn-sp-range-bulk,
+.btn-sp-reset,
+.btn-magic-bulk,
+.btn-chip,
+.mode-chip,
+.btn-tag-chip,
+.btn-range-preset-pill,
+.btn-range-date-select,
+.btn-prayer-state,
+.habit-detail-toggle,
+.sync-status {
+  border-radius: var(--control-radius);
+  font-size: 13px;
+}
+
+input[type="text"],
+input[type="number"],
+input[type="time"],
+input[type="password"],
+input[type="search"],
+select,
+textarea,
+.custom-dropdown-trigger {
+  border-radius: var(--control-radius);
+  font-size: 14px;
+  min-height: 42px;
+}
+
+.form-group label,
+.filter-col label,
+.login-form label {
+  font-size: 13px;
+}
+
+.card-title {
+  font-size: 15px;
+}
+
+.sub-date,
+.hero-sub,
+.habit-title,
+.history-entry-title,
+.history-entry-meta,
+.radar-details,
+.prayer-status-label,
+.settings-help,
+.settings-feedback {
+  font-size: 12px;
+}
+
+.habit-title,
+.history-entry-title,
+.prayer-name,
+.radar-name {
+  line-height: 1.55;
+}
+
+.history-result-count,
+.history-group > header span,
+.history-entry-title span,
+.matrix-legend {
+  font-size: 11px;
+}
+
+.history-pagination {
+  font-size: 12px;
+}
+
+@media (max-width: 520px) {
+  .seg-btn,
+  .btn-pill,
+  #tab-spiritual .seg-btn,
+  #tab-spiritual .btn-pill {
+    min-width: 96px;
+    font-size: 12px;
+  }
+
+  .nav-item .nav-label {
+    font-size: 11px;
+  }
+}

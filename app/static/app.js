@@ -1,5 +1,5 @@
 // app/static/app.js
-// NotionYar Telegram Mini App v6.1
+// NotionYar Telegram Mini App v6.2
 
 (function () {
   const tg = window.Telegram?.WebApp;
@@ -11,17 +11,6 @@
   let currentReportData = null;
 
   const UI_ICON_MAP = {
-    '[data-subtab="life-sub-log"]': "plus",
-    '[data-subtab="life-sub-radar"]': "activity",
-    '[data-subtab="life-sub-history"]': "history",
-    '[data-subtab="habit-sub-today"]': "list-checks",
-    '[data-subtab="habit-sub-analytics"]': "chart-column",
-    '[data-subtab="habit-sub-journal"]': "notebook-tabs",
-    '[data-subtab="spiritual-sub-day"]': "calendar-check-2",
-    '[data-subtab="spiritual-sub-quran"]': "book-open-text",
-    '[data-subtab="spiritual-sub-report"]': "chart-line",
-    "#btnOpenLifePicker": "calendar-days",
-    "#btnOpenHabitPicker": "calendar-days",
     "#btnBulkComplete": "check-check",
     "#btnOpenPresetsModal": "panels-top-left",
     "#btnActionFreeze": "snowflake",
@@ -31,22 +20,6 @@
   };
   let iconObserver = null;
   let iconRefreshQueued = false;
-
-  function stripDecorativeEmoji(root = document) {
-    const emojiPattern = /(?:\p{Extended_Pictographic}\uFE0F?(?:\u200D\p{Extended_Pictographic}\uFE0F?)*)/gu;
-    const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
-    const textNodes = [];
-    while (walker.nextNode()) textNodes.push(walker.currentNode);
-    textNodes.forEach((node) => {
-      if (node.parentElement?.closest("script, style, svg")) return;
-      const cleaned = node.nodeValue.replace(emojiPattern, "").replace(/\s{2,}/g, " ").trimStart();
-      if (cleaned !== node.nodeValue) node.nodeValue = cleaned;
-    });
-    root.querySelectorAll?.("[placeholder]").forEach((element) => {
-      const cleaned = element.placeholder.replace(emojiPattern, "").trim();
-      if (cleaned !== element.placeholder) element.placeholder = cleaned;
-    });
-  }
 
   function installMappedIcons() {
     Object.entries(UI_ICON_MAP).forEach(([selector, iconName]) => {
@@ -62,7 +35,6 @@
 
   function refreshIconography() {
     if (iconObserver) iconObserver.disconnect();
-    stripDecorativeEmoji(document);
     installMappedIcons();
     if (window.lucide) {
       window.lucide.createIcons({ attrs: { "stroke-width": 1.8 } });
