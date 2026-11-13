@@ -1,5 +1,5 @@
 // app/static/app.js
-// NotionYar Telegram Mini App v6.4
+// NotionYar Telegram Mini App v6.5
 
 (function () {
   const tg = window.Telegram?.WebApp;
@@ -12,6 +12,7 @@
   let originReachable = navigator.onLine;
   let currentReportPeriod = "7d";
   let currentReportData = null;
+  let lifeHistorySearchTimer = null;
   const dataCache = {
     lifeHistory: null,
     lifeRadar: null,
@@ -19,6 +20,7 @@
     spiritual: new Map(),
     quranHistory: null,
     habitAnalytics: new Map(),
+    reports: new Map(),
   };
 
   function invalidateDataCache(...keys) {
@@ -213,6 +215,9 @@
     try {
       const response = await nativeFetch(...args);
       const request = new Request(args[0], args[1]);
+      if (response.ok && isOfflineEligibleRequest(request)) {
+        invalidateDataCache("lifeHistory", "lifeRadar", "habits", "spiritual", "quranHistory", "habitAnalytics", "reports");
+      }
       if (isTransientNetworkStatus(response.status) && isOfflineEligibleRequest(request)) {
         offlineMutationQueued = true;
         return await enqueueOfflineMutation(args[0], args[1]);
@@ -664,6 +669,7 @@
     toast.style.setProperty("--toast-duration", "2800ms");
     const icon = type === "success" ? "✅ " : type === "error" ? "❌ " : "ℹ️ ";
     toast.textContent = icon + toPersianDigits(message);
+    toast.setAttribute("aria-label", toPersianDigits(message));
 
     if (type === "success") haptic("success");
     if (type === "error") haptic("error");
@@ -674,6 +680,18 @@
       toast.style.removeProperty("--toast-duration");
     }, 2800);
   }
+
+  function renderRetryState(container, message, retry) {
+    if (!container) return;
+    container.innerHTML = `<div class="empty-state"><strong>⚠️ ${message}</strong><span>اطلاعات دریافت نشد.</span><button type="button" class="btn-step retry-action">🔄 تلاش دوباره</button></div>`;
+    container.querySelector(".retry-action")?.addEventListener("click", () => retry(), { once: true });
+  }
+
+  document.addEventListener("keydown", (event) => {
+    if (event.key !== "Escape") return;
+    document.querySelectorAll(".modal-backdrop").forEach((modal) => { modal.style.display = "none"; });
+    document.querySelectorAll(".custom-dropdown.open").forEach((dropdown) => dropdown.classList.remove("open"));
+  });
 
   // ==========================================
   // 1. INITIALIZATION & AUTH
@@ -1249,7 +1267,7 @@
       dataCache.lifeRadar = data;
       renderLifeRadar(data);
     } catch (e) {
-      grid.innerHTML = '<div class="loading-state" style="color:var(--danger-color)">خطا در دریافت گزارش رادار</div>';
+      renderRetryState(grid, "خطا در دریافت گزارش رادار", loadLifeRadar);
     }
   }
 
@@ -1432,7 +1450,12 @@
     ["lifeHistorySearch", "lifeHistoryModeFilter", "lifeHistorySort"].forEach((id) => {
       document.getElementById(id)?.addEventListener(id === "lifeHistorySearch" ? "input" : "change", () => {
         lifeHistoryPage = 1;
-        renderFilteredLifeHistory();
+        if (id === "lifeHistorySearch") {
+          clearTimeout(lifeHistorySearchTimer);
+          lifeHistorySearchTimer = setTimeout(() => renderFilteredLifeHistory(), 140);
+        } else {
+          renderFilteredLifeHistory();
+        }
       });
     });
 
@@ -1728,7 +1751,7 @@
       }
       renderFilteredLifeHistory();
     } catch (e) {
-      list.innerHTML = '<div class="loading-state" style="color:var(--danger-color)">خطا در بارگذاری تاریخچه</div>';
+      renderRetryState(list, "خطا در بارگذاری تاریخچه", loadLifeHistory);
     }
   }
 
@@ -2007,7 +2030,7 @@
       renderGroupedHabits(habitDayData.categories);
       autoExpandTextareas();
     } catch (err) {
-      container.innerHTML = `<div class="loading-state" style="color:var(--danger-color)">${err.message}</div>`;
+      renderRetryState(container, err.message || "خطا در بارگذاری عادات", () => loadHabitsForDate(dateIso));
     }
   }
 
@@ -3268,7 +3291,7 @@
         list.appendChild(div);
       });
     } catch (e) {
-      list.innerHTML = '<div class="loading-state" style="color:var(--danger-color)">خطا در بارگذاری کاربران</div>';
+      renderRetryState(list, "خطا در بارگذاری کاربران", loadAdminUsers);
     }
   }
 
@@ -3385,7 +3408,7 @@
       renderPrayersList(data);
     } catch (err) {
       console.error(err);
-      container.innerHTML = '<div class="loading-state">خطا در بارگذاری نمازها. لطفاً دوباره تلاش کنید.</div>';
+      renderRetryState(container, "خطا در بارگذاری نمازها", () => loadSpiritualDay(dateIso));
     }
   }
 
@@ -3767,7 +3790,7 @@
       });
     } catch (err) {
       console.error(err);
-      container.innerHTML = '<div class="loading-state">خطا در دریافت لیست جلسات.</div>';
+      renderRetryState(container, "خطا در دریافت لیست جلسات", loadQuranHistory);
     }
   }
 
@@ -3854,8 +3877,8 @@
       });
     } catch (err) {
       console.error(err);
-      summaryGrid.innerHTML = '<div class="loading-state">خطا در بارگذاری گزارش معنوی.</div>';
-      barsContainer.innerHTML = "";
+      renderRetryState(summaryGrid, "خطا در بارگذاری گزارش معنوی", () => loadSpiritualReport(period));
+      barsContainer.innerHTML = '<div class="report-empty">برای نمایش تفکیک نمازها دوباره تلاش کنید.</div>';
     }
   }
 
@@ -4011,14 +4034,20 @@
   async function loadReportsDashboard(period = currentReportPeriod) {
     currentReportPeriod = period;
     const kpis = document.getElementById("reportsKpiGrid");
+    if (dataCache.reports.has(period)) {
+      renderReportsDashboard(dataCache.reports.get(period));
+      return;
+    }
     if (kpis) kpis.innerHTML = '<div class="loading-state">در حال آماده‌سازی گزارش یکپارچه...</div>';
     try {
       const response = await fetch(`/api/reports/dashboard?period=${encodeURIComponent(period)}`, { headers: getHeaders() });
       if (!response.ok) throw new Error("گزارش دریافت نشد");
-      renderReportsDashboard(await response.json());
+      const data = await response.json();
+      dataCache.reports.set(period, data);
+      renderReportsDashboard(data);
     } catch (error) {
       console.error(error);
-      if (kpis) kpis.innerHTML = '<div class="report-empty">دریافت گزارش ممکن نشد. اتصال و تنظیمات دیتابیس را بررسی کنید.</div>';
+      renderRetryState(kpis, "دریافت گزارش ممکن نشد", () => loadReportsDashboard(period));
     }
   }
 

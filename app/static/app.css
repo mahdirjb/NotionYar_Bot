@@ -3061,6 +3061,115 @@ body {
 .form-row > .form-group { min-width: 0 !important; }
 .admin-section-card[hidden] { display: none !important; }
 
+/* V6.5 visual and interaction refinement */
+html { scroll-behavior: smooth; }
+body { padding-bottom: env(safe-area-inset-bottom, 0px); }
+::selection { background: color-mix(in srgb, var(--section-accent) 30%, transparent); color: var(--text-color); }
+
+button, input, select, textarea, .custom-dropdown-item { -webkit-tap-highlight-color: transparent; }
+button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-visible,
+.custom-dropdown-item:focus-visible {
+  outline: 3px solid color-mix(in srgb, var(--section-accent) 38%, transparent);
+  outline-offset: 2px;
+}
+button:not(:disabled), .custom-dropdown-item { touch-action: manipulation; }
+button:not(:disabled):hover { filter: brightness(1.04); }
+button:not(:disabled):active { filter: brightness(0.98); transform: translateY(1px); }
+button:disabled { cursor: not-allowed; }
+
+input[type="text"], input[type="number"], input[type="password"], input[type="search"], select, textarea {
+  min-height: 44px;
+  box-shadow: inset 0 1px 0 color-mix(in srgb, var(--card-border) 65%, transparent);
+}
+input:focus, select:focus, textarea:focus {
+  border-color: var(--section-accent) !important;
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--section-accent) 15%, transparent), inset 0 1px 0 color-mix(in srgb, var(--card-border) 65%, transparent) !important;
+}
+
+.card, .hero-progress-card, .report-panel, .report-kpi, .history-group, .radar-card {
+  isolation: isolate;
+  transition: border-color 180ms ease, box-shadow 180ms ease, transform 180ms ease;
+}
+.card:hover, .hero-progress-card:hover, .report-panel:hover, .report-kpi:hover, .history-group:hover, .radar-card:hover {
+  border-color: color-mix(in srgb, var(--section-accent) 38%, var(--card-border));
+  box-shadow: 0 12px 28px color-mix(in srgb, var(--section-accent) 8%, transparent);
+}
+.card-title { letter-spacing: 0; position: relative; }
+.card-title::after {
+  content: "";
+  position: absolute;
+  right: 0;
+  bottom: -1px;
+  width: 42px;
+  height: 2px;
+  border-radius: 2px;
+  background: var(--section-accent);
+}
+
+.segmented-control { scrollbar-width: thin; scrollbar-color: var(--section-accent) transparent; }
+.seg-btn { min-height: 42px; }
+.seg-btn.active { transform: none !important; }
+.subtab-content.active { animation: panel-enter 220ms ease both; }
+@keyframes panel-enter { from { opacity: 0; transform: translateY(5px); } to { opacity: 1; transform: translateY(0); } }
+
+.life-group-card { transition: transform 180ms ease, border-color 180ms ease, box-shadow 180ms ease; }
+.life-group-card:hover { transform: translateY(-2px); border-color: color-mix(in srgb, var(--section-accent) 45%, var(--card-border)); box-shadow: 0 10px 24px color-mix(in srgb, var(--section-accent) 9%, transparent); }
+.life-tile, .habit-card, .prayer-card, .timeline-item, .ranking-item, .grat-item-row { min-height: 48px; }
+.life-tile:active, .habit-card:active, .prayer-card:active { transform: scale(0.99); }
+
+.loading-state {
+  min-height: 64px;
+  display: grid;
+  place-items: center;
+  position: relative;
+  overflow: hidden;
+  border: 1px dashed color-mix(in srgb, var(--section-accent) 24%, var(--card-border));
+  border-radius: var(--control-radius);
+  background: linear-gradient(90deg, transparent, color-mix(in srgb, var(--section-accent) 7%, transparent), transparent);
+  background-size: 220% 100%;
+  animation: loading-sheen 1.6s ease-in-out infinite;
+}
+@keyframes loading-sheen { from { background-position: 100% 0; } to { background-position: -100% 0; } }
+
+.sync-status { min-height: 36px; transition: background 180ms ease, border-color 180ms ease, transform 180ms ease; }
+.sync-status.is-syncing .sync-dot { animation: sync-pulse 900ms ease-in-out infinite; }
+@keyframes sync-pulse { 0%, 100% { transform: scale(0.75); opacity: .45; } 50% { transform: scale(1.2); opacity: 1; } }
+.sync-status.has-queue { border-color: var(--warning-color); color: var(--warning-color); }
+
+.empty-state { display: grid; place-items: center; gap: 6px; padding: 26px 16px; color: var(--hint-color); text-align: center; border: 1px dashed var(--card-border); border-radius: var(--control-radius); }
+.empty-state strong { color: var(--text-color); font-size: 14px; }
+.empty-state span { font-size: 12px; }
+
+.report-panel-heading { gap: 12px; }
+.report-panel-heading h3 { line-height: 1.7; }
+.report-kpi-val, .admin-stat-val, .stat-num { font-variant-numeric: tabular-nums; }
+.history-entry-row, .user-item-row { transition: background 160ms ease, transform 160ms ease; }
+.history-entry-row:hover, .user-item-row:hover { background: color-mix(in srgb, var(--section-accent) 6%, var(--card-bg)); }
+
+.modal-backdrop { padding-bottom: env(safe-area-inset-bottom, 0px); }
+.modal-card { overscroll-behavior: contain; scrollbar-width: thin; }
+.btn-modal-close { width: 40px; height: 40px; display: inline-grid; place-items: center; border-radius: 50%; }
+.btn-modal-close:hover { background: var(--subtle-surface); color: var(--text-color); }
+
+@media (min-width: 760px) {
+  .modal-backdrop { align-items: center; justify-content: center; padding: 20px; }
+  .modal-card { width: min(560px, 100%); border: 1px solid var(--card-border); border-radius: var(--surface-radius); }
+}
+
+@media (max-width: 520px) {
+  .app-content { padding-inline: 12px; }
+  .card, .hero-progress-card { padding: 14px; }
+  .card-title { font-size: 14px; }
+  .btn-primary, .btn-step, .btn-action, .btn-save-gratitude { min-height: 44px; }
+  .input-with-action { align-items: stretch; }
+  .input-with-action .btn-action { padding-inline: 12px; }
+  .toast { max-width: calc(100vw - 24px); width: max-content; min-width: 190px; text-align: center; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { animation-duration: 0.001ms !important; animation-iteration-count: 1 !important; scroll-behavior: auto !important; transition-duration: 0.001ms !important; }
+}
+
 /* V6.4 interaction and layout polish */
 *, *::before, *::after { box-sizing: border-box; }
 
