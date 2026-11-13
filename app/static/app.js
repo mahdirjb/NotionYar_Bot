@@ -1,5 +1,5 @@
 // app/static/app.js
-// NotionYar Telegram Mini App v6.10.1
+// NotionYar Telegram Mini App v6.10.2
 
 (function () {
   const tg = window.Telegram?.WebApp;
@@ -570,11 +570,8 @@
 
     trigger.addEventListener("click", (e) => {
       e.stopPropagation();
-      document.querySelectorAll(".history-filter-grid .custom-dropdown.open").forEach((other) => {
-        if (other !== dropdown) other.classList.remove("open");
-      });
-      const isOpen = dropdown.classList.toggle("open");
-      trigger.setAttribute("aria-expanded", isOpen);
+      if (dropdown.classList.contains("open")) closeHistoryDropdown(dropdown);
+      else openHistoryDropdown(dropdown, trigger);
       haptic("light");
     });
 
@@ -591,8 +588,7 @@
 
     document.addEventListener("click", (e) => {
       if (!dropdown.contains(e.target)) {
-        dropdown.classList.remove("open");
-        trigger.setAttribute("aria-expanded", "false");
+        closeHistoryDropdown(dropdown);
       }
     });
   }
@@ -1163,7 +1159,9 @@
           event.stopPropagation();
           control.select.value = option.value;
           control.select.dispatchEvent(new Event("change", { bubbles: true }));
-          control.menu.parentElement.classList.remove("open");
+          control.menu.classList.remove("portal-open");
+          control.menu.style.cssText = "";
+          control.trigger?.closest(".custom-date-dropdown")?.classList.remove("open");
           control.trigger?.setAttribute("aria-expanded", "false");
         });
         control.menu.appendChild(item);
@@ -1180,10 +1178,28 @@
         const dropdown = control.trigger.closest(".custom-date-dropdown");
         const open = dropdown.classList.toggle("open");
         document.querySelectorAll(".custom-date-dropdown.open").forEach((other) => {
-          if (other !== dropdown) other.classList.remove("open");
+          if (other !== dropdown) {
+            other.classList.remove("open");
+            other.querySelector(".custom-date-menu")?.classList.remove("portal-open");
+          }
         });
         const bounds = dropdown.getBoundingClientRect();
-        dropdown.classList.toggle("dropup", open && bounds.bottom + 230 > window.innerHeight && bounds.top > 230);
+        if (open) {
+          if (control.menu.parentElement !== document.body) document.body.appendChild(control.menu);
+          control.menu.classList.add("portal-open");
+          const menuHeight = Math.min(220, Math.floor(window.innerHeight * .42));
+          const dropUp = bounds.bottom + menuHeight + 8 > window.innerHeight && bounds.top > menuHeight + 8;
+          dropdown.classList.toggle("dropup", dropUp);
+          control.menu.style.position = "fixed";
+          control.menu.style.left = `${bounds.left}px`;
+          control.menu.style.width = `${bounds.width}px`;
+          control.menu.style.top = dropUp ? `${bounds.top - menuHeight - 6}px` : `${bounds.bottom + 6}px`;
+          control.menu.style.maxHeight = `${menuHeight}px`;
+          control.menu.style.zIndex = "1200";
+        } else {
+          control.menu.classList.remove("portal-open");
+          control.menu.style.cssText = "";
+        }
         control.trigger.setAttribute("aria-expanded", String(open));
       });
       control.select?.addEventListener("change", () => syncCustomDateDropdown(kind));
@@ -1192,6 +1208,7 @@
       document.querySelectorAll(".custom-date-dropdown.open").forEach((dropdown) => {
         dropdown.classList.remove("open");
         dropdown.querySelector(".custom-date-trigger")?.setAttribute("aria-expanded", "false");
+        dropdown.querySelector(".custom-date-menu")?.classList.remove("portal-open");
       });
     });
 
@@ -1639,6 +1656,41 @@
   // ==========================================
   // 🌿 LIFE TRACKER CUSTOM DROPDOWNS & HISTORY
   // ==========================================
+  function getHistoryDropdownMenu(dropdown) {
+    if (!dropdown) return null;
+    if (!dropdown._historyMenu) dropdown._historyMenu = dropdown.querySelector(".custom-dropdown-menu");
+    return dropdown._historyMenu;
+  }
+
+  function closeHistoryDropdown(dropdown) {
+    if (!dropdown) return;
+    dropdown.classList.remove("open");
+    dropdown.querySelector(".custom-dropdown-trigger")?.setAttribute("aria-expanded", "false");
+    const menu = getHistoryDropdownMenu(dropdown);
+    menu?.classList.remove("history-filter-portal-menu");
+    if (menu) menu.style.cssText = "";
+  }
+
+  function openHistoryDropdown(dropdown, trigger) {
+    document.querySelectorAll(".history-filter-grid .custom-dropdown.open").forEach((other) => {
+      if (other !== dropdown) closeHistoryDropdown(other);
+    });
+    const menu = getHistoryDropdownMenu(dropdown);
+    if (!menu) return;
+    dropdown.classList.add("open");
+    const bounds = trigger.getBoundingClientRect();
+    const maxHeight = Math.min(280, Math.max(150, window.innerHeight - 24));
+    if (menu.parentElement !== document.body) document.body.appendChild(menu);
+    menu.classList.add("history-filter-portal-menu");
+    menu.style.position = "fixed";
+    menu.style.left = `${Math.max(8, bounds.left)}px`;
+    menu.style.top = `${Math.min(window.innerHeight - 12, bounds.bottom + 6)}px`;
+    menu.style.width = `${bounds.width}px`;
+    menu.style.maxHeight = `${maxHeight}px`;
+    menu.style.zIndex = "1000";
+    trigger.setAttribute("aria-expanded", "true");
+  }
+
   function initLifeHistoryFilterDropdown() {
     const dropdown = document.getElementById("lifeHistoryFilterDropdown");
     const trigger = document.getElementById("lifeHistoryFilterTrigger");
@@ -1646,18 +1698,14 @@
 
     trigger.addEventListener("click", (e) => {
       e.stopPropagation();
-      document.querySelectorAll(".history-filter-grid .custom-dropdown.open").forEach((other) => {
-        if (other !== dropdown) other.classList.remove("open");
-      });
-      const isOpen = dropdown.classList.toggle("open");
-      trigger.setAttribute("aria-expanded", isOpen);
+      if (dropdown.classList.contains("open")) closeHistoryDropdown(dropdown);
+      else openHistoryDropdown(dropdown, trigger);
       haptic("light");
     });
 
     document.addEventListener("click", (e) => {
       if (!dropdown.contains(e.target)) {
-        dropdown.classList.remove("open");
-        trigger.setAttribute("aria-expanded", "false");
+        closeHistoryDropdown(dropdown);
       }
     });
   }
@@ -1695,7 +1743,7 @@
 
         menu.querySelectorAll(".custom-dropdown-item").forEach((it) => it.classList.remove("active"));
         item.classList.add("active");
-        if (dropdown) dropdown.classList.remove("open");
+        closeHistoryDropdown(dropdown);
         const trigger = document.getElementById("lifeHistoryFilterTrigger");
         if (trigger) trigger.setAttribute("aria-expanded", "false");
 
@@ -1733,8 +1781,7 @@
         if (selectedSpan) selectedSpan.textContent = item.querySelector(".item-title")?.textContent || "🎛️ تمام حالت‌ها";
         menu.querySelectorAll(".custom-dropdown-item").forEach((entry) => entry.classList.remove("active"));
         item.classList.add("active");
-        dropdown?.classList.remove("open");
-        trigger?.setAttribute("aria-expanded", "false");
+        closeHistoryDropdown(dropdown);
         lifeHistoryPage = 1;
         renderFilteredLifeHistory();
       });
@@ -1748,16 +1795,12 @@
     dropdown.dataset.ready = "1";
     trigger.addEventListener("click", (event) => {
       event.stopPropagation();
-      document.querySelectorAll(".history-filter-grid .custom-dropdown.open").forEach((other) => {
-        if (other !== dropdown) other.classList.remove("open");
-      });
-      const open = dropdown.classList.toggle("open");
-      trigger.setAttribute("aria-expanded", String(open));
+      if (dropdown.classList.contains("open")) closeHistoryDropdown(dropdown);
+      else openHistoryDropdown(dropdown, trigger);
     });
     document.addEventListener("click", (event) => {
       if (!dropdown.contains(event.target)) {
-        dropdown.classList.remove("open");
-        trigger.setAttribute("aria-expanded", "false");
+        closeHistoryDropdown(dropdown);
       }
     });
   }
@@ -1773,11 +1816,8 @@
 
     trigger.addEventListener("click", (e) => {
       e.stopPropagation();
-      document.querySelectorAll(".history-filter-grid .custom-dropdown.open").forEach((other) => {
-        if (other !== dropdown) other.classList.remove("open");
-      });
-      const isOpen = dropdown.classList.toggle("open");
-      trigger.setAttribute("aria-expanded", isOpen);
+      if (dropdown.classList.contains("open")) closeHistoryDropdown(dropdown);
+      else openHistoryDropdown(dropdown, trigger);
       haptic("light");
     });
 
@@ -1791,8 +1831,7 @@
 
         menu.querySelectorAll(".custom-dropdown-item").forEach((it) => it.classList.remove("active"));
         item.classList.add("active");
-        dropdown.classList.remove("open");
-        trigger.setAttribute("aria-expanded", "false");
+        closeHistoryDropdown(dropdown);
 
         haptic("selection");
         if (customRow) {
@@ -1805,8 +1844,7 @@
 
     document.addEventListener("click", (e) => {
       if (!dropdown.contains(e.target)) {
-        dropdown.classList.remove("open");
-        trigger.setAttribute("aria-expanded", "false");
+        closeHistoryDropdown(dropdown);
       }
     });
   }

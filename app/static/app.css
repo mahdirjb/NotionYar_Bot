@@ -6042,3 +6042,19 @@ textarea,
 .history-filter-grid .custom-dropdown-menu { width: 100% !important; max-width: 100% !important; }
 .custom-date-dropdown.dropup .custom-date-menu { top: auto !important; bottom: calc(100% + 6px) !important; }
 .custom-date-menu { max-height: min(220px, 42vh) !important; }
+.custom-date-menu.portal-open { display: grid !important; gap: 3px; }
+.history-filter-portal-menu {
+  position: fixed !important;
+  display: block !important;
+  width: auto;
+  max-width: calc(100vw - 16px);
+  max-height: min(280px, 70vh) !important;
+  overflow-y: auto !important;
+  padding: 6px !important;
+  border: 1px solid var(--card-border) !important;
+  border-radius: 10px !important;
+  background: var(--card-bg) !important;
+  box-shadow: 0 16px 34px rgba(0, 0, 0, .34) !important;
+  z-index: 1000 !important;
+}
+.history-filter-portal-menu .custom-dropdown-item { display: block !important; width: 100% !important; }
