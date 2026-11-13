@@ -17,7 +17,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Vazirmatn:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="/static/app.css?v=6.9.1">
+  <link rel="stylesheet" href="/static/app.css?v=6.10.0">
 </head>
 
 <body class="auth-pending">
@@ -195,7 +195,7 @@
               <div class="history-summary-item"><strong>—</strong><span>پرتکرارترین</span></div>
             </div>
 
-            <div class="history-search-row" data-life-report-sections="records,grouping">
+            <div class="history-search-row" data-life-report-sections="records,grouping" hidden>
               <label class="history-search-box" for="lifeHistorySearch">
                 <i data-lucide="search"></i>
                 <input id="lifeHistorySearch" type="search" placeholder="جست‌وجو در فعالیت، حالت و توضیحات">
@@ -204,7 +204,7 @@
               <button type="button" class="btn-step" id="btnExportLifeHistory"><i data-lucide="download"></i><span>CSV</span></button>
             </div>
 
-            <div class="filter-row history-filter-grid" data-life-report-sections="records,grouping">
+            <div class="filter-row history-filter-grid" data-life-report-sections="records,grouping" hidden>
               <div class="filter-col">
                 <label>فعالیت:</label>
                 <div class="custom-dropdown" id="lifeHistoryFilterDropdown">
@@ -902,11 +902,18 @@
           <div class="shamsi-picker-row">
             <div class="picker-col">
               <label>روز</label>
-              <select id="shamsiDaySelect"></select>
+              <div class="custom-date-dropdown" data-date-dropdown="day">
+                <button type="button" class="custom-date-trigger" id="shamsiDayTrigger" aria-haspopup="listbox" aria-expanded="false"><span id="shamsiDaySelected">روز را انتخاب کنید</span><span class="custom-date-arrow">▾</span></button>
+                <div class="custom-date-menu" id="shamsiDayMenu" role="listbox"></div>
+                <select id="shamsiDaySelect" class="date-select-native" tabindex="-1" aria-hidden="true"></select>
+              </div>
             </div>
             <div class="picker-col">
               <label>ماه</label>
-              <select id="shamsiMonthSelect">
+              <div class="custom-date-dropdown" data-date-dropdown="month">
+                <button type="button" class="custom-date-trigger" id="shamsiMonthTrigger" aria-haspopup="listbox" aria-expanded="false"><span id="shamsiMonthSelected">ماه را انتخاب کنید</span><span class="custom-date-arrow">▾</span></button>
+                <div class="custom-date-menu" id="shamsiMonthMenu" role="listbox"></div>
+                <select id="shamsiMonthSelect" class="date-select-native" tabindex="-1" aria-hidden="true">
                 <option value="1">فروردین</option>
                 <option value="2">اردیبهشت</option>
                 <option value="3">خرداد</option>
@@ -919,16 +926,21 @@
                 <option value="10">دی</option>
                 <option value="11">بهمن</option>
                 <option value="12">اسفند</option>
-              </select>
+                </select>
+              </div>
             </div>
             <div class="picker-col">
               <label>سال</label>
-              <select id="shamsiYearSelect">
+              <div class="custom-date-dropdown" data-date-dropdown="year">
+                <button type="button" class="custom-date-trigger" id="shamsiYearTrigger" aria-haspopup="listbox" aria-expanded="false"><span id="shamsiYearSelected">سال را انتخاب کنید</span><span class="custom-date-arrow">▾</span></button>
+                <div class="custom-date-menu" id="shamsiYearMenu" role="listbox"></div>
+                <select id="shamsiYearSelect" class="date-select-native" tabindex="-1" aria-hidden="true">
                 <option value="1402">۱۴۰۲</option>
                 <option value="1403" selected>۱۴۰۳</option>
                 <option value="1404">۱۴۰۴</option>
                 <option value="1405">۱۴۰۵</option>
-              </select>
+                </select>
+              </div>
             </div>
           </div>
           <div class="shamsi-preview" id="shamsiDatePreview">...</div>
@@ -1105,6 +1117,6 @@
   </div>
 
   <script src="/static/vendor/lucide.min.js?v=1.72.0"></script>
-  <script src="/static/app.js?v=6.9.1"></script>
+  <script src="/static/app.js?v=6.10.0"></script>
 </body>
 </html>

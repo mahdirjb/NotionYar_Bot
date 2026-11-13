@@ -1,5 +1,5 @@
 // app/static/app.js
-// NotionYar Telegram Mini App v6.9.1
+// NotionYar Telegram Mini App v6.10.0
 
 (function () {
   const tg = window.Telegram?.WebApp;
@@ -570,6 +570,9 @@
 
     trigger.addEventListener("click", (e) => {
       e.stopPropagation();
+      document.querySelectorAll(".history-filter-grid .custom-dropdown.open").forEach((other) => {
+        if (other !== dropdown) other.classList.remove("open");
+      });
       const isOpen = dropdown.classList.toggle("open");
       trigger.setAttribute("aria-expanded", isOpen);
       haptic("light");
@@ -814,11 +817,61 @@
   // ==========================================
   // 1. INITIALIZATION & AUTH
   // ==========================================
+  async function restoreOfflineSession(snapshot) {
+    const data = snapshot || {};
+    const todayIso = data.today_iso || getDateFromOffset(0);
+    setAuthState("authenticated");
+    currentUser = data.user || {};
+    currentDateIso = todayIso;
+    selectedLifeDate = todayIso;
+    currentHabitDateIso = todayIso;
+    currentSpiritualDateIso = todayIso;
+    selectedQuranDateIso = todayIso;
+
+    document.getElementById("userName").textContent = currentUser.first_name || "کاربر گرامی";
+    document.getElementById("currentDate").textContent = toPersianDigits(data.today_jalali || formatIsoToJalaliDisplay(todayIso));
+    const roleBadge = document.getElementById("userRole");
+    if (roleBadge) roleBadge.textContent = ROLE_PERSIAN_MAP[currentUser.role] || "کاربر";
+    const logoutButton = document.getElementById("btnWebLogout");
+    if (logoutButton) logoutButton.style.display = currentUser.auth_source === "web" ? "inline-flex" : "none";
+    const adminNavBtn = document.getElementById("navItemAdmin");
+    if (adminNavBtn) adminNavBtn.style.display = currentUser.is_admin ? "flex" : "none";
+
+    initAdminRoleDropdown();
+    initLifeHistoryPeriodDropdown();
+    initLifeHistoryFilterDropdown();
+    initLifeHistoryControls();
+    initLifeEditModal();
+    setupStealthModeUI();
+    updateDateBadge("life", 0);
+    updateSpiritualDateBadge(0);
+    updateQuranDateBadge(0);
+    autoExpandTextareas();
+    await Promise.all([
+      loadLifeTrackerOptions(),
+      loadHabitsForDate(currentHabitDateIso),
+      loadSpiritualDay(currentSpiritualDateIso),
+    ]);
+    const activePanel = document.querySelector(".tab-panel.active");
+    const activeSubtab = activePanel?.querySelector(".subtab-content.active")?.id;
+    if (activeSubtab === "life-sub-radar") loadLifeRadar();
+    if (activeSubtab === "life-sub-history") loadLifeHistory();
+    if (activeSubtab === "habit-sub-analytics") loadHabitsAnalytics();
+    if (activeSubtab === "spiritual-sub-quran") loadQuranHistory();
+    if (activeSubtab === "spiritual-sub-report") loadSpiritualReport("7d");
+  }
+
   async function initApp() {
     try {
       const res = await fetch("/api/me", { headers: getHeaders() });
       if (!res.ok) {
         const data = await res.json().catch(() => ({}));
+        if ((navigator.onLine === false || res.status >= 500) && localStorage.getItem("notionyar_last_auth")) {
+          await restoreOfflineSession(JSON.parse(localStorage.getItem("notionyar_last_auth")));
+          updateSyncStatus({ online: false });
+          showToast("حالت آفلاین فعال شد؛ آخرین داده‌های ذخیره‌شده نمایش داده می‌شوند", "info");
+          return;
+        }
         if (!tg?.initData && [401, 403].includes(res.status)) {
           setAuthState("auth-required", data.detail || "برای ادامه وارد حساب وب شوید.");
         } else {
@@ -827,6 +880,7 @@
         return;
       }
       const data = await res.json();
+      localStorage.setItem("notionyar_last_auth", JSON.stringify(data));
       setAuthState("authenticated");
       currentUser = data.user;
       currentDateIso = data.today_iso;
@@ -885,6 +939,17 @@
 
     } catch (err) {
       console.error(err);
+      try {
+        const cachedAuth = localStorage.getItem("notionyar_last_auth");
+        if (cachedAuth) {
+          await restoreOfflineSession(JSON.parse(cachedAuth));
+          updateSyncStatus({ online: false });
+          showToast("اتصال برقرار نیست؛ آخرین داده‌های ذخیره‌شده فعال شدند", "info");
+          return;
+        }
+      } catch (offlineError) {
+        console.error("Offline session restore failed", offlineError);
+      }
       showToast("خطا در ارتباط با سرور", "error");
     }
   }
@@ -1010,6 +1075,9 @@
     segControl.querySelectorAll(".seg-btn").forEach((btn) => {
       btn.addEventListener("click", () => {
         const subtabId = btn.getAttribute("data-subtab");
+        // History view buttons use the same visual segmented control but are
+        // not workspace subtabs. Do not let the generic handler blank the tab.
+        if (!subtabId) return;
         const parentSection = btn.closest(".tab-panel");
         if (!parentSection) return;
 
@@ -1073,6 +1141,58 @@
     const btnConfirm = document.getElementById("btnConfirmShamsiDate");
     const btnClose = document.getElementById("btnDateModalClose");
 
+    const customDateDropdowns = {
+      day: { select: daySelect, trigger: document.getElementById("shamsiDayTrigger"), label: document.getElementById("shamsiDaySelected"), menu: document.getElementById("shamsiDayMenu") },
+      month: { select: monthSelect, trigger: document.getElementById("shamsiMonthTrigger"), label: document.getElementById("shamsiMonthSelected"), menu: document.getElementById("shamsiMonthMenu") },
+      year: { select: yearSelect, trigger: document.getElementById("shamsiYearTrigger"), label: document.getElementById("shamsiYearSelected"), menu: document.getElementById("shamsiYearMenu") },
+    };
+
+    function syncCustomDateDropdown(kind) {
+      const control = customDateDropdowns[kind];
+      if (!control?.select || !control.menu || !control.label) return;
+      control.menu.innerHTML = "";
+      Array.from(control.select.options).forEach((option) => {
+        const item = document.createElement("button");
+        item.type = "button";
+        item.className = "custom-date-option";
+        item.dataset.value = option.value;
+        item.setAttribute("role", "option");
+        item.setAttribute("aria-selected", String(option.value === control.select.value));
+        item.textContent = option.textContent;
+        item.addEventListener("click", (event) => {
+          event.stopPropagation();
+          control.select.value = option.value;
+          control.select.dispatchEvent(new Event("change", { bubbles: true }));
+          control.menu.parentElement.classList.remove("open");
+          control.trigger?.setAttribute("aria-expanded", "false");
+        });
+        control.menu.appendChild(item);
+      });
+      const selected = control.select.options[control.select.selectedIndex];
+      control.label.textContent = selected?.textContent || "انتخاب کنید";
+      control.menu.querySelectorAll(".custom-date-option").forEach((item) => item.classList.toggle("active", item.dataset.value === control.select.value));
+    }
+    window.__notionyarSyncDateDropdown = syncCustomDateDropdown;
+
+    Object.entries(customDateDropdowns).forEach(([kind, control]) => {
+      control.trigger?.addEventListener("click", (event) => {
+        event.stopPropagation();
+        const dropdown = control.trigger.closest(".custom-date-dropdown");
+        const open = dropdown.classList.toggle("open");
+        document.querySelectorAll(".custom-date-dropdown.open").forEach((other) => {
+          if (other !== dropdown) other.classList.remove("open");
+        });
+        control.trigger.setAttribute("aria-expanded", String(open));
+      });
+      control.select?.addEventListener("change", () => syncCustomDateDropdown(kind));
+    });
+    document.addEventListener("click", () => {
+      document.querySelectorAll(".custom-date-dropdown.open").forEach((dropdown) => {
+        dropdown.classList.remove("open");
+        dropdown.querySelector(".custom-date-trigger")?.setAttribute("aria-expanded", "false");
+      });
+    });
+
     function updateDays() {
       const m = parseInt(monthSelect.value, 10);
       const maxDays = m <= 6 ? 31 : (m <= 11 ? 30 : 29);
@@ -1086,6 +1206,7 @@
         if (d === Math.min(currentSelectedDay, maxDays)) opt.selected = true;
         daySelect.appendChild(opt);
       }
+      syncCustomDateDropdown("day");
       updatePreview();
     }
 
@@ -1099,6 +1220,9 @@
     monthSelect?.addEventListener("change", updateDays);
     daySelect?.addEventListener("change", updatePreview);
     yearSelect?.addEventListener("change", updatePreview);
+    syncCustomDateDropdown("day");
+    syncCustomDateDropdown("month");
+    window.__notionyarSyncDateDropdown?.("year");
 
     btnClose?.addEventListener("click", () => {
       modal.style.display = "none";
@@ -1231,8 +1355,10 @@
       if (y === jy) opt.selected = true;
       yearSelect.appendChild(opt);
     }
+    window.__notionyarSyncDateDropdown?.("year");
 
     monthSelect.value = jm;
+    window.__notionyarSyncDateDropdown?.("month");
 
     // Populate days
     const maxDays = jm <= 6 ? 31 : (jm <= 11 ? 30 : 29);
@@ -1244,6 +1370,7 @@
       if (d === jd) opt.selected = true;
       daySelect.appendChild(opt);
     }
+    window.__notionyarSyncDateDropdown?.("day");
 
     const preview = document.getElementById("shamsiDatePreview");
     preview.textContent = `${toPersianDigits(jd)} ${PERSIAN_MONTH_NAMES[jm - 1]} ${toPersianDigits(jy)}`;
@@ -1517,6 +1644,9 @@
 
     trigger.addEventListener("click", (e) => {
       e.stopPropagation();
+      document.querySelectorAll(".history-filter-grid .custom-dropdown.open").forEach((other) => {
+        if (other !== dropdown) other.classList.remove("open");
+      });
       const isOpen = dropdown.classList.toggle("open");
       trigger.setAttribute("aria-expanded", isOpen);
       haptic("light");
@@ -1616,6 +1746,9 @@
     dropdown.dataset.ready = "1";
     trigger.addEventListener("click", (event) => {
       event.stopPropagation();
+      document.querySelectorAll(".history-filter-grid .custom-dropdown.open").forEach((other) => {
+        if (other !== dropdown) other.classList.remove("open");
+      });
       const open = dropdown.classList.toggle("open");
       trigger.setAttribute("aria-expanded", String(open));
     });
@@ -1638,6 +1771,9 @@
 
     trigger.addEventListener("click", (e) => {
       e.stopPropagation();
+      document.querySelectorAll(".history-filter-grid .custom-dropdown.open").forEach((other) => {
+        if (other !== dropdown) other.classList.remove("open");
+      });
       const isOpen = dropdown.classList.toggle("open");
       trigger.setAttribute("aria-expanded", isOpen);
       haptic("light");
