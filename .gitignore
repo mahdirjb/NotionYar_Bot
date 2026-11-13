@@ -7,3 +7,6 @@ data/web_credentials.json
 android/.gradle/
 android/build/
 android/app/build/
+android/manual-build/
+android/keystore/
+android/artifacts/
