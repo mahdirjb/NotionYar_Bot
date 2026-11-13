@@ -950,6 +950,8 @@ async def reset_entire_habit_day(
 @app.get("/api/habits/analytics")
 async def get_habits_analytics(
     period: str = Query("7d"),
+    start_date: Optional[str] = Query(None),
+    end_date: Optional[str] = Query(None),
     user: Dict[str, Any] = Depends(get_current_user)
 ):
     """Returns streaks, 7-day consistency heatmap, and habit rankings."""
@@ -964,7 +966,13 @@ async def get_habits_analytics(
         streaks = {}
 
     try:
-        matrix = await asyncio.to_thread(calculate_consistency_matrix, period, history)
+        matrix = await asyncio.to_thread(
+            calculate_consistency_matrix,
+            period,
+            history,
+            start_date,
+            end_date,
+        )
     except Exception:
         matrix = {}
 

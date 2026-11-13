@@ -1,5 +1,5 @@
 // app/static/app.js
-// NotionYar Telegram Mini App v6.7
+// NotionYar Telegram Mini App v6.8
 
 (function () {
   const tg = window.Telegram?.WebApp;
@@ -34,8 +34,6 @@
   }
 
   const UI_ICON_MAP = {
-    "#btnActionFreeze": "snowflake",
-    "#btnActionReset": "rotate-ccw",
     "#btnExportReports": "download",
     "#btnRefreshReports": "refresh-cw",
   };
@@ -680,6 +678,16 @@
     return `${toPersianDigits(jd)} ${PERSIAN_MONTH_NAMES[jm - 1]} ${toPersianDigits(jy)}`;
   }
 
+  function updateAnalyticsCustomRangeLabels(kind) {
+    const isHabit = kind === "habit";
+    const start = isHabit ? customHabitAnalyticsStartDate : customSpiritualReportStartDate;
+    const end = isHabit ? customHabitAnalyticsEndDate : customSpiritualReportEndDate;
+    const from = document.getElementById(isHabit ? "btnHabitAnalyticsFrom" : "btnSpReportFrom");
+    const to = document.getElementById(isHabit ? "btnHabitAnalyticsTo" : "btnSpReportTo");
+    if (from) from.textContent = start ? `📅 از ${formatIsoToJalaliDisplay(start)}` : "📅 از تاریخ";
+    if (to) to.textContent = end ? `📅 تا ${formatIsoToJalaliDisplay(end)}` : "📅 تا تاریخ";
+  }
+
   function getDateFromOffset(offset) {
     const d = new Date();
     d.setDate(d.getDate() - offset);
@@ -712,6 +720,10 @@
   let allLifeEntriesCache = []; // for local fast date filtering
   let customLifeStartDate = null;
   let customLifeEndDate = null;
+  let customHabitAnalyticsStartDate = null;
+  let customHabitAnalyticsEndDate = null;
+  let customSpiritualReportStartDate = null;
+  let customSpiritualReportEndDate = null;
   let lifeHistoryView = "date";
   let lifeHistoryPage = 1;
   const LIFE_HISTORY_PAGE_SIZE = 60;
@@ -1146,6 +1158,22 @@
         const btn = document.getElementById("btnSpBulkTo");
         if (btn) btn.innerHTML = `<span>📅 تا: ${toPersianDigits(jd)} ${PERSIAN_MONTH_NAMES[jm - 1]}</span>`;
         updateSpBulkRangeBadge();
+      } else if (activeDatePickerTarget === "habit_analytics_from") {
+        customHabitAnalyticsStartDate = isoDate;
+        updateAnalyticsCustomRangeLabels("habit");
+        if (customHabitAnalyticsEndDate) loadHabitsAnalytics("custom");
+      } else if (activeDatePickerTarget === "habit_analytics_to") {
+        customHabitAnalyticsEndDate = isoDate;
+        updateAnalyticsCustomRangeLabels("habit");
+        if (customHabitAnalyticsStartDate) loadHabitsAnalytics("custom");
+      } else if (activeDatePickerTarget === "spiritual_report_from") {
+        customSpiritualReportStartDate = isoDate;
+        updateAnalyticsCustomRangeLabels("spiritual");
+        if (customSpiritualReportEndDate) loadSpiritualReport("custom");
+      } else if (activeDatePickerTarget === "spiritual_report_to") {
+        customSpiritualReportEndDate = isoDate;
+        updateAnalyticsCustomRangeLabels("spiritual");
+        if (customSpiritualReportStartDate) loadSpiritualReport("custom");
       } else if (activeDatePickerTarget === "edit_life") {
         const isoInput = document.getElementById("editLifeDateIso");
         const display = document.getElementById("editLifeDateDisplay");
@@ -1175,6 +1203,10 @@
     if (target === "life_to") currentIso = customLifeEndDate || currentDateIso;
     if (target === "spiritual_bulk_from") currentIso = spBulkCustomFromIso || currentDateIso;
     if (target === "spiritual_bulk_to") currentIso = spBulkCustomToIso || currentDateIso;
+    if (target === "habit_analytics_from") currentIso = customHabitAnalyticsStartDate || currentDateIso;
+    if (target === "habit_analytics_to") currentIso = customHabitAnalyticsEndDate || currentDateIso;
+    if (target === "spiritual_report_from") currentIso = customSpiritualReportStartDate || currentDateIso;
+    if (target === "spiritual_report_to") currentIso = customSpiritualReportEndDate || currentDateIso;
     if (target === "edit_life") currentIso = document.getElementById("editLifeDateIso")?.value || currentDateIso;
 
     if (typeof currentIso === "string") {
@@ -1227,6 +1259,10 @@
   document.getElementById("btnOpenQuranDatePicker")?.addEventListener("click", () => openPersianDatePicker("quran"));
   document.getElementById("btnSpBulkFrom")?.addEventListener("click", () => openPersianDatePicker("spiritual_bulk_from"));
   document.getElementById("btnSpBulkTo")?.addEventListener("click", () => openPersianDatePicker("spiritual_bulk_to"));
+  document.getElementById("btnHabitAnalyticsFrom")?.addEventListener("click", () => openPersianDatePicker("habit_analytics_from"));
+  document.getElementById("btnHabitAnalyticsTo")?.addEventListener("click", () => openPersianDatePicker("habit_analytics_to"));
+  document.getElementById("btnSpReportFrom")?.addEventListener("click", () => openPersianDatePicker("spiritual_report_from"));
+  document.getElementById("btnSpReportTo")?.addEventListener("click", () => openPersianDatePicker("spiritual_report_to"));
 
 
   initPersianDatePickerModal();
@@ -1537,6 +1573,59 @@
     });
   }
 
+  function populateHistoryModeFilter() {
+    const menu = document.getElementById("lifeHistoryModeMenu");
+    if (!menu) return;
+    const currentMode = document.getElementById("lifeHistoryModeFilter")?.value || "";
+    const modes = [...new Set(allLifeEntriesCache.flatMap((item) => item.modes || []).filter(Boolean))]
+      .sort((a, b) => a.localeCompare(b, "fa"));
+    menu.innerHTML = `<div class="custom-dropdown-item ${currentMode ? "" : "active"}" data-value="" role="option"><span class="item-title">🎛️ تمام حالت‌ها</span></div>`;
+    modes.forEach((mode) => {
+      const item = document.createElement("div");
+      item.className = `custom-dropdown-item${mode === currentMode ? " active" : ""}`;
+      item.dataset.value = mode;
+      item.setAttribute("role", "option");
+      item.innerHTML = `<span class="item-title">🎛️ ${escapeReportText(mode)}</span>`;
+      menu.appendChild(item);
+    });
+    const hiddenInput = document.getElementById("lifeHistoryModeFilter");
+    const selectedSpan = document.getElementById("lifeHistoryModeSelected");
+    const dropdown = document.getElementById("lifeHistoryModeDropdown");
+    const trigger = document.getElementById("lifeHistoryModeTrigger");
+    menu.querySelectorAll(".custom-dropdown-item").forEach((item) => {
+      item.addEventListener("click", (event) => {
+        event.stopPropagation();
+        const value = item.dataset.value || "";
+        if (hiddenInput) hiddenInput.value = value;
+        if (selectedSpan) selectedSpan.textContent = item.querySelector(".item-title")?.textContent || "🎛️ تمام حالت‌ها";
+        menu.querySelectorAll(".custom-dropdown-item").forEach((entry) => entry.classList.remove("active"));
+        item.classList.add("active");
+        dropdown?.classList.remove("open");
+        trigger?.setAttribute("aria-expanded", "false");
+        lifeHistoryPage = 1;
+        renderFilteredLifeHistory();
+      });
+    });
+  }
+
+  function initLifeHistoryModeDropdown() {
+    const dropdown = document.getElementById("lifeHistoryModeDropdown");
+    const trigger = document.getElementById("lifeHistoryModeTrigger");
+    if (!dropdown || !trigger || dropdown.dataset.ready === "1") return;
+    dropdown.dataset.ready = "1";
+    trigger.addEventListener("click", (event) => {
+      event.stopPropagation();
+      const open = dropdown.classList.toggle("open");
+      trigger.setAttribute("aria-expanded", String(open));
+    });
+    document.addEventListener("click", (event) => {
+      if (!dropdown.contains(event.target)) {
+        dropdown.classList.remove("open");
+        trigger.setAttribute("aria-expanded", "false");
+      }
+    });
+  }
+
   function initLifeHistoryPeriodDropdown() {
     const dropdown = document.getElementById("lifeHistoryPeriodDropdown");
     const trigger = document.getElementById("lifeHistoryPeriodTrigger");
@@ -1587,8 +1676,9 @@
     const root = document.getElementById("life-sub-history");
     if (!root || root.dataset.controlsReady === "1") return;
     root.dataset.controlsReady = "1";
+    initLifeHistoryModeDropdown();
 
-    ["lifeHistorySearch", "lifeHistoryModeFilter", "lifeHistorySort"].forEach((id) => {
+    ["lifeHistorySearch", "lifeHistorySort"].forEach((id) => {
       document.getElementById(id)?.addEventListener(id === "lifeHistorySearch" ? "input" : "change", () => {
         lifeHistoryPage = 1;
         if (id === "lifeHistorySearch") {
@@ -1634,6 +1724,9 @@
       const periodLabel = document.getElementById("lifeHistoryPeriodSelected");
       if (typeLabel) typeLabel.textContent = "تمام فعالیت‌ها";
       if (periodLabel) periodLabel.textContent = "تمام تاریخچه";
+      const modeLabel = document.getElementById("lifeHistoryModeSelected");
+      if (modeLabel) modeLabel.textContent = "🎛️ تمام حالت‌ها";
+      document.querySelectorAll("#lifeHistoryModeMenu .custom-dropdown-item").forEach((item) => item.classList.toggle("active", !item.dataset.value));
       document.querySelectorAll("#lifeHistoryFilterMenu .custom-dropdown-item, #lifeHistoryPeriodMenu .custom-dropdown-item").forEach((item) => item.classList.toggle("active", !item.dataset.value || item.dataset.value === "all"));
       renderFilteredLifeHistory();
     });
@@ -1883,13 +1976,7 @@
       const data = await res.json();
       allLifeEntriesCache = data.entries || [];
       dataCache.lifeHistory = allLifeEntriesCache;
-      const modeSelect = document.getElementById("lifeHistoryModeFilter");
-      if (modeSelect) {
-        const currentMode = modeSelect.value;
-        const modes = [...new Set(allLifeEntriesCache.flatMap((item) => item.modes || []).filter(Boolean))].sort((a, b) => a.localeCompare(b, "fa"));
-        modeSelect.innerHTML = '<option value="">تمام حالت‌ها</option>' + modes.map((mode) => `<option value="${escapeReportText(mode)}">${escapeReportText(mode)}</option>`).join("");
-        modeSelect.value = modes.includes(currentMode) ? currentMode : "";
-      }
+      populateHistoryModeFilter();
       renderFilteredLifeHistory();
     } catch (e) {
       renderRetryState(list, "خطا در بارگذاری تاریخچه", loadLifeHistory);
@@ -1984,6 +2071,7 @@
   function renderFilteredLifeHistory() {
     const list = document.getElementById("lifeHistoryList");
     if (!list) return;
+    list.dataset.view = lifeHistoryView;
     const filtered = getFilteredLifeHistory();
     renderLifeHistorySummary(filtered);
     const resultCount = document.getElementById("lifeHistoryResultCount");
@@ -2004,20 +2092,29 @@
       return;
     }
 
-    const grouped = new Map();
-    pageItems.forEach((item) => {
-      const key = lifeHistoryView === "type" ? (item.type || "بدون دسته") : (item.date_iso || "بدون تاریخ");
-      if (!grouped.has(key)) grouped.set(key, []);
-      grouped.get(key).push(item);
-    });
-    grouped.forEach((items, key) => {
-      const section = document.createElement("section");
-      section.className = "history-group";
-      const label = lifeHistoryView === "type" ? key : (items[0]?.date || key);
-      section.innerHTML = `<header><strong>${escapeReportText(toPersianDigits(label))}</strong><span>${toPersianDigits(items.length)} مورد</span></header>`;
-      items.forEach((item) => section.appendChild(createLifeHistoryRow(item)));
-      list.appendChild(section);
-    });
+    try {
+      const grouped = new Map();
+      pageItems.forEach((item) => {
+        const normalizedDate = String(item.date_iso || item.date || "").split("T")[0].split(" ")[0] || "بدون تاریخ";
+        const key = lifeHistoryView === "type" ? (item.type || "بدون دسته") : normalizedDate;
+        if (!grouped.has(key)) grouped.set(key, []);
+        grouped.get(key).push(item);
+      });
+      grouped.forEach((items, key) => {
+        const section = document.createElement("section");
+        section.className = "history-group";
+        const label = lifeHistoryView === "type" ? key : (items[0]?.date || formatIsoToJalaliDisplay(key));
+        section.innerHTML = `<header><strong>${escapeReportText(toPersianDigits(label))}</strong><span>${toPersianDigits(items.length)} مورد</span></header>`;
+        items.forEach((item) => section.appendChild(createLifeHistoryRow(item)));
+        list.appendChild(section);
+      });
+      if (!list.children.length) {
+        list.innerHTML = '<div class="loading-state">موردی برای این نوع نمایش وجود ندارد</div>';
+      }
+    } catch (error) {
+      console.error("Could not render grouped life history", error);
+      list.innerHTML = '<div class="empty-state"><strong>نمای گروه‌بندی آماده نشد</strong><span>فهرست ساده را انتخاب کنید یا دوباره تلاش کنید.</span></div>';
+    }
   }
 
   function renderLifeHistoryPagination(totalPages, totalItems) {
@@ -2245,10 +2342,12 @@
               </span>
             </div>
           </div>
-          <button class="btn-habit-level ${isDone ? "active" : ""}">
-            <span class="habit-title-normal">${levelBtnText}</span>
-            <span class="habit-title-code">${stealthLevelText}</span>
-          </button>
+          <div class="habit-actions-inline">
+            <button class="btn-habit-level ${isDone ? "active" : ""}">
+              <span class="habit-title-normal">${levelBtnText}</span>
+              <span class="habit-title-code">${stealthLevelText}</span>
+            </button>
+          </div>
         `;
 
         // Tap on checkmark
@@ -2377,7 +2476,9 @@
           toggle.setAttribute("aria-expanded", "false");
           toggle.innerHTML = '<span>جزئیات</span><i data-lucide="chevron-down"></i>';
           const detailBox = card.querySelector(".habit-inline-detail-box");
-          card.insertBefore(toggle, detailBox);
+          const actions = card.querySelector(".habit-actions-inline");
+          if (actions) actions.appendChild(toggle);
+          else card.insertBefore(toggle, detailBox);
 
           const toggleDetails = () => {
             const isOpen = card.classList.toggle("details-open");
@@ -2889,15 +2990,22 @@
   // ==========================================
   async function loadHabitsAnalytics(period = currentHabitAnalyticsPeriod) {
     currentHabitAnalyticsPeriod = period;
-    if (dataCache.habitAnalytics.has(period)) {
-      renderHabitAnalytics(dataCache.habitAnalytics.get(period));
+    const rangeKey = period === "custom" ? `${customHabitAnalyticsStartDate || ""}_${customHabitAnalyticsEndDate || ""}` : "";
+    const cacheKey = `${period}:${rangeKey}`;
+    if (dataCache.habitAnalytics.has(cacheKey)) {
+      renderHabitAnalytics(dataCache.habitAnalytics.get(cacheKey));
       return;
     }
     try {
-      const res = await fetch(`/api/habits/analytics?period=${encodeURIComponent(period)}`, { headers: getHeaders() });
+      const query = new URLSearchParams({ period });
+      if (period === "custom" && customHabitAnalyticsStartDate && customHabitAnalyticsEndDate) {
+        query.set("start_date", customHabitAnalyticsStartDate);
+        query.set("end_date", customHabitAnalyticsEndDate);
+      }
+      const res = await fetch(`/api/habits/analytics?${query.toString()}`, { headers: getHeaders() });
       if (!res.ok) return;
       const data = await res.json();
-      dataCache.habitAnalytics.set(period, data);
+      dataCache.habitAnalytics.set(cacheKey, data);
       renderHabitAnalytics(data);
     } catch (e) {
       console.error(e);
@@ -2989,7 +3097,11 @@
     button.addEventListener("click", () => {
       document.querySelectorAll("[data-habit-analytics-period]").forEach((item) => item.classList.remove("active"));
       button.classList.add("active");
-      loadHabitsAnalytics(button.dataset.habitAnalyticsPeriod || "7d");
+      const period = button.dataset.habitAnalyticsPeriod || "7d";
+      const range = document.getElementById("habitAnalyticsCustomRange");
+      if (range) range.hidden = period !== "custom";
+      if (period !== "custom") loadHabitsAnalytics(period);
+      else updateAnalyticsCustomRangeLabels("habit");
     });
   });
 
@@ -3956,7 +4068,10 @@
       document.querySelectorAll("[data-sp-report-period]").forEach((b) => b.classList.remove("active"));
       btn.classList.add("active");
       const period = btn.getAttribute("data-sp-report-period");
-      loadSpiritualReport(period);
+      const range = document.getElementById("spiritualReportCustomRange");
+      if (range) range.hidden = period !== "custom";
+      if (period !== "custom") loadSpiritualReport(period);
+      else updateAnalyticsCustomRangeLabels("spiritual");
       haptic("light");
     });
   });
@@ -3970,7 +4085,12 @@
     barsContainer.innerHTML = '<div class="loading-state">در حال بارگذاری تفکیک نمازها...</div>';
 
     try {
-      const res = await fetch(`/api/spiritual/report?period=${period}`, { headers: getHeaders() });
+      const query = new URLSearchParams({ period });
+      if (period === "custom" && customSpiritualReportStartDate && customSpiritualReportEndDate) {
+        query.set("start_date", customSpiritualReportStartDate);
+        query.set("end_date", customSpiritualReportEndDate);
+      }
+      const res = await fetch(`/api/spiritual/report?${query.toString()}`, { headers: getHeaders() });
       if (!res.ok) throw new Error("خطا در بارگذاری گزارش");
       const data = await res.json();
       const rep = data.report || {};
@@ -4197,6 +4317,19 @@
       document.querySelectorAll("[data-report-period]").forEach((item) => item.classList.remove("active"));
       button.classList.add("active");
       loadReportsDashboard(button.getAttribute("data-report-period") || "7d");
+      haptic("light");
+    });
+  });
+
+  document.querySelectorAll("[data-report-section-target]").forEach((button) => {
+    button.addEventListener("click", () => {
+      const target = button.dataset.reportSectionTarget || "overview";
+      document.querySelectorAll("[data-report-section-target]").forEach((item) => item.classList.remove("active"));
+      button.classList.add("active");
+      document.querySelectorAll("[data-report-section]").forEach((panel) => {
+        panel.hidden = panel.dataset.reportSection !== target;
+      });
+      document.getElementById("tab-reports")?.scrollIntoView({ behavior: "smooth", block: "start" });
       haptic("light");
     });
   });

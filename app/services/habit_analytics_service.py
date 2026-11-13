@@ -207,6 +207,8 @@ def calculate_habit_streaks(
 def calculate_consistency_matrix(
     period_key: str = "7d",
     history_pages: Optional[List[Dict[str, Any]]] = None,
+    start_date: Optional[str] = None,
+    end_date: Optional[str] = None,
 ) -> Dict[str, Any]:
     """
     Calculates detailed quality breakdown, habit ranking, and timeline for a given period.
@@ -217,20 +219,35 @@ def calculate_consistency_matrix(
     today = _get_tehran_today()
     j_today = jdatetime.date.fromgregorian(date=today)
 
-    if period_key == "month":
-        j_start = jdatetime.date(j_today.year, j_today.month, 1)
-        start_date = j_start.togregorian()
-        period_label = f"ماه جاری ({j_today.strftime('%B %Y')})"
-        days_in_period = (today - start_date).days + 1
-    elif period_key == "30d":
-        start_date = today - timedelta(days=29)
-        period_label = "۳۰ روز اخیر"
-        days_in_period = 30
-    else:
-        period_key = "7d"
-        start_date = today - timedelta(days=6)
-        period_label = "۷ روز اخیر"
-        days_in_period = 7
+    if start_date and end_date:
+        try:
+            start_date_obj = date.fromisoformat(start_date)
+            end_date_obj = date.fromisoformat(end_date)
+            if start_date_obj > end_date_obj:
+                start_date_obj, end_date_obj = end_date_obj, start_date_obj
+            start_date = start_date_obj
+            end_date = min(end_date_obj, today)
+            days_in_period = max(1, (end_date - start_date).days + 1)
+            period_label = "بازه دلخواه"
+        except ValueError:
+            start_date = None
+            end_date = None
+
+    if not start_date or not end_date:
+        if period_key == "month":
+            j_start = jdatetime.date(j_today.year, j_today.month, 1)
+            start_date = j_start.togregorian()
+            period_label = f"ماه جاری ({j_today.strftime('%B %Y')})"
+            days_in_period = (today - start_date).days + 1
+        elif period_key == "30d":
+            start_date = today - timedelta(days=29)
+            period_label = "۳۰ روز اخیر"
+            days_in_period = 30
+        else:
+            period_key = "7d"
+            start_date = today - timedelta(days=6)
+            period_label = "۷ روز اخیر"
+            days_in_period = 7
 
     records_by_date: Dict[date, Dict[str, Any]] = {}
     for page in history_pages:

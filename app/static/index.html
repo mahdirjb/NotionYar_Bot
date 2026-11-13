@@ -17,7 +17,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Vazirmatn:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="/static/app.css?v=6.7.0">
+  <link rel="stylesheet" href="/static/app.css?v=6.8.0">
 </head>
 
 <body class="auth-pending">
@@ -243,7 +243,16 @@
               </div>
               <div class="filter-col">
                 <label for="lifeHistoryModeFilter">حالت:</label>
-                <select id="lifeHistoryModeFilter"><option value="">تمام حالت‌ها</option></select>
+                <div class="custom-dropdown" id="lifeHistoryModeDropdown">
+                  <input type="hidden" id="lifeHistoryModeFilter" value="">
+                  <button type="button" class="custom-dropdown-trigger" id="lifeHistoryModeTrigger" aria-haspopup="listbox" aria-expanded="false">
+                    <span class="custom-dropdown-selected" id="lifeHistoryModeSelected">🎛️ تمام حالت‌ها</span>
+                    <span class="custom-dropdown-arrow">▾</span>
+                  </button>
+                  <div class="custom-dropdown-menu" id="lifeHistoryModeMenu" role="listbox">
+                    <div class="custom-dropdown-item active" data-value="" role="option"><span class="item-title">🎛️ تمام حالت‌ها</span></div>
+                  </div>
+                </div>
               </div>
               <div class="filter-col">
                 <label for="lifeHistorySort">مرتب‌سازی:</label>
@@ -391,7 +400,12 @@
                 <button type="button" class="btn-pill active" data-habit-analytics-period="7d">۷ روز</button>
                 <button type="button" class="btn-pill" data-habit-analytics-period="30d">۳۰ روز</button>
                 <button type="button" class="btn-pill" data-habit-analytics-period="month">ماه جاری</button>
+                <button type="button" class="btn-pill" data-habit-analytics-period="custom">📅 بازه دلخواه</button>
               </div>
+            </div>
+            <div class="analytics-custom-range" id="habitAnalyticsCustomRange" hidden>
+              <button type="button" class="btn-range-date-select" id="btnHabitAnalyticsFrom">📅 از تاریخ</button>
+              <button type="button" class="btn-range-date-select" id="btnHabitAnalyticsTo">📅 تا تاریخ</button>
             </div>
             <div class="rankings-list" id="habitRankingsList">
               <div class="loading-state">در حال محاسبه آمار...</div>
@@ -619,6 +633,11 @@
               <button type="button" class="btn-pill active" data-sp-report-period="7d">۷ روز اخیر</button>
               <button type="button" class="btn-pill" data-sp-report-period="month">ماه جاری</button>
               <button type="button" class="btn-pill" data-sp-report-period="30d">۳۰ روز اخیر</button>
+              <button type="button" class="btn-pill" data-sp-report-period="custom">📅 بازه دلخواه</button>
+            </div>
+            <div class="analytics-custom-range" id="spiritualReportCustomRange" hidden>
+              <button type="button" class="btn-range-date-select" id="btnSpReportFrom">📅 از تاریخ</button>
+              <button type="button" class="btn-range-date-select" id="btnSpReportTo">📅 تا تاریخ</button>
             </div>
 
             <!-- Report Summary Hero Cards -->
@@ -655,6 +674,12 @@
           <button type="button" class="btn-pill" data-report-period="month">ماه جاری</button>
           <button type="button" class="btn-pill" data-report-period="30d">۳۰ روز اخیر</button>
         </div>
+        <nav class="reports-section-nav" aria-label="بخش‌های گزارش">
+          <button type="button" class="seg-btn active" data-report-section-target="overview">📊 نمای کلی</button>
+          <button type="button" class="seg-btn" data-report-section-target="habits">🎯 عادت‌ها</button>
+          <button type="button" class="seg-btn" data-report-section-target="life">🌱 روزمرگی</button>
+          <button type="button" class="seg-btn" data-report-section-target="spiritual">🕌 معنوی</button>
+        </nav>
 
         <div id="reportsWarnings" class="reports-warnings" hidden></div>
         <div class="report-kpi-grid" id="reportsKpiGrid">
@@ -662,7 +687,7 @@
         </div>
 
         <div class="reports-layout">
-          <section class="report-panel report-panel-wide" aria-labelledby="activityReportTitle">
+          <section class="report-panel report-panel-wide" data-report-section="overview" aria-labelledby="activityReportTitle">
             <div class="report-panel-heading">
               <div>
                 <span class="report-eyebrow">روند روزانه</span>
@@ -677,7 +702,7 @@
             <div class="report-chart" id="reportsDailyChart"></div>
           </section>
 
-          <section class="report-panel" aria-labelledby="habitReportTitle">
+          <section class="report-panel" data-report-section="habits" hidden aria-labelledby="habitReportTitle">
             <div class="report-panel-heading">
               <div><span class="report-eyebrow">عادت‌ها</span><h3 id="habitReportTitle">مداومت و رتبه‌بندی</h3></div>
             </div>
@@ -685,14 +710,14 @@
             <div class="report-list" id="reportsHabitRanking"></div>
           </section>
 
-          <section class="report-panel" aria-labelledby="lifeReportTitle">
+          <section class="report-panel" data-report-section="life" hidden aria-labelledby="lifeReportTitle">
             <div class="report-panel-heading">
               <div><span class="report-eyebrow">روزمرگی</span><h3 id="lifeReportTitle">توزیع فعالیت‌ها</h3></div>
             </div>
             <div class="report-list" id="reportsLifeBreakdown"></div>
           </section>
 
-          <section class="report-panel report-panel-wide" aria-labelledby="spiritualReportTitle">
+          <section class="report-panel report-panel-wide" data-report-section="spiritual" hidden aria-labelledby="spiritualReportTitle">
             <div class="report-panel-heading">
               <div><span class="report-eyebrow">معنوی</span><h3 id="spiritualReportTitle">تفکیک نمازها و تلاوت</h3></div>
             </div>
@@ -1067,6 +1092,6 @@
   </div>
 
   <script src="/static/vendor/lucide.min.js?v=1.72.0"></script>
-  <script src="/static/app.js?v=6.7.0"></script>
+  <script src="/static/app.js?v=6.8.0"></script>
 </body>
 </html>
