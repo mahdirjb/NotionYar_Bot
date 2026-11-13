@@ -17,7 +17,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Vazirmatn:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="/static/app.css?v=6.3.0">
+  <link rel="stylesheet" href="/static/app.css?v=6.4.0">
 </head>
 
 <body class="auth-pending">
@@ -95,7 +95,7 @@
         <div class="segmented-control">
           <button class="seg-btn active" data-subtab="life-sub-log">✍️ ثبت لاگ</button>
           <button class="seg-btn" data-subtab="life-sub-radar">📊 رادار فواصل و تحلیل</button>
-          <button class="seg-btn" data-subtab="life-sub-history">📜 تاریخچه</button>
+          <button class="seg-btn" data-subtab="life-sub-history">📚 گزارش‌ها</button>
         </div>
 
         <!-- Subtab 1: Quick Log -->
@@ -179,7 +179,7 @@
           <div class="card">
             <div class="card-title">
               <span class="icon">📜</span>
-              <span>گزارش و تاریخچه روزمرگی</span>
+              <span>گزارش‌های روزمرگی</span>
             </div>
 
             <div class="history-summary-grid" id="lifeHistorySummary">
@@ -705,7 +705,13 @@
 
       <!-- ================= TAB 5: ADMIN PANEL ================= -->
       <section id="tab-admin" class="tab-panel">
-        <div class="card">
+        <div class="segmented-control admin-section-tabs" aria-label="بخش‌های مدیریت">
+          <button type="button" class="seg-btn active" data-admin-section="admin-overview">📊 نمای کلی</button>
+          <button type="button" class="seg-btn" data-admin-section="admin-security">🔐 امنیت ورود</button>
+          <button type="button" class="seg-btn" data-admin-section="admin-users">👥 کاربران</button>
+        </div>
+
+        <div class="card admin-section-card" id="admin-overview">
           <div class="card-title">
             <span class="icon">👑</span>
             <span>پنل مدیریت سامانه</span>
@@ -715,7 +721,7 @@
           </div>
         </div>
 
-        <div class="card">
+        <div class="card admin-section-card" id="admin-security" hidden>
           <div class="card-title">
             <span class="icon"><i data-lucide="key-round"></i></span>
             <span>ورود وب و امنیت حساب</span>
@@ -748,7 +754,7 @@
           </form>
         </div>
 
-        <div class="card">
+        <div class="card admin-section-card" id="admin-users" hidden>
           <div class="card-title">
             <span class="icon">👥</span>
             <span>مدیریت کاربران و دسترسی‌ها</span>
@@ -1057,6 +1063,6 @@
   </div>
 
   <script src="/static/vendor/lucide.min.js?v=1.72.0"></script>
-  <script src="/static/app.js?v=6.3.0"></script>
+  <script src="/static/app.js?v=6.4.0"></script>
 </body>
 </html>

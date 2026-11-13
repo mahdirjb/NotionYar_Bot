@@ -3036,6 +3036,161 @@ body {
   }
 }
 
+/* Final overrides: keep compact controls consistent after section themes. */
+.history-filter-grid .custom-dropdown-menu {
+  position: static !important;
+  display: grid !important;
+  max-height: 116px !important;
+  overflow-y: auto !important;
+  box-shadow: none !important;
+}
+.history-filter-grid .custom-dropdown-trigger { display: none !important; }
+.history-filter-grid .custom-dropdown-item { border-radius: 6px !important; }
+.date-quick-picker,
+.habit-date-selector-row,
+.spiritual-date-selector-row,
+.spiritual-quran-date-pills,
+.management-btns,
+.report-period-selector { border-radius: var(--control-radius) !important; overflow: hidden; }
+.date-quick-picker > button,
+.habit-date-selector-row > button,
+.spiritual-date-selector-row > button,
+.spiritual-quran-date-pills > button,
+.management-btns > button,
+.report-period-selector > button { border-radius: 0 !important; }
+.form-row > .form-group { min-width: 0 !important; }
+.admin-section-card[hidden] { display: none !important; }
+
+/* V6.4 interaction and layout polish */
+*, *::before, *::after { box-sizing: border-box; }
+
+.app-content { touch-action: pan-y; }
+.nav-item .nav-icon,
+.nav-item .nav-icon .lucide,
+.header-actions > button,
+.header-actions > button .lucide,
+.btn-icon .lucide { display: inline-flex; align-items: center; justify-content: center; vertical-align: middle; }
+.nav-item .nav-icon .lucide { width: 19px; height: 19px; }
+
+.date-quick-picker,
+.habit-date-selector-row,
+.spiritual-date-selector-row,
+.spiritual-quran-date-pills,
+.management-btns,
+.report-period-selector {
+  display: flex;
+  align-items: stretch;
+  gap: 0;
+  overflow: hidden;
+  border: 1px solid var(--card-border);
+  border-radius: var(--control-radius);
+  background: var(--subtle-surface);
+  width: 100%;
+}
+.date-quick-picker > button,
+.habit-date-selector-row > button,
+.spiritual-date-selector-row > button,
+.spiritual-quran-date-pills > button,
+.management-btns > button,
+.report-period-selector > button {
+  flex: 1 1 0;
+  min-width: 0;
+  border: 0;
+  border-left: 1px solid var(--card-border);
+  border-radius: 0;
+  white-space: nowrap;
+}
+.date-quick-picker > button:last-child,
+.habit-date-selector-row > button:last-child,
+.spiritual-date-selector-row > button:last-child,
+.spiritual-quran-date-pills > button:last-child,
+.management-btns > button:last-child,
+.report-period-selector > button:last-child { border-left: 0; }
+
+.form-row,
+.form-row > .form-group { min-width: 0; }
+.form-row > .form-group { flex: 1 1 0; }
+.form-group input,
+.form-group select,
+.form-group textarea,
+.form-group button { max-width: 100%; }
+#formWebCredentials .form-row { width: 100%; gap: 10px; }
+#formWebCredentials .form-row > .form-group { min-width: 0; }
+
+.history-filter-grid .custom-dropdown-menu {
+  position: static;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+  gap: 4px;
+  max-height: 116px;
+  overflow-y: auto;
+  padding: 4px;
+  margin-top: 4px;
+  border: 1px solid var(--card-border);
+  border-radius: var(--control-radius);
+  box-shadow: none;
+  background: var(--subtle-surface);
+}
+.history-filter-grid .custom-dropdown-trigger { display: none; }
+.history-filter-grid .custom-dropdown-item {
+  min-height: 34px;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  padding: 7px 8px;
+  font-size: 11px;
+  text-align: center;
+}
+.history-filter-grid .custom-dropdown-item.active {
+  border-color: var(--section-accent);
+  background: color-mix(in srgb, var(--section-accent) 14%, var(--card-bg));
+  color: var(--section-accent);
+}
+
+.admin-section-tabs { margin-top: 0; }
+.admin-section-card[hidden] { display: none; }
+
+.radar-grid { gap: 10px; }
+.radar-card { min-width: 0; padding: 14px; }
+.radar-top { align-items: flex-start; gap: 10px; }
+.radar-name { min-width: 0; font-size: 14px; line-height: 1.7; }
+.radar-status-pill { flex: 0 0 auto; white-space: normal; text-align: center; line-height: 1.5; }
+.radar-details { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; line-height: 1.8; font-size: 12px; }
+.radar-details > span { min-width: 0; padding: 8px; border-radius: 6px; background: var(--subtle-surface); }
+.radar-dates { gap: 6px; align-items: center; }
+.radar-date-badge { min-width: 42px; padding: 6px 8px; text-align: center; font-size: 11px; }
+
+.toast { overflow: hidden; padding-bottom: 13px; }
+.toast::after {
+  content: "";
+  position: absolute;
+  right: 0;
+  bottom: 0;
+  left: 0;
+  height: 3px;
+  transform-origin: right center;
+  transform: scaleX(0);
+  background: var(--success-color);
+}
+.toast.error::after { background: var(--danger-color); }
+.toast.show::after { animation: toast-progress var(--toast-duration, 2800ms) linear forwards; }
+@keyframes toast-progress { from { transform: scaleX(0); } to { transform: scaleX(1); } }
+
+.stealth-active .workspace-intro,
+.stealth-active .hero-top-row { filter: blur(8px); }
+.stealth-active .workspace-intro.revealed,
+.stealth-active .hero-top-row.revealed { filter: none; }
+
+@media (max-width: 520px) {
+  .date-quick-picker > button,
+  .habit-date-selector-row > button,
+  .spiritual-date-selector-row > button,
+  .spiritual-quran-date-pills > button,
+  .management-btns > button,
+  .report-period-selector > button { padding-inline: 6px; font-size: 11px; }
+  .radar-details { grid-template-columns: 1fr; }
+  #formWebCredentials .form-row { flex-direction: column; }
+}
+
 /* ================= REPORTS CENTER ================= */
 body.reports-view .workspace-intro {
   display: none;
@@ -5119,3 +5274,22 @@ textarea,
     font-size: 11px;
   }
 }
+
+/* Keep the latest interaction rules last so section-specific themes cannot undo them. */
+.history-filter-grid .custom-dropdown-menu { position: static !important; display: grid !important; max-height: 116px !important; overflow-y: auto !important; box-shadow: none !important; }
+.history-filter-grid .custom-dropdown-trigger { display: none !important; }
+.history-filter-grid .custom-dropdown-item { border-radius: 6px !important; }
+.date-quick-picker,
+.habit-date-selector-row,
+.spiritual-date-selector-row,
+.spiritual-quran-date-pills,
+.management-btns,
+.report-period-selector { gap: 0 !important; border-radius: var(--control-radius) !important; overflow: hidden; }
+.date-quick-picker > button,
+.habit-date-selector-row > button,
+.spiritual-date-selector-row > button,
+.spiritual-quran-date-pills > button,
+.management-btns > button,
+.report-period-selector > button { border-radius: 0 !important; }
+.form-row > .form-group { min-width: 0 !important; }
+.admin-section-card[hidden] { display: none !important; }

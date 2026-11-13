@@ -1,5 +1,5 @@
 // app/static/app.js
-// NotionYar Telegram Mini App v6.3
+// NotionYar Telegram Mini App v6.4
 
 (function () {
   const tg = window.Telegram?.WebApp;
@@ -12,10 +12,23 @@
   let originReachable = navigator.onLine;
   let currentReportPeriod = "7d";
   let currentReportData = null;
+  const dataCache = {
+    lifeHistory: null,
+    lifeRadar: null,
+    habits: new Map(),
+    spiritual: new Map(),
+    quranHistory: null,
+    habitAnalytics: new Map(),
+  };
+
+  function invalidateDataCache(...keys) {
+    keys.forEach((key) => {
+      if (dataCache[key] instanceof Map) dataCache[key].clear();
+      else dataCache[key] = null;
+    });
+  }
 
   const UI_ICON_MAP = {
-    "#btnBulkComplete": "check-check",
-    "#btnOpenPresetsModal": "panels-top-left",
     "#btnActionFreeze": "snowflake",
     "#btnActionReset": "rotate-ccw",
     "#btnExportReports": "download",
@@ -648,14 +661,17 @@
     }
 
     toast.className = `toast ${type} show`;
+    toast.style.setProperty("--toast-duration", "2800ms");
     const icon = type === "success" ? "✅ " : type === "error" ? "❌ " : "ℹ️ ";
     toast.textContent = icon + toPersianDigits(message);
 
     if (type === "success") haptic("success");
     if (type === "error") haptic("error");
 
-    setTimeout(() => {
+    clearTimeout(showToast.timer);
+    showToast.timer = setTimeout(() => {
       toast.classList.remove("show");
+      toast.style.removeProperty("--toast-duration");
     }, 2800);
   }
 
@@ -769,9 +785,9 @@
     document.body.dataset.section = targetTabId.replace("tab-", "");
   }
 
-  navItems.forEach((btn) => {
-    btn.addEventListener("click", () => {
-      const targetTabId = btn.getAttribute("data-tab");
+  function activateMainTab(targetTabId, direction = 0) {
+      const btn = Array.from(navItems).find((item) => item.getAttribute("data-tab") === targetTabId);
+      if (!btn) return;
       navItems.forEach((i) => i.classList.remove("active"));
       tabPanels.forEach((p) => p.classList.remove("active"));
 
@@ -782,6 +798,11 @@
 
       haptic("light");
 
+      const lifeHistory = document.getElementById("life-sub-history");
+      if (targetTabId === "tab-life" && lifeHistory?.classList.contains("active") && !dataCache.lifeHistory) {
+        loadLifeHistory();
+      }
+
       if (targetTabId === "tab-admin") {
         loadAdminPanel();
       }
@@ -791,9 +812,47 @@
       if (targetTabId === "tab-reports") {
         loadReportsDashboard(currentReportPeriod);
       }
+  }
+
+  navItems.forEach((btn) => {
+    btn.addEventListener("click", () => activateMainTab(btn.getAttribute("data-tab")));
+  });
+
+  let swipeStartX = 0;
+  let swipeStartY = 0;
+  let swipeTracking = false;
+  document.getElementById("app")?.addEventListener("touchstart", (event) => {
+    if (event.touches.length !== 1) return;
+    swipeStartX = event.touches[0].clientX;
+    swipeStartY = event.touches[0].clientY;
+    swipeTracking = true;
+  }, { passive: true });
+  document.getElementById("app")?.addEventListener("touchend", (event) => {
+    if (!swipeTracking || !event.changedTouches.length) return;
+    swipeTracking = false;
+    const dx = event.changedTouches[0].clientX - swipeStartX;
+    const dy = event.changedTouches[0].clientY - swipeStartY;
+    if (Math.abs(dx) < 56 || Math.abs(dx) < Math.abs(dy) * 1.25) return;
+    const visibleItems = Array.from(navItems).filter((item) => getComputedStyle(item).display !== "none");
+    const current = visibleItems.findIndex((item) => item.classList.contains("active"));
+    if (current < 0 || visibleItems.length < 2) return;
+    const nextIndex = dx < 0
+      ? (current + 1) % visibleItems.length
+      : (current - 1 + visibleItems.length) % visibleItems.length;
+    activateMainTab(visibleItems[nextIndex].getAttribute("data-tab"), dx < 0 ? 1 : -1);
+  }, { passive: true });
+  updateWorkspaceIntro("tab-habits");
+
+  document.querySelectorAll("[data-admin-section]").forEach((button) => {
+    button.addEventListener("click", () => {
+      const target = button.dataset.adminSection;
+      document.querySelectorAll("[data-admin-section]").forEach((item) => item.classList.toggle("active", item === button));
+      document.querySelectorAll(".admin-section-card").forEach((section) => {
+        section.hidden = section.id !== target;
+      });
+      haptic("light");
     });
   });
-  updateWorkspaceIntro("tab-habits");
 
   // Segmented Controls (Sub-tabs)
   document.querySelectorAll(".segmented-control").forEach((segControl) => {
@@ -1162,6 +1221,7 @@
       if (!res.ok) throw new Error(data.detail || "خطا در ثبت لاگ");
 
       showToast(`لاگ «${selectedLifeType}» با موفقیت ذخیره شد! 🌿`, "success");
+      invalidateDataCache("lifeHistory", "lifeRadar");
       document.getElementById("lifeNotes").value = "";
       if (typeof loadLifeHistory === "function") loadLifeHistory();
       if (typeof loadLifeRadar === "function") loadLifeRadar();
@@ -1176,12 +1236,26 @@
   // Routine Radar (Intervals) with Persian Digits
   async function loadLifeRadar() {
     const grid = document.getElementById("lifeRadarGrid");
+    if (dataCache.lifeRadar) {
+      renderLifeRadar(dataCache.lifeRadar);
+      return;
+    }
     grid.innerHTML = '<div class="loading-state">در حال محاسبه فواصل زمانی و وضعیت موعدها...</div>';
 
     try {
       const res = await fetch("/api/life-tracker/insights", { headers: getHeaders() });
       if (!res.ok) throw new Error();
       const data = await res.json();
+      dataCache.lifeRadar = data;
+      renderLifeRadar(data);
+    } catch (e) {
+      grid.innerHTML = '<div class="loading-state" style="color:var(--danger-color)">خطا در دریافت گزارش رادار</div>';
+    }
+  }
+
+  function renderLifeRadar(data) {
+    const grid = document.getElementById("lifeRadarGrid");
+    if (!grid) return;
       const insights = data.insights || {};
 
       grid.innerHTML = "";
@@ -1235,9 +1309,6 @@
       if (grid.children.length === 0) {
         grid.innerHTML = '<div class="loading-state">داده‌ای برای تحلیل فواصل یافت نشد. با ثبت فعالیت‌ها رادار فعال خواهد شد.</div>';
       }
-    } catch (e) {
-      grid.innerHTML = '<div class="loading-state" style="color:var(--danger-color)">خطا در دریافت گزارش رادار</div>';
-    }
   }
 
   // ==========================================
@@ -1365,13 +1436,17 @@
       });
     });
 
-    document.querySelectorAll("[data-life-history-view]").forEach((button) => {
+      document.querySelectorAll("[data-life-history-view]").forEach((button) => {
       button.addEventListener("click", () => {
         lifeHistoryView = button.dataset.lifeHistoryView || "date";
         lifeHistoryPage = 1;
         document.querySelectorAll("[data-life-history-view]").forEach((item) => item.classList.remove("active"));
         button.classList.add("active");
-        renderFilteredLifeHistory();
+        if (!dataCache.lifeHistory) {
+          loadLifeHistory();
+        } else {
+          renderFilteredLifeHistory();
+        }
       });
     });
 
@@ -1609,6 +1684,7 @@
           }
 
           showToast("لاگ روزمرگی با موفقیت به‌روزرسانی شد! ✨", "success");
+          invalidateDataCache("lifeHistory", "lifeRadar");
           haptic("success");
           modal.style.display = "none";
           await loadLifeHistory();
@@ -1630,6 +1706,11 @@
   async function loadLifeHistory() {
     const list = document.getElementById("lifeHistoryList");
     if (!list) return;
+    if (dataCache.lifeHistory) {
+      allLifeEntriesCache = dataCache.lifeHistory;
+      renderFilteredLifeHistory();
+      return;
+    }
     list.innerHTML = '<div class="loading-state">در حال دریافت لاگ‌ها...</div>';
 
     try {
@@ -1637,6 +1718,7 @@
       if (!res.ok) throw new Error();
       const data = await res.json();
       allLifeEntriesCache = data.entries || [];
+      dataCache.lifeHistory = allLifeEntriesCache;
       const modeSelect = document.getElementById("lifeHistoryModeFilter");
       if (modeSelect) {
         const currentMode = modeSelect.value;
@@ -1710,6 +1792,7 @@
         if (!response.ok) throw new Error();
         showToast("رکورد حذف شد", "success");
         allLifeEntriesCache = allLifeEntriesCache.filter((entry) => entry.id !== item.id);
+        dataCache.lifeHistory = allLifeEntriesCache;
         renderFilteredLifeHistory();
       } catch (error) {
         showToast("خطا در حذف رکورد", "error");
@@ -1856,6 +1939,11 @@
 
   async function loadHabitsForDate(dateIso) {
     const container = document.getElementById("habitsGroupedContainer");
+    if (dataCache.habits.has(dateIso)) {
+      habitDayData = dataCache.habits.get(dateIso);
+      renderHabitDay(habitDayData);
+      return;
+    }
     container.innerHTML = '<div class="loading-state">در حال دریافت وضعیت عادات...</div>';
 
     try {
@@ -1863,6 +1951,7 @@
       if (!res.ok) throw new Error("خطا در دریافت اطلاعات عادات");
 
       habitDayData = await res.json();
+      dataCache.habits.set(dateIso, habitDayData);
 
       // Check for daily auto-apply preset on today
       const todayIso = getDateFromOffset(0);
@@ -1920,6 +2009,25 @@
     } catch (err) {
       container.innerHTML = `<div class="loading-state" style="color:var(--danger-color)">${err.message}</div>`;
     }
+  }
+
+  function renderHabitDay(habitDayData) {
+      document.getElementById("habitDateTitle").textContent = toPersianDigits(habitDayData.jalali_title);
+      document.getElementById("habitPercent").textContent = `${toPersianDigits(habitDayData.progress_percent)}٪`;
+      document.getElementById("habitCountDisplay").textContent = `${toPersianDigits(habitDayData.completed_count)} از ${toPersianDigits(habitDayData.total_habits)}`;
+      document.getElementById("habitCheerleader").textContent = habitDayData.cheerleader;
+      const fillPct = `${habitDayData.progress_percent}%`;
+      document.getElementById("habitProgressFill").style.width = fillPct;
+      document.querySelector(".progress-ring-box")?.style.setProperty("--p-fill", fillPct);
+      const bookInput = document.getElementById("habitBook");
+      if (bookInput) bookInput.value = habitDayData.book_detail || "";
+      const quranInput = document.getElementById("habitQuran");
+      if (quranInput) quranInput.value = habitDayData.quran_detail || "";
+      const notesInput = document.getElementById("habitNotes");
+      if (notesInput) notesInput.value = habitDayData.notes || "";
+      initGratitudeItems(habitDayData);
+      renderGroupedHabits(habitDayData.categories);
+      autoExpandTextareas();
   }
 
   // Render Habits with Binary Check (Item 2) and Stealth Mode (Items 8, 11)
@@ -2029,6 +2137,7 @@
               showToast("جزئیات تلاوت قرآن در نوشن ثبت و سینک شد! 📖", "success");
 
               if (habitDayData) habitDayData.quran_detail = textVal;
+              invalidateDataCache("habits");
               const globalQuranInput = document.getElementById("habitQuran");
               if (globalQuranInput) globalQuranInput.value = textVal;
 
@@ -2078,6 +2187,7 @@
               });
               if (!res.ok) throw new Error("خطا در ذخیره مطالعه کتاب");
               showToast("جزئیات مطالعه کتاب ذخیره شد! 📚", "success");
+              invalidateDataCache("habits");
 
               if (habitDayData) habitDayData.book_detail = textVal;
               const globalBookInput = document.getElementById("habitBook");
@@ -2218,6 +2328,7 @@
       });
       if (!res.ok) throw new Error();
       showToast("تبریک! تمام عادات ثبت شدند 🚀", "success");
+      invalidateDataCache("habits", "habitAnalytics");
       loadHabitsForDate(currentHabitDateIso);
     } catch (e) {
       showToast("خطا در تکمیل خودکار عادات", "error");
@@ -2614,10 +2725,22 @@
   // ==========================================
   async function loadHabitsAnalytics(period = currentHabitAnalyticsPeriod) {
     currentHabitAnalyticsPeriod = period;
+    if (dataCache.habitAnalytics.has(period)) {
+      renderHabitAnalytics(dataCache.habitAnalytics.get(period));
+      return;
+    }
     try {
       const res = await fetch(`/api/habits/analytics?period=${encodeURIComponent(period)}`, { headers: getHeaders() });
       if (!res.ok) return;
       const data = await res.json();
+      dataCache.habitAnalytics.set(period, data);
+      renderHabitAnalytics(data);
+    } catch (e) {
+      console.error(e);
+    }
+  }
+
+  function renderHabitAnalytics(data) {
 
       const streaks = data.streaks || {};
       const matrix = data.matrix || {};
@@ -2696,9 +2819,6 @@
         tableHtml += "</tbody></table>";
         heatmapContainer.innerHTML = tableHtml;
       }
-    } catch (e) {
-      console.error(e);
-    }
   }
 
   document.querySelectorAll("[data-habit-analytics-period]").forEach((button) => {
@@ -2743,6 +2863,7 @@
 
         if (!res.ok) throw new Error();
         showToast("روز فریز با موفقیت ثبت شد ❄️", "success");
+        invalidateDataCache("habits", "habitAnalytics");
         loadHabitsForDate(currentHabitDateIso);
         loadHabitsAnalytics();
       } catch (e) {
@@ -2768,6 +2889,7 @@
 
       if (!res.ok) throw new Error();
       showToast("عادات روز انتخابی ریست شدند ⚪", "success");
+      invalidateDataCache("habits", "habitAnalytics");
       loadHabitsForDate(currentHabitDateIso);
       loadHabitsAnalytics();
     } catch (e) {
@@ -2899,6 +3021,7 @@
 
       if (!res.ok) throw new Error();
       showToast("دفتر شکرگزاری با موفقیت در نوشن ذخیره شد 🌸", "success");
+      invalidateDataCache("habits");
     } catch (e) {
       showToast("خطا در ذخیره دفتر شکرگزاری", "error");
     } finally {
@@ -2967,7 +3090,7 @@
       if (feedback) {
         feedback.textContent = data.configured
           ? "ورود مستقل وب فعال است."
-          : "برای فعال‌شدن ورود وب، WEB_SESSION_SECRET را در سرور تنظیم کن.";
+          : "ورود مستقل وب هنوز فعال نشده است.";
         feedback.classList.toggle("is-warning", !data.configured);
       }
     } catch (error) {
@@ -3222,9 +3345,13 @@
     if (!container) return;
 
     try {
-      const res = await fetch(`/api/spiritual/day?date_iso=${dateIso}`, { headers: getHeaders() });
-      if (!res.ok) throw new Error("خطا در بارگذاری روز نماز");
-      const data = await res.json();
+      let data = dataCache.spiritual.get(dateIso);
+      if (!data) {
+        const res = await fetch(`/api/spiritual/day?date_iso=${dateIso}`, { headers: getHeaders() });
+        if (!res.ok) throw new Error("خطا در بارگذاری روز نماز");
+        data = await res.json();
+        dataCache.spiritual.set(dateIso, data);
+      }
       spiritualDayData = data;
 
       // Update Date Badge
@@ -3341,6 +3468,7 @@
       const pName = PRAYER_DISPLAY_META[prayerKey]?.name || prayerKey;
       const statusTitle = targetStatus === "ada" ? "اداء" : (targetStatus === "qaza" ? "قضاء" : "نخوانده");
       showToast(`نماز ${pName}: ${statusTitle} ثبت شد`, "success");
+      invalidateDataCache("spiritual");
 
       await loadSpiritualDay(currentSpiritualDateIso);
     } catch (err) {
@@ -3361,6 +3489,7 @@
       });
       if (!res.ok) throw new Error("خطا در تکمیل خودکار");
       showToast("تمام ۵ نماز با موفقیت «اداء» علامت خوردند! 🟢", "success");
+      invalidateDataCache("spiritual");
       await loadSpiritualDay(currentSpiritualDateIso);
     } catch (err) {
       showToast(err.message, "error");
@@ -3475,6 +3604,7 @@
       const created = r.created_count || 0;
 
       showToast(`⚡ با موفقیت انجام شد: ${toPersianDigits(total)} روز (${toPersianDigits(updated + created)} روز اداء ثبت شد)`, "success");
+      invalidateDataCache("spiritual");
 
       if (modalSpRange) modalSpRange.style.display = "none";
       await loadSpiritualDay(currentSpiritualDateIso);
@@ -3501,6 +3631,7 @@
       });
       if (!res.ok) throw new Error("خطا در بازنشانی");
       showToast("وضعیت نمازهای روز بازنشانی شد ⚪", "info");
+      invalidateDataCache("spiritual");
       await loadSpiritualDay(currentSpiritualDateIso);
     } catch (err) {
       showToast(err.message, "error");
@@ -3520,7 +3651,8 @@
         body: JSON.stringify({ page_id: spiritualDayData.page_id, notes: notes })
       });
       if (!res.ok) throw new Error("خطا در ذخیره یادداشت");
-      showToast("یادداشت معنوی در نوشن ذخیره شد 💾", "success");
+        showToast("یادداشت معنوی در نوشن ذخیره شد 💾", "success");
+        invalidateDataCache("spiritual");
     } catch (err) {
       showToast(err.message, "error");
     }
@@ -3577,6 +3709,7 @@
       if (!res.ok) throw new Error("خطا در ذخیره تلاوت قرآن");
 
       showToast("جلسه تلاوت قرآن در نوشن ثبت شد! ✨", "success");
+      invalidateDataCache("quranHistory");
       document.getElementById("quranPagesInput").value = "";
       document.getElementById("quranTitleInput").value = "";
       loadQuranHistory();
@@ -3592,9 +3725,13 @@
     if (!container) return;
 
     try {
-      const res = await fetch("/api/spiritual/quran/history", { headers: getHeaders() });
-      if (!res.ok) return;
-      const data = await res.json();
+      let data = dataCache.quranHistory;
+      if (!data) {
+        const res = await fetch("/api/spiritual/quran/history", { headers: getHeaders() });
+        if (!res.ok) return;
+        data = await res.json();
+        dataCache.quranHistory = data;
+      }
       const entries = data.entries || [];
 
       if (entries.length === 0) {
@@ -3642,6 +3779,7 @@
       });
       if (!res.ok) throw new Error("خطا در حذف رکورد");
       showToast("رکورد تلاوت قرآن حذف شد", "info");
+      invalidateDataCache("quranHistory");
       loadQuranHistory();
     } catch (err) {
       showToast(err.message, "error");
