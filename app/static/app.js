@@ -1,5 +1,5 @@
 // app/static/app.js
-// NotionYar Telegram Mini App v6.5
+// NotionYar Telegram Mini App v6.6
 
 (function () {
   const tg = window.Telegram?.WebApp;
@@ -757,6 +757,14 @@
         loadSpiritualDay(currentSpiritualDateIso),
       ]);
 
+      const activePanel = document.querySelector(".tab-panel.active");
+      const activeSubtab = activePanel?.querySelector(".subtab-content.active")?.id;
+      if (activeSubtab === "life-sub-radar") loadLifeRadar();
+      if (activeSubtab === "life-sub-history") loadLifeHistory();
+      if (activeSubtab === "habit-sub-analytics") loadHabitsAnalytics();
+      if (activeSubtab === "spiritual-sub-quran") loadQuranHistory();
+      if (activeSubtab === "spiritual-sub-report") loadSpiritualReport("7d");
+
     } catch (err) {
       console.error(err);
       showToast("خطا در ارتباط با سرور", "error");
@@ -815,6 +823,7 @@
       updateWorkspaceIntro(targetTabId);
 
       haptic("light");
+      window.scrollTo({ top: 0, behavior: "smooth" });
 
       const lifeHistory = document.getElementById("life-sub-history");
       if (targetTabId === "tab-life" && lifeHistory?.classList.contains("active") && !dataCache.lifeHistory) {
@@ -868,9 +877,15 @@
       document.querySelectorAll(".admin-section-card").forEach((section) => {
         section.hidden = section.id !== target;
       });
+      localStorage.setItem("notionyar_admin_section", target);
       haptic("light");
     });
   });
+
+  const savedAdminSection = localStorage.getItem("notionyar_admin_section");
+  if (savedAdminSection) {
+    document.querySelector(`[data-admin-section="${savedAdminSection}"]`)?.click();
+  }
 
   // Segmented Controls (Sub-tabs)
   document.querySelectorAll(".segmented-control").forEach((segControl) => {
@@ -886,8 +901,10 @@
         btn.classList.add("active");
         const targetContent = document.getElementById(subtabId);
         if (targetContent) targetContent.classList.add("active");
+        if (parentSection.id) sessionStorage.setItem(`notionyar_subtab_${parentSection.id}`, subtabId);
 
         haptic("light");
+        window.scrollTo({ top: 0, behavior: "smooth" });
 
         // Dynamic Loading for Analytics/Reports
         if (subtabId === "life-sub-radar") loadLifeRadar();
@@ -898,6 +915,25 @@
       });
     });
   });
+
+  // Restore the last workspace view so repeated daily use starts where it left off.
+  document.querySelectorAll(".tab-panel").forEach((panel) => {
+    const savedSubtab = sessionStorage.getItem(`notionyar_subtab_${panel.id}`);
+    if (!savedSubtab) return;
+    const savedButton = panel.querySelector(`[data-subtab="${savedSubtab}"]`);
+    const savedContent = document.getElementById(savedSubtab);
+    if (!savedButton || !savedContent) return;
+    panel.querySelectorAll(".segmented-control .seg-btn").forEach((item) => item.classList.remove("active"));
+    panel.querySelectorAll(".subtab-content").forEach((item) => item.classList.remove("active"));
+    savedButton.classList.add("active");
+    savedContent.classList.add("active");
+  });
+
+  const scrollTopButton = document.getElementById("btnScrollTop");
+  const updateScrollTopButton = () => scrollTopButton?.classList.toggle("visible", window.scrollY > 360);
+  window.addEventListener("scroll", updateScrollTopButton, { passive: true });
+  scrollTopButton?.addEventListener("click", () => window.scrollTo({ top: 0, behavior: "smooth" }));
+  updateScrollTopButton();
 
 
   document.getElementById("btnRefresh")?.addEventListener("click", async () => {
