@@ -3090,6 +3090,94 @@ body {
 .form-row > .form-group { min-width: 0 !important; }
 .admin-section-card[hidden] { display: none !important; }
 
+/* V6.9 interaction corrections: keep filters as real dropdowns and restore the
+   compact, stable card layout on narrow screens. */
+.history-filter-grid,
+.history-filter-grid .filter-col,
+.history-filter-grid .custom-dropdown { overflow: visible !important; }
+.history-filter-grid .custom-dropdown { position: relative; z-index: 20; }
+.history-filter-grid .custom-dropdown-trigger {
+  display: flex !important;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+  min-height: 42px;
+  padding: 8px 10px;
+  border: 1px solid var(--card-border);
+  border-radius: var(--control-radius);
+  background: var(--input-bg);
+  color: var(--text-color);
+}
+.history-filter-grid .custom-dropdown-menu {
+  position: absolute !important;
+  inset-inline: 0;
+  top: calc(100% + 5px);
+  display: none !important;
+  min-width: 100%;
+  max-height: 260px !important;
+  overflow-y: auto !important;
+  padding: 5px;
+  border: 1px solid var(--card-border);
+  border-radius: var(--control-radius);
+  background: var(--card-bg);
+  box-shadow: 0 12px 28px rgba(0, 0, 0, .22) !important;
+  z-index: 80;
+}
+.history-filter-grid .custom-dropdown.open .custom-dropdown-menu { display: block !important; }
+
+.shamsi-picker-row {
+  display: grid !important;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px !important;
+  padding: 0 !important;
+  border: 0 !important;
+  border-radius: 0 !important;
+  background: transparent !important;
+  overflow: visible !important;
+}
+.shamsi-picker-row .picker-col + .picker-col { border-inline-start: 0 !important; }
+.shamsi-picker-row .picker-col label { padding: 0 0 5px !important; text-align: right !important; }
+.shamsi-picker-row select {
+  appearance: auto !important;
+  -webkit-appearance: menulist !important;
+  min-height: 42px !important;
+  padding: 8px 10px !important;
+  border: 1px solid var(--card-border) !important;
+  border-radius: var(--control-radius) !important;
+  background: var(--input-bg) !important;
+  box-shadow: none !important;
+  text-align: right !important;
+  text-align-last: right !important;
+}
+
+.gratitude-tag-dropdown { margin-bottom: 10px; }
+.grat-tags-chips { display: block !important; }
+.life-reports-section-nav {
+  display: flex;
+  gap: 4px;
+  margin: 4px 0 16px;
+  padding: 3px;
+  border: 1px solid var(--card-border);
+  border-radius: var(--control-radius);
+  background: var(--subtle-surface);
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+.life-reports-section-nav::-webkit-scrollbar { display: none; }
+.life-reports-section-nav .seg-btn { flex: 1 0 auto; min-width: 120px; }
+.habit-card .habit-actions-inline {
+  width: auto !important;
+  max-width: 100%;
+  margin-inline-start: auto;
+  flex: 0 0 auto;
+}
+.habit-card .habit-actions-inline .btn-habit-level,
+.habit-card .habit-actions-inline .habit-detail-toggle { flex: 0 0 auto; }
+@media (max-width: 520px) {
+  .habit-card .habit-actions-inline { width: auto !important; max-width: 100%; margin-inline-start: auto; }
+  .habit-card.has-details .habit-info { min-width: 0; flex: 1 1 auto; }
+}
+
 /* Final V6.8 overrides */
 .history-filter-grid .custom-dropdown { z-index: 20; }
 .history-filter-grid .custom-dropdown-trigger { display: flex !important; min-height: 42px; border-radius: var(--control-radius) !important; background: var(--input-bg); }

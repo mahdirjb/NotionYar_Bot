@@ -1,5 +1,5 @@
 // app/static/app.js
-// NotionYar Telegram Mini App v6.8
+// NotionYar Telegram Mini App v6.9
 
 (function () {
   const tg = window.Telegram?.WebApp;
@@ -726,6 +726,7 @@
   let customSpiritualReportEndDate = null;
   let lifeHistoryView = "date";
   let lifeHistoryPage = 1;
+  let lifeHistoryLoadPromise = null;
   const LIFE_HISTORY_PAGE_SIZE = 60;
 
   let currentHabitDateIso = getDateFromOffset(0);
@@ -1678,6 +1679,24 @@
     root.dataset.controlsReady = "1";
     initLifeHistoryModeDropdown();
 
+    document.querySelectorAll("[data-life-report-section-target]").forEach((button) => {
+      button.addEventListener("click", (event) => {
+        event.preventDefault();
+        const target = button.dataset.lifeReportSectionTarget || "overview";
+        document.querySelectorAll("[data-life-report-section-target]").forEach((item) => item.classList.toggle("active", item === button));
+        root.querySelectorAll("[data-life-report-sections]").forEach((section) => {
+          const sections = (section.dataset.lifeReportSections || "").split(",");
+          section.hidden = !sections.includes(target);
+        });
+        if (target === "grouping") {
+          lifeHistoryView = "date";
+          document.querySelectorAll("[data-life-history-view]").forEach((item) => item.classList.toggle("active", item.dataset.lifeHistoryView === "date"));
+        }
+        renderFilteredLifeHistory();
+        haptic("light");
+      });
+    });
+
     ["lifeHistorySearch", "lifeHistorySort"].forEach((id) => {
       document.getElementById(id)?.addEventListener(id === "lifeHistorySearch" ? "input" : "change", () => {
         lifeHistoryPage = 1;
@@ -1690,17 +1709,14 @@
       });
     });
 
-      document.querySelectorAll("[data-life-history-view]").forEach((button) => {
-      button.addEventListener("click", () => {
+    document.querySelectorAll("[data-life-history-view]").forEach((button) => {
+      button.addEventListener("click", (event) => {
+        event.preventDefault();
         lifeHistoryView = button.dataset.lifeHistoryView || "date";
         lifeHistoryPage = 1;
         document.querySelectorAll("[data-life-history-view]").forEach((item) => item.classList.remove("active"));
         button.classList.add("active");
-        if (!dataCache.lifeHistory) {
-          loadLifeHistory();
-        } else {
-          renderFilteredLifeHistory();
-        }
+        loadLifeHistory().then(() => renderFilteredLifeHistory()).catch(() => {});
       });
     });
 
@@ -1965,22 +1981,30 @@
     if (!list) return;
     if (dataCache.lifeHistory) {
       allLifeEntriesCache = dataCache.lifeHistory;
+      populateHistoryModeFilter();
       renderFilteredLifeHistory();
       return;
     }
+    if (lifeHistoryLoadPromise) return lifeHistoryLoadPromise;
     list.innerHTML = '<div class="loading-state">در حال دریافت لاگ‌ها...</div>';
 
-    try {
-      const res = await fetch("/api/life-tracker/history", { headers: getHeaders() });
-      if (!res.ok) throw new Error();
-      const data = await res.json();
-      allLifeEntriesCache = data.entries || [];
-      dataCache.lifeHistory = allLifeEntriesCache;
-      populateHistoryModeFilter();
-      renderFilteredLifeHistory();
-    } catch (e) {
-      renderRetryState(list, "خطا در بارگذاری تاریخچه", loadLifeHistory);
-    }
+    lifeHistoryLoadPromise = (async () => {
+      try {
+        const res = await fetch("/api/life-tracker/history", { headers: getHeaders() });
+        if (!res.ok) throw new Error();
+        const data = await res.json();
+        allLifeEntriesCache = Array.isArray(data.entries) ? data.entries : [];
+        dataCache.lifeHistory = allLifeEntriesCache;
+        populateHistoryModeFilter();
+        renderFilteredLifeHistory();
+      } catch (e) {
+        renderRetryState(list, "خطا در بارگذاری تاریخچه", () => loadLifeHistory());
+        throw e;
+      } finally {
+        lifeHistoryLoadPromise = null;
+      }
+    })();
+    return lifeHistoryLoadPromise;
   }
 
   function getFilteredLifeHistory() {
@@ -2113,7 +2137,8 @@
       }
     } catch (error) {
       console.error("Could not render grouped life history", error);
-      list.innerHTML = '<div class="empty-state"><strong>نمای گروه‌بندی آماده نشد</strong><span>فهرست ساده را انتخاب کنید یا دوباره تلاش کنید.</span></div>';
+      list.dataset.view = "list";
+      pageItems.forEach((item) => list.appendChild(createLifeHistoryRow(item)));
     }
   }
 
@@ -3245,13 +3270,33 @@
     });
   }
 
-  document.querySelectorAll("#gratTagsChips .btn-tag-chip").forEach((btn) => {
-    btn.addEventListener("click", () => {
-      document.querySelectorAll("#gratTagsChips .btn-tag-chip").forEach((b) => b.classList.remove("active"));
-      btn.classList.add("active");
-      currentGratitudeTag = btn.getAttribute("data-tag") || "سایر";
+  const gratitudeDropdown = document.getElementById("gratitudeTagDropdown");
+  const gratitudeTrigger = document.getElementById("gratitudeTagTrigger");
+  const gratitudeMenu = document.getElementById("gratitudeTagMenu");
+  const gratitudeHidden = document.getElementById("gratitudeTagFilter");
+  const gratitudeSelected = document.getElementById("gratitudeTagSelected");
+  gratitudeTrigger?.addEventListener("click", (event) => {
+    event.stopPropagation();
+    const open = gratitudeDropdown?.classList.toggle("open");
+    gratitudeTrigger.setAttribute("aria-expanded", String(Boolean(open)));
+  });
+  gratitudeMenu?.querySelectorAll(".custom-dropdown-item").forEach((item) => {
+    item.addEventListener("click", (event) => {
+      event.stopPropagation();
+      currentGratitudeTag = item.dataset.value || "سایر";
+      if (gratitudeHidden) gratitudeHidden.value = currentGratitudeTag;
+      if (gratitudeSelected) gratitudeSelected.textContent = item.querySelector(".item-title")?.textContent || currentGratitudeTag;
+      gratitudeMenu.querySelectorAll(".custom-dropdown-item").forEach((entry) => entry.classList.toggle("active", entry === item));
+      gratitudeDropdown?.classList.remove("open");
+      gratitudeTrigger?.setAttribute("aria-expanded", "false");
       haptic("light");
     });
+  });
+  document.addEventListener("click", (event) => {
+    if (gratitudeDropdown && !gratitudeDropdown.contains(event.target)) {
+      gratitudeDropdown.classList.remove("open");
+      gratitudeTrigger?.setAttribute("aria-expanded", "false");
+    }
   });
 
   document.getElementById("btnAddGratitudeItem")?.addEventListener("click", () => {

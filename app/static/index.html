@@ -17,7 +17,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Vazirmatn:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="/static/app.css?v=6.8.0">
+  <link rel="stylesheet" href="/static/app.css?v=6.9.0">
 </head>
 
 <body class="auth-pending">
@@ -182,14 +182,20 @@
               <span>گزارش‌های روزمرگی</span>
             </div>
 
-            <div class="history-summary-grid" id="lifeHistorySummary">
+            <nav class="life-reports-section-nav" aria-label="بخش‌های گزارش روزمرگی">
+              <button type="button" class="seg-btn active" data-life-report-section-target="overview">📊 نمای کلی</button>
+              <button type="button" class="seg-btn" data-life-report-section-target="records">🧾 رکوردها</button>
+              <button type="button" class="seg-btn" data-life-report-section-target="grouping">🗂️ گروه‌بندی و تحلیل</button>
+            </nav>
+
+            <div class="history-summary-grid" id="lifeHistorySummary" data-life-report-sections="overview,records,grouping">
               <div class="history-summary-item"><strong>۰</strong><span>رکورد</span></div>
               <div class="history-summary-item"><strong>۰</strong><span>روز فعال</span></div>
               <div class="history-summary-item"><strong>۰</strong><span>فعالیت متفاوت</span></div>
               <div class="history-summary-item"><strong>—</strong><span>پرتکرارترین</span></div>
             </div>
 
-            <div class="history-search-row">
+            <div class="history-search-row" data-life-report-sections="records,grouping">
               <label class="history-search-box" for="lifeHistorySearch">
                 <i data-lucide="search"></i>
                 <input id="lifeHistorySearch" type="search" placeholder="جست‌وجو در فعالیت، حالت و توضیحات">
@@ -198,7 +204,7 @@
               <button type="button" class="btn-step" id="btnExportLifeHistory"><i data-lucide="download"></i><span>CSV</span></button>
             </div>
 
-            <div class="filter-row history-filter-grid">
+            <div class="filter-row history-filter-grid" data-life-report-sections="records,grouping">
               <div class="filter-col">
                 <label>فعالیت:</label>
                 <div class="custom-dropdown" id="lifeHistoryFilterDropdown">
@@ -265,7 +271,7 @@
             </div>
 
             <!-- Custom Date Range Selector (Hidden unless custom is chosen) -->
-            <div id="lifeCustomDateRangeRow" style="display: none; margin-bottom: 12px; background: var(--input-bg); border: 1px solid var(--card-border); border-radius: 8px; padding: 10px;">
+            <div id="lifeCustomDateRangeRow" data-life-report-sections="records,grouping" style="display: none; margin-bottom: 12px; background: var(--input-bg); border: 1px solid var(--card-border); border-radius: 8px; padding: 10px;">
               <div style="font-size: 11px; font-weight: 700; color: var(--link-color); margin-bottom: 8px;">تعیین بازه تاریخی دلخواه (شمسی):</div>
               <div class="form-row">
                 <div class="form-group">
@@ -279,7 +285,7 @@
               </div>
             </div>
 
-            <div class="history-view-row">
+            <div class="history-view-row" data-life-report-sections="overview,records,grouping">
               <div class="segmented-control history-view-switch" aria-label="نحوه نمایش تاریخچه">
                 <button type="button" class="seg-btn active" data-life-history-view="date">📅 گروه‌بندی روز</button>
                 <button type="button" class="seg-btn" data-life-history-view="type">🌱 گروه‌بندی فعالیت</button>
@@ -288,10 +294,10 @@
               <span id="lifeHistoryResultCount" class="history-result-count">۰ نتیجه</span>
             </div>
 
-            <div class="timeline-list" id="lifeHistoryList">
+            <div class="timeline-list" id="lifeHistoryList" data-life-report-sections="overview,records,grouping">
               <div class="loading-state">در حال بارگذاری تاریخچه...</div>
             </div>
-            <div class="history-pagination" id="lifeHistoryPagination" hidden></div>
+            <div class="history-pagination" id="lifeHistoryPagination" data-life-report-sections="overview,records,grouping" hidden></div>
           </div>
         </div>
       </section>
@@ -439,16 +445,23 @@
             <div class="journal-block">
               <div class="journal-block-title">🌸 دفترچه شکرگزاری روزانه (مورد به مورد با دسته‌بندی)</div>
               
-              <!-- Category Chips for Gratitude -->
+              <!-- Gratitude category dropdown -->
               <div class="grat-tags-label">حوزه نعمات را انتخاب کنید:</div>
-              <div class="grat-tags-chips" id="gratTagsChips">
-                <button type="button" class="btn-tag-chip active" data-tag="سلامتی و جسم">👤 سلامتی و جسم</button>
-                <button type="button" class="btn-tag-chip" data-tag="روابط و دوستان">🤝 روابط و دوستان</button>
-                <button type="button" class="btn-tag-chip" data-tag="کار و رشد">💼 کار و رشد</button>
-                <button type="button" class="btn-tag-chip" data-tag="نعمات روزمره">🌍 نعمات روزمره</button>
-                <button type="button" class="btn-tag-chip" data-tag="ذهن و آرامش">🧘 ذهن و آرامش</button>
-                <button type="button" class="btn-tag-chip" data-tag="اتفاقات خرد">✨ اتفاقات خرد</button>
-                <button type="button" class="btn-tag-chip" data-tag="سایر">🌸 سایر</button>
+              <div class="custom-dropdown gratitude-tag-dropdown" id="gratitudeTagDropdown">
+                <input type="hidden" id="gratitudeTagFilter" value="سلامتی و جسم">
+                <button type="button" class="custom-dropdown-trigger" id="gratitudeTagTrigger" aria-haspopup="listbox" aria-expanded="false">
+                  <span class="custom-dropdown-selected" id="gratitudeTagSelected">👤 سلامتی و جسم</span>
+                  <span class="custom-dropdown-arrow">▾</span>
+                </button>
+                <div class="custom-dropdown-menu" id="gratitudeTagMenu" role="listbox">
+                  <div class="custom-dropdown-item active" data-value="سلامتی و جسم" role="option"><span class="item-title">👤 سلامتی و جسم</span></div>
+                  <div class="custom-dropdown-item" data-value="روابط و دوستان" role="option"><span class="item-title">🤝 روابط و دوستان</span></div>
+                  <div class="custom-dropdown-item" data-value="کار و رشد" role="option"><span class="item-title">💼 کار و رشد</span></div>
+                  <div class="custom-dropdown-item" data-value="نعمات روزمره" role="option"><span class="item-title">🌍 نعمات روزمره</span></div>
+                  <div class="custom-dropdown-item" data-value="ذهن و آرامش" role="option"><span class="item-title">🧘 ذهن و آرامش</span></div>
+                  <div class="custom-dropdown-item" data-value="اتفاقات خرد" role="option"><span class="item-title">✨ اتفاقات خرد</span></div>
+                  <div class="custom-dropdown-item" data-value="سایر" role="option"><span class="item-title">🌸 سایر</span></div>
+                </div>
               </div>
 
               <!-- Input row -->
@@ -669,17 +682,17 @@
           </div>
         </div>
 
-        <div class="report-period-selector reports-periods" aria-label="انتخاب بازه گزارش">
-          <button type="button" class="btn-pill active" data-report-period="7d">۷ روز اخیر</button>
-          <button type="button" class="btn-pill" data-report-period="month">ماه جاری</button>
-          <button type="button" class="btn-pill" data-report-period="30d">۳۰ روز اخیر</button>
-        </div>
         <nav class="reports-section-nav" aria-label="بخش‌های گزارش">
           <button type="button" class="seg-btn active" data-report-section-target="overview">📊 نمای کلی</button>
           <button type="button" class="seg-btn" data-report-section-target="habits">🎯 عادت‌ها</button>
           <button type="button" class="seg-btn" data-report-section-target="life">🌱 روزمرگی</button>
           <button type="button" class="seg-btn" data-report-section-target="spiritual">🕌 معنوی</button>
         </nav>
+        <div class="report-period-selector reports-periods" aria-label="انتخاب بازه گزارش">
+          <button type="button" class="btn-pill active" data-report-period="7d">۷ روز اخیر</button>
+          <button type="button" class="btn-pill" data-report-period="month">ماه جاری</button>
+          <button type="button" class="btn-pill" data-report-period="30d">۳۰ روز اخیر</button>
+        </div>
 
         <div id="reportsWarnings" class="reports-warnings" hidden></div>
         <div class="report-kpi-grid" id="reportsKpiGrid">
@@ -1092,6 +1105,6 @@
   </div>
 
   <script src="/static/vendor/lucide.min.js?v=1.72.0"></script>
-  <script src="/static/app.js?v=6.8.0"></script>
+  <script src="/static/app.js?v=6.9.0"></script>
 </body>
 </html>
