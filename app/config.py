@@ -21,6 +21,10 @@ WEB_CREDENTIALS_FILE = os.getenv(
     "WEB_CREDENTIALS_FILE",
     os.path.join("data", "web_credentials.json"),
 ).strip()
+WEB_SESSION_SECRET_FILE = os.getenv(
+    "WEB_SESSION_SECRET_FILE",
+    os.path.join(os.path.dirname(WEB_CREDENTIALS_FILE) or ".", "web_session_secret.txt"),
+).strip()
 ALLOWED_HOSTS = [
     host.strip()
     for host in os.getenv("ALLOWED_HOSTS", "").split(",")

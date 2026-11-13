@@ -23,6 +23,7 @@ from app.services.auth_service import (
     add_or_update_user,
     remove_user
 )
+from app.webapp import configure_web_credentials, get_web_auth_status
 
 router = Router()
 
@@ -34,6 +35,11 @@ def render_admin_dashboard_text(users: dict) -> str:
     member_cnt = sum(1 for info in users.values() if info.get("role") == "member")
     guest_cnt = sum(1 for info in users.values() if info.get("role") == "guest")
     total_cnt = len(users)
+    web_status = get_web_auth_status()
+    web_line = (
+        f"✅ فعال با نام کاربری <code>{web_status['username']}</code>"
+        if web_status["configured"] else "⚠️ هنوز تنظیم نشده"
+    )
 
     return (
         "👑 <b>پنل مدیریت دسترسی‌های نوشن‌یار</b>\n\n"
@@ -43,6 +49,7 @@ def render_admin_dashboard_text(users: dict) -> str:
         f"├ 👤 <b>اعضای عادی:</b> <code>{member_cnt} نفر</code>\n"
         f"└ 🌿 <b>مهمانان:</b> <code>{guest_cnt} نفر</code>\n\n"
         f"👥 <b>مجموع کل کاربران:</b> <code>{total_cnt} نفر</code>\n\n"
+        f"🌐 <b>ورود نسخه وب:</b> {web_line}\n\n"
         "👇 <i>از دکمه‌های زیر برای مشاهده لیست، افزودن یا تغییر نام و نقش‌ها استفاده کنید:</i>"
     )
 
@@ -91,6 +98,83 @@ async def adm_close_handler(callback: CallbackQuery, state: FSMContext):
     if isinstance(callback.message, Message):
         await callback.message.edit_text("🔒 پنل مدیریت بسته شد.")
     await callback.answer()
+
+
+# --- Web Login Credentials ---
+@router.callback_query(F.data == "adm_web_credentials")
+async def adm_web_credentials_prompt(callback: CallbackQuery, state: FSMContext):
+    user_id = callback.from_user.id if callback.from_user else None
+    if not has_permission(user_id, PERM_ADMIN):
+        await callback.answer("⛔ عدم دسترسی.", show_alert=True)
+        return
+    await state.set_state(AdminState.setting_web_username)
+    if isinstance(callback.message, Message):
+        prompt = await callback.message.answer(
+            "🌐 <b>تنظیم ورود نسخه وب</b>\n\n"
+            "نام کاربری جدید را بفرستید (۳ تا ۶۴ کاراکتر، بدون فاصله):",
+            reply_markup=get_back_cancel_keyboard(), parse_mode="HTML",
+        )
+        await state.update_data(last_prompt_id=prompt.message_id)
+    await callback.answer()
+
+
+@router.message(AdminState.setting_web_username)
+async def adm_process_web_username(message: Message, state: FSMContext, bot: Bot):
+    username = (message.text or "").strip()
+    if len(username) < 3 or len(username) > 64 or any(char.isspace() for char in username):
+        await message.answer("❌ نام کاربری باید بین ۳ تا ۶۴ کاراکتر و بدون فاصله باشد.")
+        return
+    data = await state.get_data()
+    prompt_id = data.get("last_prompt_id")
+    if prompt_id:
+        try:
+            await bot.delete_message(message.chat.id, prompt_id)
+        except Exception:
+            pass
+    try:
+        await message.delete()
+    except Exception:
+        pass
+    await state.update_data(web_username=username)
+    await state.set_state(AdminState.setting_web_password)
+    prompt = await message.answer(
+        "🔑 رمز عبور جدید را بفرستید (حداقل ۸ کاراکتر).\n"
+        "<i>پیام رمز بعد از دریافت حذف می‌شود.</i>",
+        reply_markup=get_back_cancel_keyboard(), parse_mode="HTML",
+    )
+    await state.update_data(last_prompt_id=prompt.message_id)
+
+
+@router.message(AdminState.setting_web_password)
+async def adm_process_web_password(message: Message, state: FSMContext, bot: Bot):
+    password = message.text or ""
+    if len(password) < 8:
+        await message.answer("❌ رمز عبور باید حداقل ۸ کاراکتر باشد.")
+        return
+    data = await state.get_data()
+    prompt_id = data.get("last_prompt_id")
+    username = data.get("web_username", "")
+    try:
+        configure_web_credentials(username, password)
+    except (OSError, ValueError) as error:
+        await message.answer(f"❌ تنظیم ورود انجام نشد: {error}")
+        return
+    if prompt_id:
+        try:
+            await bot.delete_message(message.chat.id, prompt_id)
+        except Exception:
+            pass
+    try:
+        await message.delete()
+    except Exception:
+        pass
+    await state.set_state(AdminState.viewing_panel)
+    await message.answer(
+        f"✅ ورود نسخه وب فعال شد.\n\nنام کاربری: <code>{username}</code>\n"
+        "رمز عبور همان رمزی است که همین الان فرستادید.\n"
+        "🔒 نشست‌های قبلی باطل شدند.",
+        reply_markup=build_admin_dashboard_keyboard(), parse_mode="HTML",
+    )
 
 
 # --- Users List & Management ---

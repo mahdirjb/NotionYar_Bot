@@ -5,3 +5,5 @@ class AdminState(StatesGroup):
     typing_new_user_id = State()
     typing_new_user_name = State()
     editing_user_name = State()
+    setting_web_username = State()
+    setting_web_password = State()

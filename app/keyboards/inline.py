@@ -278,6 +278,9 @@ def build_admin_dashboard_keyboard() -> InlineKeyboardMarkup:
         [
             InlineKeyboardButton(text="🔄 بروزرسانی", callback_data="adm_refresh"),
             InlineKeyboardButton(text="❌ بستن پنل", callback_data="adm_close")
+        ],
+        [
+            InlineKeyboardButton(text="🔐 تنظیم ورود نسخه وب", callback_data="adm_web_credentials")
         ]
     ]
     return InlineKeyboardMarkup(inline_keyboard=keyboard)
@@ -1774,4 +1777,4 @@ def get_spiritual_bulk_range_keyboard() -> InlineKeyboardMarkup:
             ]
         ]
     )
-
+

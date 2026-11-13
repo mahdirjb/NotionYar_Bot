@@ -7,6 +7,7 @@ import base64
 import hashlib
 import hmac
 import json
+import secrets
 import time
 from collections import Counter
 from datetime import datetime, timezone, timedelta
@@ -32,6 +33,7 @@ from app.config import (
     WEB_SESSION_DAYS,
     WEB_COOKIE_SECURE,
     WEB_CREDENTIALS_FILE,
+    WEB_SESSION_SECRET_FILE,
     ALLOWED_HOSTS,
 )
 from app.services.auth_service import (
@@ -90,6 +92,7 @@ logger = logging.getLogger(__name__)
 SESSION_COOKIE_NAME = "notionyar_session"
 _login_attempts: Dict[str, List[float]] = {}
 _seed_password_hash_cache: Optional[str] = None
+_runtime_web_session_secret: Optional[str] = None
 
 
 # Enable CORS
@@ -178,8 +181,46 @@ def _save_web_credentials(username: str, password_hash: str, session_version: in
         pass
 
 
+def _get_web_session_secret() -> str:
+    """Return a persistent signing key, generating one when Railway has not set it."""
+    global _runtime_web_session_secret
+    configured = WEB_SESSION_SECRET.strip()
+    if len(configured) >= 32:
+        return configured
+    if _runtime_web_session_secret:
+        return _runtime_web_session_secret
+
+    if WEB_SESSION_SECRET_FILE and os.path.exists(WEB_SESSION_SECRET_FILE):
+        try:
+            with open(WEB_SESSION_SECRET_FILE, "r", encoding="utf-8") as secret_file:
+                stored = secret_file.read().strip()
+            if len(stored) >= 32:
+                _runtime_web_session_secret = stored
+                return stored
+        except OSError as error:
+            logger.warning("Could not read web session secret file: %s", error)
+
+    generated = secrets.token_urlsafe(48)
+    _runtime_web_session_secret = generated
+    if WEB_SESSION_SECRET_FILE:
+        try:
+            directory = os.path.dirname(os.path.abspath(WEB_SESSION_SECRET_FILE))
+            os.makedirs(directory, exist_ok=True)
+            temporary_path = f"{WEB_SESSION_SECRET_FILE}.tmp"
+            with open(temporary_path, "w", encoding="utf-8") as secret_file:
+                secret_file.write(generated)
+            os.replace(temporary_path, WEB_SESSION_SECRET_FILE)
+            try:
+                os.chmod(WEB_SESSION_SECRET_FILE, 0o600)
+            except OSError:
+                pass
+        except OSError as error:
+            logger.warning("Could not persist generated web session secret: %s", error)
+    return generated
+
+
 def _web_login_is_configured() -> bool:
-    return bool(_load_web_credentials() and len(WEB_SESSION_SECRET) >= 32)
+    return bool(_load_web_credentials() and len(_get_web_session_secret()) >= 32)
 
 
 def _verify_web_password(password: str, credentials: Optional[Dict[str, Any]] = None) -> bool:
@@ -211,7 +252,7 @@ def _create_web_session(username: str) -> str:
         json.dumps(payload, separators=(",", ":")).encode("utf-8")
     ).decode("ascii").rstrip("=")
     signature = hmac.new(
-        WEB_SESSION_SECRET.encode("utf-8"),
+        _get_web_session_secret().encode("utf-8"),
         encoded.encode("ascii"),
         hashlib.sha256,
     ).hexdigest()
@@ -224,7 +265,7 @@ def _verify_web_session(token: Optional[str]) -> Optional[str]:
     try:
         encoded, signature = token.rsplit(".", 1)
         expected = hmac.new(
-            WEB_SESSION_SECRET.encode("utf-8"),
+            _get_web_session_secret().encode("utf-8"),
             encoded.encode("ascii"),
             hashlib.sha256,
         ).hexdigest()
@@ -243,6 +284,27 @@ def _verify_web_session(token: Optional[str]) -> Optional[str]:
         return username if version_matches and username_matches else None
     except (ValueError, TypeError, json.JSONDecodeError):
         return None
+
+
+def get_web_auth_status() -> Dict[str, Any]:
+    """Expose non-sensitive web login status to the Telegram admin panel."""
+    credentials = _load_web_credentials()
+    return {
+        "configured": bool(credentials and len(_get_web_session_secret()) >= 32),
+        "username": credentials.get("username", "") if credentials else "",
+    }
+
+
+def configure_web_credentials(username: str, password: str) -> None:
+    """Create or replace web credentials from a trusted Telegram admin flow."""
+    username = username.strip()
+    if len(username) < 3 or len(username) > 64 or any(char.isspace() for char in username):
+        raise ValueError("نام کاربری باید بین ۳ تا ۶۴ کاراکتر و بدون فاصله باشد.")
+    if len(password) < 8:
+        raise ValueError("رمز عبور باید حداقل ۸ کاراکتر باشد.")
+    current = _load_web_credentials() or {}
+    _get_web_session_secret()
+    _save_web_credentials(username, _hash_web_password(password), int(current.get("session_version", 0)) + 1)
 
 
 def _web_admin_user(username: str) -> Dict[str, Any]:
@@ -491,10 +553,9 @@ async def web_logout(response: Response):
 
 @app.get("/api/auth/settings")
 async def get_web_auth_settings(user: Dict[str, Any] = Depends(get_current_user)):
-    credentials = _load_web_credentials()
+    settings = get_web_auth_status()
     return {
-        "configured": bool(credentials and len(WEB_SESSION_SECRET) >= 32),
-        "username": credentials.get("username", "") if credentials else "",
+        **settings,
         "requires_current_password": user.get("auth_source") == "web",
     }
 
@@ -506,11 +567,7 @@ async def update_web_auth_credentials(
     user: Dict[str, Any] = Depends(get_current_user),
 ):
     username = payload.username.strip()
-    if len(WEB_SESSION_SECRET) < 32:
-        raise HTTPException(
-            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-            detail="ابتدا WEB_SESSION_SECRET را با حداقل ۳۲ کاراکتر در Railway تنظیم کنید.",
-        )
+    _get_web_session_secret()
     if len(username) < 3 or len(username) > 64 or any(char.isspace() for char in username):
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,

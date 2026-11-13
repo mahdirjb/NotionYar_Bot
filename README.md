@@ -18,15 +18,10 @@ authenticated with Telegram `initData`; direct web users sign in with a secure,
 signed, `HttpOnly` session cookie.
 
 1. Copy `.env.example` values into the existing `.env` and replace placeholders.
-2. Generate the web password hash and session secret:
-
-   ```powershell
-   .\venv\Scripts\python.exe scripts\generate_password_hash.py
-   ```
-
-3. Put the two generated lines in `.env` and set:
+2. Set the domain and host variables:
 
    ```dotenv
+   # Optional: these can also be set from Telegram -> /admin
    WEB_LOGIN_USERNAME=your_username
    WEBAPP_URL=https://notionyar.example.com
    ALLOWED_HOSTS=notionyar.example.com
@@ -35,7 +30,7 @@ signed, `HttpOnly` session cookie.
    ALLOW_DEV_BYPASS=false
    ```
 
-4. Start exactly one application process:
+3. Start exactly one application process:
 
    ```powershell
    .\venv\Scripts\python.exe main.py
@@ -60,10 +55,11 @@ nightly scheduler, so multiple workers would duplicate bot updates and reminders
    CORS_ORIGINS=https://app.example.com
    WEB_COOKIE_SECURE=true
    WEB_CREDENTIALS_FILE=/app/data/web_credentials.json
+   # WEB_SESSION_SECRET is optional; the app generates and persists it automatically.
    ```
 
-5. Add a Railway Volume mounted at `/app/data`. This keeps username and password
-   changes made in the Admin panel across deploys and restarts.
+5. Add a Railway Volume mounted at `/app/data`. This keeps the generated session key
+   and username/password changes made in the Admin panel across deploys and restarts.
 6. Redeploy or restart the service. On startup, NotionYar updates Telegram's chat
    menu button to `WEBAPP_URL`, so the Mini App and browser use the same deployment.
 
@@ -100,7 +96,12 @@ the app becomes visible again. Temporary gateway errors are also queued, while
 authentication requests are never stored offline. The header badge shows offline,
 queued and syncing states and can be pressed to retry synchronization.
 
-Web credentials can be changed from `Admin -> Web login and account security`.
+Web credentials can be created or changed from Telegram: open `/admin`, choose
+`🔐 تنظیم ورود نسخه وب`, then send the username and password. The password message is
+deleted after processing. The web admin panel can also change credentials later.
+`WEB_SESSION_SECRET` is optional; if it is missing, a cryptographically random key is
+created in `/app/data/web_session_secret.txt`. A Railway Volume mounted at `/app/data`
+is required for that generated key and the credentials to survive a new deploy.
 Password changes rotate the session version and invalidate older browser sessions.
 
 Use the web logout button on shared devices. Logout clears cached API data and the
