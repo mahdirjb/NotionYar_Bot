@@ -3,6 +3,14 @@
 NotionYar is a Telegram bot and installable web app for Life Tracker, daily habits,
 Salah and Quran records backed by Notion.
 
+## Android app
+
+The `android/` project is a small native Android shell around the same production
+web app. This keeps the backend, web login, Telegram integration and offline outbox
+in one place while providing an installable Android experience. Build it with
+Android Studio or `android\gradlew.bat assembleDebug`. The resulting APK uses
+`https://notionyar.rjbzmhd.ir/` by default and accepts `-PwebAppUrl=...` for staging.
+
 ## Web access
 
 The same application can be opened directly from a browser. Telegram users are
