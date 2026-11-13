@@ -2337,6 +2337,10 @@ select:-webkit-autofill:focus {
   cursor: pointer;
   transition: all 0.18s ease;
   white-space: nowrap;
+  min-width: 0;
+  flex: 1 1 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .btn-prayer-state:hover {
@@ -2361,6 +2365,31 @@ select:-webkit-autofill:focus {
   .btn-prayer-state {
     padding: 4px 6px;
     font-size: 10px;
+  }
+}
+
+@media (max-width: 520px) {
+  .prayer-card {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
+    align-items: stretch;
+  }
+
+  .prayer-info,
+  .prayer-toggles-row {
+    min-width: 0;
+    width: 100%;
+  }
+
+  .prayer-toggles-row {
+    gap: 5px;
+  }
+
+  .btn-prayer-state {
+    min-width: 0;
+    padding-inline: 5px;
+    font-size: 10px;
+    line-height: 1.4;
   }
 }
 

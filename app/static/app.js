@@ -1,5 +1,5 @@
 // app/static/app.js
-// NotionYar Telegram Mini App v6.6
+// NotionYar Telegram Mini App v6.7
 
 (function () {
   const tg = window.Telegram?.WebApp;
@@ -7,6 +7,9 @@
   const OFFLINE_DB_NAME = "notionyar-offline";
   const OFFLINE_DB_VERSION = 1;
   const OFFLINE_QUEUE_STORE = "mutation-queue";
+  const OFFLINE_CACHE_DB_NAME = "notionyar-offline-cache";
+  const OFFLINE_CACHE_DB_VERSION = 1;
+  const OFFLINE_CACHE_STORE = "api-responses";
   let offlineMutationQueued = false;
   let pendingQueueCount = 0;
   let originReachable = navigator.onLine;
@@ -122,6 +125,84 @@
     }
   }
 
+  function openOfflineCacheDb() {
+    return new Promise((resolve, reject) => {
+      if (!window.indexedDB) {
+        reject(new Error("IndexedDB is not available"));
+        return;
+      }
+      const request = indexedDB.open(OFFLINE_CACHE_DB_NAME, OFFLINE_CACHE_DB_VERSION);
+      request.onupgradeneeded = () => {
+        const db = request.result;
+        if (!db.objectStoreNames.contains(OFFLINE_CACHE_STORE)) {
+          db.createObjectStore(OFFLINE_CACHE_STORE, { keyPath: "url" });
+        }
+      };
+      request.onsuccess = () => resolve(request.result);
+      request.onerror = () => reject(request.error);
+    });
+  }
+
+  async function cacheOfflineApiResponse(request, response) {
+    if (!response?.ok || !request?.url) return;
+    try {
+      const body = await response.clone().text();
+      const headers = {};
+      response.headers.forEach((value, key) => { headers[key] = value; });
+      const db = await openOfflineCacheDb();
+      await new Promise((resolve, reject) => {
+        const transaction = db.transaction(OFFLINE_CACHE_STORE, "readwrite");
+        transaction.objectStore(OFFLINE_CACHE_STORE).put({
+          url: request.url,
+          body,
+          status: response.status,
+          statusText: response.statusText,
+          headers,
+          updatedAt: Date.now(),
+        });
+        transaction.oncomplete = resolve;
+        transaction.onerror = () => reject(transaction.error);
+      });
+      db.close();
+    } catch (error) {
+      console.warn("Could not cache API response for offline use", error);
+    }
+  }
+
+  async function getOfflineApiResponse(url) {
+    try {
+      const db = await openOfflineCacheDb();
+      const item = await new Promise((resolve, reject) => {
+        const transaction = db.transaction(OFFLINE_CACHE_STORE, "readonly");
+        const request = transaction.objectStore(OFFLINE_CACHE_STORE).get(url);
+        request.onsuccess = () => resolve(request.result || null);
+        request.onerror = () => reject(request.error);
+      });
+      db.close();
+      if (!item) return null;
+      return new Response(item.body, {
+        status: item.status || 200,
+        statusText: item.statusText || "OK",
+        headers: item.headers || { "Content-Type": "application/json" },
+      });
+    } catch (_) {
+      return null;
+    }
+  }
+
+  async function clearOfflineApiCache() {
+    try {
+      const db = await openOfflineCacheDb();
+      await new Promise((resolve, reject) => {
+        const transaction = db.transaction(OFFLINE_CACHE_STORE, "readwrite");
+        transaction.objectStore(OFFLINE_CACHE_STORE).clear();
+        transaction.oncomplete = resolve;
+        transaction.onerror = () => reject(transaction.error);
+      });
+      db.close();
+    } catch (_) {}
+  }
+
   async function enqueueOfflineMutation(input, init = {}) {
     const request = new Request(input, init);
     const headers = {};
@@ -211,16 +292,32 @@
       && ["POST", "PUT", "PATCH", "DELETE"].includes(request.method);
   }
 
+  function isOfflineCacheEligibleRequest(request) {
+    return request.url.startsWith(window.location.origin + "/api/")
+      && !request.url.includes("/api/auth/")
+      && request.method === "GET";
+  }
+
   window.fetch = async (...args) => {
     try {
       const response = await nativeFetch(...args);
       const request = new Request(args[0], args[1]);
+      if (response.ok && isOfflineCacheEligibleRequest(request)) {
+        await cacheOfflineApiResponse(request, response);
+      }
       if (response.ok && isOfflineEligibleRequest(request)) {
         invalidateDataCache("lifeHistory", "lifeRadar", "habits", "spiritual", "quranHistory", "habitAnalytics", "reports");
       }
       if (isTransientNetworkStatus(response.status) && isOfflineEligibleRequest(request)) {
         offlineMutationQueued = true;
         return await enqueueOfflineMutation(args[0], args[1]);
+      }
+      if (!response.ok && isOfflineCacheEligibleRequest(request)) {
+        const cached = await getOfflineApiResponse(request.url);
+        if (cached) {
+          updateSyncStatus({ online: false });
+          return cached;
+        }
       }
       if (response.headers.get("X-Offline-Queued") === "1") {
         offlineMutationQueued = true;
@@ -234,6 +331,13 @@
           return await enqueueOfflineMutation(args[0], args[1]);
         } catch (queueError) {
           console.error("Could not queue offline mutation", queueError);
+        }
+      }
+      if (isOfflineCacheEligibleRequest(request)) {
+        const cached = await getOfflineApiResponse(request.url);
+        if (cached) {
+          updateSyncStatus({ online: false });
+          return cached;
         }
       }
       throw error;
@@ -372,6 +476,7 @@
       await nativeFetch("/api/auth/logout", { method: "POST", credentials: "include" });
     } finally {
       postToServiceWorker({ type: "CLEAR_LOCAL_DATA" });
+      await clearOfflineApiCache();
       setAuthState("auth-required");
     }
   });
