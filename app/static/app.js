@@ -1,5 +1,5 @@
 // app/static/app.js
-// NotionYar Telegram Mini App v6.10.0
+// NotionYar Telegram Mini App v6.10.1
 
 (function () {
   const tg = window.Telegram?.WebApp;
@@ -1182,6 +1182,8 @@
         document.querySelectorAll(".custom-date-dropdown.open").forEach((other) => {
           if (other !== dropdown) other.classList.remove("open");
         });
+        const bounds = dropdown.getBoundingClientRect();
+        dropdown.classList.toggle("dropup", open && bounds.bottom + 230 > window.innerHeight && bounds.top > 230);
         control.trigger.setAttribute("aria-expanded", String(open));
       });
       control.select?.addEventListener("change", () => syncCustomDateDropdown(kind));

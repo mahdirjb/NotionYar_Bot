@@ -6037,3 +6037,8 @@ textarea,
 .history-filter-grid .custom-dropdown-item { margin: 2px 0; padding: 9px 10px !important; border: 1px solid transparent !important; border-radius: 8px !important; background: transparent !important; color: var(--text-color) !important; }
 .history-filter-grid .custom-dropdown-item:hover,
 .history-filter-grid .custom-dropdown-item.active { border-color: color-mix(in srgb, var(--section-accent) 55%, var(--card-border)) !important; background: color-mix(in srgb, var(--section-accent) 18%, var(--card-bg)) !important; color: var(--text-color) !important; }
+#life-sub-history [hidden] { display: none !important; }
+.history-filter-grid { position: relative; z-index: 10; }
+.history-filter-grid .custom-dropdown-menu { width: 100% !important; max-width: 100% !important; }
+.custom-date-dropdown.dropup .custom-date-menu { top: auto !important; bottom: calc(100% + 6px) !important; }
+.custom-date-menu { max-height: min(220px, 42vh) !important; }
