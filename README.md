@@ -59,6 +59,10 @@ nightly scheduler, so multiple workers would duplicate bot updates and reminders
 6. Redeploy or restart the service. On startup, NotionYar updates Telegram's chat
    menu button to `WEBAPP_URL`, so the Mini App and browser use the same deployment.
 
+The deployment health endpoint is `https://app.example.com/health` and should return
+`{"status":"ok"}`. Use the exact public HTTP service port assigned to `$PORT` in
+Railway's custom-domain target settings.
+
 Railway does not publish a static IP for custom domains; do not create an `A` record
 for it. If Cloudflare proxying is enabled, use `Full` SSL mode and keep the Railway
 verification `TXT` record in place.
@@ -82,8 +86,11 @@ cookies, Telegram Mini Apps and service workers outside `localhost`.
 
 After the first successful online visit, the PWA caches its shell and recently read
 API data. Create, update and delete requests made without a connection are stored in
-IndexedDB. They are replayed in order when the browser reconnects. The header badge
-shows offline, queued and syncing states and can be pressed to retry synchronization.
+IndexedDB, including a page-level fallback for the first visit before the Service
+Worker takes control. They are replayed in order when the browser reconnects or when
+the app becomes visible again. Temporary gateway errors are also queued, while
+authentication requests are never stored offline. The header badge shows offline,
+queued and syncing states and can be pressed to retry synchronization.
 
 Web credentials can be changed from `Admin -> Web login and account security`.
 Password changes rotate the session version and invalidate older browser sessions.

@@ -1,5 +1,5 @@
-const SHELL_CACHE = "notionyar-shell-v6.2.0";
-const API_CACHE = "notionyar-api-v6.2.0";
+const SHELL_CACHE = "notionyar-shell-v6.3.0";
+const API_CACHE = "notionyar-api-v6.3.0";
 const DB_NAME = "notionyar-offline";
 const DB_VERSION = 1;
 const QUEUE_STORE = "mutation-queue";
@@ -7,9 +7,9 @@ const QUEUE_STORE = "mutation-queue";
 const SHELL_ASSETS = [
   "/",
   "/manifest.webmanifest",
-  "/static/app.css?v=6.2.0",
+  "/static/app.css?v=6.3.0",
   "/static/vendor/lucide.min.js?v=1.72.0",
-  "/static/app.js?v=6.2.0",
+  "/static/app.js?v=6.3.0",
   "/static/icon.svg?v=5.0.2",
 ];
 
@@ -178,7 +178,20 @@ async function flushQueue() {
 
 async function handleMutation(request) {
   try {
-    return await fetch(request.clone());
+    const response = await fetch(request.clone());
+    const transientStatuses = [408, 425, 429, 502, 503, 504, 520, 521, 522, 523, 524];
+    if (transientStatuses.includes(response.status)) {
+      await queueMutation(request);
+      await notifyClients({ type: "NETWORK_UNAVAILABLE" });
+      return new Response(JSON.stringify({ success: true, queued: true }), {
+        status: 202,
+        headers: {
+          "Content-Type": "application/json",
+          "X-Offline-Queued": "1",
+        },
+      });
+    }
+    return response;
   } catch (_) {
     await queueMutation(request);
     await notifyClients({ type: "NETWORK_UNAVAILABLE" });

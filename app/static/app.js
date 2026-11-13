@@ -1,9 +1,12 @@
 // app/static/app.js
-// NotionYar Telegram Mini App v6.2
+// NotionYar Telegram Mini App v6.3
 
 (function () {
   const tg = window.Telegram?.WebApp;
   const nativeFetch = window.fetch.bind(window);
+  const OFFLINE_DB_NAME = "notionyar-offline";
+  const OFFLINE_DB_VERSION = 1;
+  const OFFLINE_QUEUE_STORE = "mutation-queue";
   let offlineMutationQueued = false;
   let pendingQueueCount = 0;
   let originReachable = navigator.onLine;
@@ -62,12 +65,161 @@
     tg.expand();
   }
 
-  window.fetch = async (...args) => {
-    const response = await nativeFetch(...args);
-    if (response.headers.get("X-Offline-Queued") === "1") {
-      offlineMutationQueued = true;
+  function openOfflineDb() {
+    return new Promise((resolve, reject) => {
+      if (!window.indexedDB) {
+        reject(new Error("IndexedDB is not available"));
+        return;
+      }
+      const request = indexedDB.open(OFFLINE_DB_NAME, OFFLINE_DB_VERSION);
+      request.onupgradeneeded = () => {
+        const db = request.result;
+        if (!db.objectStoreNames.contains(OFFLINE_QUEUE_STORE)) {
+          db.createObjectStore(OFFLINE_QUEUE_STORE, { keyPath: "id", autoIncrement: true });
+        }
+      };
+      request.onsuccess = () => resolve(request.result);
+      request.onerror = () => reject(request.error);
+    });
+  }
+
+  async function getOfflineQueueItems() {
+    const db = await openOfflineDb();
+    return new Promise((resolve, reject) => {
+      const transaction = db.transaction(OFFLINE_QUEUE_STORE, "readonly");
+      const request = transaction.objectStore(OFFLINE_QUEUE_STORE).getAll();
+      request.onsuccess = () => {
+        db.close();
+        resolve(request.result || []);
+      };
+      request.onerror = () => {
+        db.close();
+        reject(request.error);
+      };
+    });
+  }
+
+  async function getOfflineQueueCount() {
+    try {
+      return (await getOfflineQueueItems()).length;
+    } catch (_) {
+      return pendingQueueCount;
     }
-    return response;
+  }
+
+  async function enqueueOfflineMutation(input, init = {}) {
+    const request = new Request(input, init);
+    const headers = {};
+    request.headers.forEach((value, key) => {
+      if (!["content-length", "host"].includes(key.toLowerCase())) headers[key] = value;
+    });
+    const item = {
+      url: request.url,
+      method: request.method,
+      headers,
+      body: await request.clone().text(),
+      createdAt: Date.now(),
+    };
+    const db = await openOfflineDb();
+    await new Promise((resolve, reject) => {
+      const transaction = db.transaction(OFFLINE_QUEUE_STORE, "readwrite");
+      transaction.objectStore(OFFLINE_QUEUE_STORE).add(item);
+      transaction.oncomplete = resolve;
+      transaction.onerror = () => reject(transaction.error);
+    });
+    db.close();
+    const count = await getOfflineQueueCount();
+    updateSyncStatus({ online: false, count });
+    return new Response(JSON.stringify({ success: true, queued: true }), {
+      status: 202,
+      headers: { "Content-Type": "application/json", "X-Offline-Queued": "1" },
+    });
+  }
+
+  async function deleteOfflineQueueItem(id) {
+    const db = await openOfflineDb();
+    await new Promise((resolve, reject) => {
+      const transaction = db.transaction(OFFLINE_QUEUE_STORE, "readwrite");
+      transaction.objectStore(OFFLINE_QUEUE_STORE).delete(id);
+      transaction.oncomplete = resolve;
+      transaction.onerror = () => reject(transaction.error);
+    });
+    db.close();
+  }
+
+  async function flushOfflineQueueDirectly() {
+    if (navigator.serviceWorker?.controller) {
+      postToServiceWorker({ type: "FLUSH_QUEUE" });
+      return;
+    }
+    const items = await getOfflineQueueItems().catch(() => []);
+    if (!items.length) {
+      updateSyncStatus({ online: true, count: 0 });
+      return;
+    }
+    updateSyncStatus({ online: true, count: items.length, syncing: true });
+    let synced = 0;
+    for (const item of items) {
+      try {
+        const response = await nativeFetch(item.url, {
+          method: item.method,
+          headers: item.headers,
+          body: item.body || undefined,
+          credentials: "include",
+        });
+        if (response.status === 401 || response.status === 403) {
+          showToast("برای همگام‌سازی دوباره وارد حساب وب شوید", "warning");
+          break;
+        }
+        if (!response.ok) break;
+        await deleteOfflineQueueItem(item.id);
+        synced += 1;
+      } catch (_) {
+        break;
+      }
+    }
+    const remaining = await getOfflineQueueCount();
+    updateSyncStatus({ online: true, count: remaining });
+    if (synced) {
+      showToast(`${synced} مورد آفلاین با موفقیت همگام شد`, "success");
+      initApp();
+    }
+  }
+
+  function isTransientNetworkStatus(status) {
+    return [408, 425, 429, 502, 503, 504, 520, 521, 522, 523, 524].includes(status);
+  }
+
+  function isOfflineEligibleRequest(request) {
+    return request.url.startsWith(window.location.origin + "/api/")
+      && !request.url.includes("/api/auth/")
+      && ["POST", "PUT", "PATCH", "DELETE"].includes(request.method);
+  }
+
+  window.fetch = async (...args) => {
+    try {
+      const response = await nativeFetch(...args);
+      const request = new Request(args[0], args[1]);
+      if (isTransientNetworkStatus(response.status) && isOfflineEligibleRequest(request)) {
+        offlineMutationQueued = true;
+        return await enqueueOfflineMutation(args[0], args[1]);
+      }
+      if (response.headers.get("X-Offline-Queued") === "1") {
+        offlineMutationQueued = true;
+      }
+      return response;
+    } catch (error) {
+      const request = new Request(args[0], args[1]);
+      if (isOfflineEligibleRequest(request)) {
+        try {
+          offlineMutationQueued = true;
+          return await enqueueOfflineMutation(args[0], args[1]);
+        } catch (queueError) {
+          console.error("Could not queue offline mutation", queueError);
+        }
+      }
+      throw error;
+    }
   };
 
   function setAuthState(state, message = "") {
@@ -110,6 +262,7 @@
       await navigator.serviceWorker.register("/service-worker.js", { scope: "/" });
       await navigator.serviceWorker.ready;
       postToServiceWorker({ type: "GET_QUEUE_STATUS" });
+      flushOfflineQueueDirectly();
     } catch (error) {
       console.warn("Service worker registration failed", error);
     }
@@ -141,7 +294,7 @@
   window.addEventListener("online", () => {
     if (pendingQueueCount > 0) {
       updateSyncStatus({ online: true, count: pendingQueueCount, syncing: true });
-      postToServiceWorker({ type: "FLUSH_QUEUE" });
+      flushOfflineQueueDirectly();
     } else {
       updateSyncStatus({ online: true, count: 0 });
     }
@@ -159,7 +312,13 @@
       return;
     }
     updateSyncStatus({ online: true, count: pendingQueueCount, syncing: true });
-    postToServiceWorker({ type: "FLUSH_QUEUE" });
+    flushOfflineQueueDirectly();
+  });
+
+  document.addEventListener("visibilitychange", () => {
+    if (document.visibilityState === "visible" && navigator.onLine && pendingQueueCount > 0) {
+      flushOfflineQueueDirectly();
+    }
   });
 
   document.getElementById("webLoginForm")?.addEventListener("submit", async (event) => {

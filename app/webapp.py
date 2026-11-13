@@ -1484,6 +1484,11 @@ if not os.path.exists(STATIC_DIR):
 app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
 
 
+@app.get("/health", include_in_schema=False)
+async def health_check():
+    return {"status": "ok", "service": "notionyar"}
+
+
 @app.get("/manifest.webmanifest", include_in_schema=False)
 async def serve_manifest():
     return FileResponse(
