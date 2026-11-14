@@ -1415,6 +1415,10 @@ async def api_get_reports_dashboard(
     if period == "month":
         start_iso, end_iso, _ = get_preset_date_range("this_month")
         period_label = "ماه جاری"
+    elif period == "90d":
+        start_iso = (today_d - timedelta(days=89)).isoformat()
+        end_iso = today_d.isoformat()
+        period_label = "۹۰ روز اخیر"
     elif period == "30d":
         start_iso = (today_d - timedelta(days=29)).isoformat()
         end_iso = today_d.isoformat()
@@ -1460,7 +1464,12 @@ async def api_get_reports_dashboard(
     habit_matrix: Dict[str, Any] = {}
     habit_streaks: Dict[str, Any] = {}
     if habit_history:
-        habit_matrix = calculate_consistency_matrix(period, habit_history)
+        habit_matrix = calculate_consistency_matrix(
+            period,
+            habit_history,
+            start_date=start_iso,
+            end_date=end_iso,
+        )
         habit_streaks = calculate_habit_streaks(habit_history, 100)
 
     type_counts = Counter(str(item.get("type") or "نامشخص") for item in life_entries)
@@ -1480,6 +1489,12 @@ async def api_get_reports_dashboard(
         if item.get("date_iso")
     }
     life_days = Counter(str(item.get("date_iso") or "") for item in life_entries)
+    life_types_by_day: Dict[str, List[str]] = {}
+    for item in life_entries:
+        date_key = str(item.get("date_iso") or "")
+        type_name = str(item.get("type") or "")
+        if date_key and type_name:
+            life_types_by_day.setdefault(date_key, []).append(type_name)
     salah_days = {
         str(item.get("date_iso")): item
         for item in spiritual_report.get("daily_salah", [])
@@ -1497,6 +1512,10 @@ async def api_get_reports_dashboard(
         iso = cursor.isoformat()
         habit_day = habit_days.get(iso, {})
         salah_day = salah_days.get(iso, {})
+        prayer_statuses = {
+            key: str((salah_day.get("prayers", {}).get(key) or {}).get("status") or "none")
+            for key in ["sobh", "zohr", "asr", "maghreb", "eshsa"]
+        }
         daily_timeline.append({
             "date_iso": iso,
             "date_label": format_jalali_full_display(iso),
@@ -1505,6 +1524,10 @@ async def api_get_reports_dashboard(
             "prayer_ada": int(salah_day.get("ada_count", 0)),
             "prayer_qaza": int(salah_day.get("qaza_count", 0)),
             "quran_count": quran_days.get(iso, 0),
+            "habit_statuses": habit_day.get("habits", {}),
+            "life_types": sorted(set(life_types_by_day.get(iso, []))),
+            "prayer_statuses": prayer_statuses,
+            "has_salah_data": bool(salah_day),
         })
         cursor += timedelta(days=1)
 
@@ -1530,6 +1553,7 @@ async def api_get_reports_dashboard(
         "life": {
             "breakdown": life_breakdown,
             "recent": life_entries[:12],
+            "entries": life_entries,
         },
         "spiritual": spiritual_report,
         "daily_timeline": daily_timeline,

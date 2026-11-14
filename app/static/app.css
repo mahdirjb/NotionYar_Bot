@@ -6117,3 +6117,125 @@ textarea,
   overflow-x: auto !important;
 }
 .report-period-selector > button { border-radius: 6px !important; border: 0 !important; }
+
+/* V6.13: advanced report explorer */
+.advanced-report-panel { overflow: visible; }
+.advanced-report-heading { align-items: center; }
+.advanced-view-switch { width: auto; min-width: 210px; margin: 0; }
+.advanced-view-switch .seg-btn { min-width: 96px; }
+.advanced-report-presets {
+  display: flex;
+  gap: 7px;
+  margin: 14px 0;
+  padding-bottom: 3px;
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+.advanced-report-presets::-webkit-scrollbar { display: none; }
+.advanced-preset {
+  flex: 0 0 auto;
+  min-height: 38px;
+  padding: 7px 11px;
+  border: 1px solid var(--card-border);
+  border-radius: 7px;
+  background: var(--input-bg);
+  color: var(--text-color);
+  font: inherit;
+  font-size: 12px;
+  font-weight: 700;
+  cursor: pointer;
+}
+.advanced-preset:hover,
+.advanced-preset.active {
+  border-color: color-mix(in srgb, var(--section-accent) 55%, var(--card-border));
+  background: color-mix(in srgb, var(--section-accent) 14%, var(--input-bg));
+}
+.advanced-filter-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 10px;
+  padding: 12px;
+  border: 1px solid var(--card-border);
+  border-radius: var(--control-radius);
+  background: var(--subtle-surface);
+  overflow: visible;
+}
+.advanced-filter-grid .filter-col { min-width: 0; overflow: visible; }
+.advanced-filter-grid label {
+  display: block;
+  margin-bottom: 6px;
+  color: var(--hint-color);
+  font-size: 11px;
+  font-weight: 700;
+}
+.advanced-filter-grid .custom-dropdown-trigger { min-height: 44px; border-radius: 7px; }
+.advanced-results-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin: 16px 0 10px;
+  color: var(--hint-color);
+  font-size: 12px;
+}
+.advanced-results-toolbar strong { color: var(--text-color); font-size: 15px; }
+.advanced-report-results[data-view="cards"] {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+.advanced-day-card {
+  min-width: 0;
+  padding: 12px;
+  border: 1px solid var(--card-border);
+  border-inline-start: 4px solid var(--advanced-status-color, var(--info-color));
+  border-radius: 8px;
+  background: var(--card-bg);
+}
+.advanced-day-card-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 10px;
+  margin-bottom: 9px;
+}
+.advanced-day-card-header strong { color: var(--text-color); font-size: 13px; }
+.advanced-day-card-header time { color: var(--hint-color); font-size: 10px; direction: ltr; }
+.advanced-day-badges { display: flex; flex-wrap: wrap; gap: 5px; }
+.advanced-day-badge {
+  display: inline-flex;
+  align-items: center;
+  min-height: 26px;
+  padding: 4px 7px;
+  border: 1px solid var(--card-border);
+  border-radius: 6px;
+  background: var(--input-bg);
+  color: var(--text-color);
+  font-size: 10px;
+  line-height: 1.5;
+}
+.advanced-day-badge.is-alert { color: var(--danger-color); }
+.advanced-day-badge.is-warning { color: var(--warning-color); }
+.advanced-day-badge.is-success { color: var(--success-color); }
+.advanced-report-results[data-view="compact"] { display: grid; gap: 5px; }
+.advanced-report-results[data-view="compact"] .advanced-day-card {
+  display: grid;
+  grid-template-columns: minmax(130px, .65fr) 1.35fr;
+  align-items: center;
+  padding: 8px 10px;
+}
+.advanced-report-results[data-view="compact"] .advanced-day-card-header { margin: 0; }
+.advanced-report-results[data-view="compact"] .advanced-day-badges { justify-content: flex-start; }
+
+@media (max-width: 760px) {
+  .advanced-filter-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .advanced-report-results[data-view="cards"] { grid-template-columns: 1fr; }
+}
+@media (max-width: 460px) {
+  .advanced-report-heading { align-items: stretch; }
+  .advanced-view-switch { width: 100%; min-width: 0; }
+  .advanced-filter-grid { grid-template-columns: 1fr; padding: 10px; }
+  .advanced-results-toolbar { align-items: stretch; flex-direction: column; }
+  .advanced-results-toolbar .btn-step { width: 100%; }
+  .advanced-report-results[data-view="compact"] .advanced-day-card { grid-template-columns: 1fr; gap: 7px; }
+}

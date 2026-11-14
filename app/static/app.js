@@ -1,5 +1,5 @@
 // app/static/app.js
-// NotionYar Telegram Mini App v6.12.0
+// NotionYar Telegram Mini App v6.13.0
 
 (function () {
   const tg = window.Telegram?.WebApp;
@@ -17,6 +17,8 @@
   let networkRefreshUntil = 0;
   let currentReportPeriod = "7d";
   let currentReportData = null;
+  let advancedReportView = "cards";
+  let advancedFilteredDays = [];
   let lifeHistorySearchTimer = null;
   const dataCache = {
     lifeHistory: null,
@@ -491,6 +493,7 @@
         "/api/spiritual/quran/history",
         "/api/spiritual/report?period=30d",
         "/api/reports/dashboard?period=30d",
+        "/api/reports/dashboard?period=90d",
       ];
       for (const url of urls) {
         try {
@@ -1852,7 +1855,7 @@
   }
 
   function openHistoryDropdown(dropdown, trigger) {
-    document.querySelectorAll(".history-filter-grid .custom-dropdown.open").forEach((other) => {
+    document.querySelectorAll(".history-filter-grid .custom-dropdown.open, .advanced-filter-grid .custom-dropdown.open").forEach((other) => {
       if (other !== dropdown) closeHistoryDropdown(other);
     });
     const menu = getHistoryDropdownMenu(dropdown);
@@ -2063,7 +2066,7 @@
 
     const closeHistoryMenusOnScroll = (event) => {
       if (event.target instanceof Element && event.target.closest(".history-filter-portal-menu")) return;
-      document.querySelectorAll(".history-filter-grid .custom-dropdown.open").forEach(closeHistoryDropdown);
+      document.querySelectorAll(".history-filter-grid .custom-dropdown.open, .advanced-filter-grid .custom-dropdown.open").forEach(closeHistoryDropdown);
     };
     window.addEventListener("scroll", closeHistoryMenusOnScroll, { passive: true });
     document.addEventListener("scroll", closeHistoryMenusOnScroll, { passive: true, capture: true });
@@ -4643,6 +4646,312 @@
       .replace(/'/g, "&#039;");
   }
 
+  const ADVANCED_PRAYER_META = {
+    sobh: { label: "🌅 صبح", name: "صبح" },
+    zohr: { label: "☀️ ظهر", name: "ظهر" },
+    asr: { label: "🌤️ عصر", name: "عصر" },
+    maghreb: { label: "🌇 مغرب", name: "مغرب" },
+    eshsa: { label: "🌌 عشاء", name: "عشاء" },
+  };
+  const ADVANCED_PRAYER_STATUS = {
+    ada: { label: "اداء", className: "is-success", icon: "🟢" },
+    qaza: { label: "قضا", className: "is-warning", icon: "🟡" },
+    none: { label: "نخوانده", className: "is-alert", icon: "⚪" },
+  };
+
+  function initAdvancedReportDropdown(prefix, onChange) {
+    const dropdown = document.getElementById(`${prefix}Dropdown`);
+    const trigger = document.getElementById(`${prefix}Trigger`);
+    const menu = document.getElementById(`${prefix}Menu`);
+    const input = document.getElementById(prefix);
+    const selected = document.getElementById(`${prefix}Selected`);
+    if (!dropdown || !trigger || !menu || !input || !selected || dropdown.dataset.ready === "1") return;
+    dropdown.dataset.ready = "1";
+    trigger.addEventListener("click", (event) => {
+      event.stopPropagation();
+      if (dropdown.classList.contains("open")) closeHistoryDropdown(dropdown);
+      else openHistoryDropdown(dropdown, trigger);
+    });
+    menu.addEventListener("click", (event) => {
+      const item = event.target.closest(".custom-dropdown-item");
+      if (!item) return;
+      event.stopPropagation();
+      input.value = item.dataset.value || "";
+      selected.textContent = item.querySelector(".item-title")?.textContent || item.textContent.trim();
+      menu.querySelectorAll(".custom-dropdown-item").forEach((entry) => entry.classList.toggle("active", entry === item));
+      closeHistoryDropdown(dropdown);
+      document.querySelectorAll("[data-advanced-preset]").forEach((button) => button.classList.remove("active"));
+      onChange?.(input.value);
+      haptic("selection");
+    });
+    document.addEventListener("click", (event) => {
+      if (!dropdown.contains(event.target)) closeHistoryDropdown(dropdown);
+    });
+  }
+
+  function setAdvancedDropdownOptions(prefix, options, preferredValue = "") {
+    const menu = document.getElementById(`${prefix}Menu`);
+    const input = document.getElementById(prefix);
+    const selected = document.getElementById(`${prefix}Selected`);
+    if (!menu || !input || !selected || !options.length) return "";
+    const chosen = options.some((option) => option.value === preferredValue) ? preferredValue : options[0].value;
+    menu.innerHTML = options.map((option) => `
+      <div class="custom-dropdown-item${option.value === chosen ? " active" : ""}" data-value="${escapeReportText(option.value)}" role="option">
+        <span class="item-title">${escapeReportText(option.label)}</span>
+      </div>`).join("");
+    input.value = chosen;
+    selected.textContent = options.find((option) => option.value === chosen)?.label || options[0].label;
+    return chosen;
+  }
+
+  function getAdvancedItemOptions(domain) {
+    if (domain === "habit") {
+      return [
+        { value: "", label: "همه عادت‌ها" },
+        ...((currentReportData?.habits?.matrix?.habit_rankings || []).map((item) => ({
+          value: item.key,
+          label: `${item.info?.emoji || "🎯"} ${item.info?.fa || item.key}`,
+        }))),
+      ];
+    }
+    if (domain === "prayer") {
+      return [
+        { value: "", label: "هر کدام از نمازها" },
+        ...Object.entries(ADVANCED_PRAYER_META).map(([value, item]) => ({ value, label: item.label })),
+      ];
+    }
+    if (domain === "quran") return [{ value: "", label: "📖 تلاوت قرآن" }];
+    return [
+      { value: "", label: "همه فعالیت‌ها" },
+      ...((currentReportData?.life?.breakdown || []).map((item) => ({
+        value: item.name,
+        label: `${item.emoji || "🌱"} ${item.name}`,
+      }))),
+    ];
+  }
+
+  function getAdvancedConditionOptions(domain) {
+    if (domain === "habit") return [
+      { value: "missing", label: "ثبت نشده" },
+      { value: "completed", label: "انجام شده" },
+      { value: "failed", label: "انجام نشده" },
+      { value: "full", label: "کامل" },
+      { value: "partial", label: "نیمه‌کامل" },
+      { value: "light", label: "سبک" },
+      { value: "with_reason", label: "با دلیل انجام نشده" },
+      { value: "without_reason", label: "بدون دلیل انجام نشده" },
+    ];
+    if (domain === "prayer") return [
+      { value: "qaza", label: "قضا شده" },
+      { value: "none", label: "خوانده نشده" },
+      { value: "not_ada", label: "اداء نشده (قضا یا نخوانده)" },
+      { value: "ada", label: "اداء شده" },
+      { value: "perfect", label: "همه نمازها اداء" },
+    ];
+    if (domain === "quran") return [
+      { value: "missing", label: "تلاوت ثبت نشده" },
+      { value: "exists", label: "تلاوت ثبت شده" },
+    ];
+    return [
+      { value: "missing", label: "فعالیت ثبت نشده" },
+      { value: "exists", label: "فعالیت ثبت شده" },
+    ];
+  }
+
+  function configureAdvancedReportFilters(resetValues = false) {
+    const domain = document.getElementById("advancedDomain")?.value || "life";
+    const currentItem = resetValues ? "" : (document.getElementById("advancedItem")?.value || "");
+    const currentCondition = resetValues ? "" : (document.getElementById("advancedCondition")?.value || "");
+    setAdvancedDropdownOptions("advancedItem", getAdvancedItemOptions(domain), currentItem);
+    setAdvancedDropdownOptions("advancedCondition", getAdvancedConditionOptions(domain), currentCondition);
+    renderAdvancedReportResults();
+  }
+
+  function habitConditionMatches(status, condition) {
+    const value = String(status || "");
+    if (condition === "missing") return !value;
+    if (condition === "completed") return /^[123]-/.test(value);
+    if (condition === "failed") return /^[45]-/.test(value);
+    if (condition === "full") return value.startsWith("1-");
+    if (condition === "partial") return value.startsWith("2-");
+    if (condition === "light") return value.startsWith("3-");
+    if (condition === "with_reason") return value.startsWith("4-");
+    if (condition === "without_reason") return value.startsWith("5-");
+    return false;
+  }
+
+  function advancedDayMatches(day, domain, item, condition) {
+    if (domain === "habit") {
+      const statuses = day.habit_statuses || {};
+      const values = item
+        ? [statuses[item]]
+        : getAdvancedItemOptions("habit").filter((option) => option.value).map((option) => statuses[option.value]);
+      return values.some((status) => habitConditionMatches(status, condition));
+    }
+    if (domain === "prayer") {
+      const statuses = day.prayer_statuses || {};
+      const values = item ? [statuses[item] || "none"] : Object.keys(ADVANCED_PRAYER_META).map((key) => statuses[key] || "none");
+      if (condition === "perfect") return values.length === 5 && values.every((status) => status === "ada");
+      if (condition === "not_ada") return values.some((status) => status !== "ada");
+      return values.some((status) => status === condition);
+    }
+    if (domain === "quran") {
+      return condition === "exists" ? Number(day.quran_count || 0) > 0 : Number(day.quran_count || 0) === 0;
+    }
+    const types = day.life_types || [];
+    const exists = item ? types.includes(item) : Number(day.life_count || 0) > 0;
+    return condition === "exists" ? exists : !exists;
+  }
+
+  function advancedDaySeverity(day) {
+    const prayerStatuses = Object.values(day.prayer_statuses || {});
+    const missingHabits = Object.values(day.habit_statuses || {}).filter((status) => !status).length;
+    return prayerStatuses.filter((status) => status === "none").length * 4
+      + prayerStatuses.filter((status) => status === "qaza").length * 2
+      + missingHabits
+      + (Number(day.life_count || 0) === 0 ? 1 : 0)
+      + (Number(day.quran_count || 0) === 0 ? 1 : 0);
+  }
+
+  function advancedDayBadges(day, domain, item) {
+    if (domain === "prayer") {
+      const keys = item ? [item] : Object.keys(ADVANCED_PRAYER_META);
+      return keys.map((key) => {
+        const status = day.prayer_statuses?.[key] || "none";
+        const meta = ADVANCED_PRAYER_STATUS[status] || ADVANCED_PRAYER_STATUS.none;
+        return `<span class="advanced-day-badge ${meta.className}">${meta.icon} ${escapeReportText(ADVANCED_PRAYER_META[key]?.name || key)}: ${meta.label}</span>`;
+      }).join("");
+    }
+    if (domain === "habit") {
+      const labels = new Map(getAdvancedItemOptions("habit").map((option) => [option.value, option.label]));
+      const keys = item ? [item] : [...labels.keys()].filter(Boolean);
+      const missingKeys = keys.filter((key) => !day.habit_statuses?.[key]);
+      const visibleKeys = item ? keys : missingKeys.slice(0, 4);
+      const badges = visibleKeys.map((key) => {
+        const status = day.habit_statuses?.[key];
+        return `<span class="advanced-day-badge ${status ? "is-success" : "is-alert"}">${escapeReportText(labels.get(key) || key)}: ${escapeReportText(status || "ثبت نشده")}</span>`;
+      });
+      if (!item && missingKeys.length > visibleKeys.length) badges.push(`<span class="advanced-day-badge is-alert">+${toPersianDigits(missingKeys.length - visibleKeys.length)} مورد دیگر</span>`);
+      return badges.join("") || '<span class="advanced-day-badge is-success">همه عادت‌ها ثبت شده‌اند</span>';
+    }
+    if (domain === "quran") {
+      return `<span class="advanced-day-badge ${day.quran_count ? "is-success" : "is-alert"}">📖 ${day.quran_count ? `${toPersianDigits(day.quran_count)} جلسه تلاوت` : "بدون تلاوت"}</span>`;
+    }
+    const types = day.life_types || [];
+    if (!types.length) return '<span class="advanced-day-badge is-alert">بدون ثبت روزمرگی</span>';
+    return types.map((type) => `<span class="advanced-day-badge is-success">🌱 ${escapeReportText(type)}</span>`).join("");
+  }
+
+  function renderAdvancedReportResults() {
+    const target = document.getElementById("advancedReportResults");
+    if (!target) return;
+    const timeline = currentReportData?.daily_timeline || [];
+    const domain = document.getElementById("advancedDomain")?.value || "life";
+    const item = document.getElementById("advancedItem")?.value || "";
+    const condition = document.getElementById("advancedCondition")?.value || "missing";
+    const sort = document.getElementById("advancedSort")?.value || "newest";
+    const itemLabel = document.getElementById("advancedItemSelected")?.textContent || "همه موارد";
+    const conditionLabel = document.getElementById("advancedConditionSelected")?.textContent || "شرط انتخابی";
+    const rows = timeline.filter((day) => advancedDayMatches(day, domain, item, condition));
+    rows.sort((a, b) => {
+      if (sort === "oldest") return String(a.date_iso).localeCompare(String(b.date_iso));
+      if (sort === "severity") return advancedDaySeverity(b) - advancedDaySeverity(a) || String(b.date_iso).localeCompare(String(a.date_iso));
+      return String(b.date_iso).localeCompare(String(a.date_iso));
+    });
+    advancedFilteredDays = rows;
+    target.dataset.view = advancedReportView;
+    const count = document.getElementById("advancedResultCount");
+    const summary = document.getElementById("advancedResultSummary");
+    if (count) count.textContent = `${toPersianDigits(rows.length)} روز`;
+    if (summary) summary.textContent = ` با شرط «${itemLabel}، ${conditionLabel}»`;
+    if (!timeline.length) {
+      target.innerHTML = '<div class="report-empty">داده‌ای برای این بازه دریافت نشده است.</div>';
+      return;
+    }
+    if (!rows.length) {
+      target.innerHTML = '<div class="report-empty">هیچ روزی با این ترکیب فیلتر پیدا نشد.</div>';
+      return;
+    }
+    const dangerCondition = ["missing", "none", "not_ada", "failed", "without_reason"].includes(condition);
+    const warningCondition = condition === "qaza" || condition === "with_reason";
+    const statusColor = dangerCondition ? "var(--danger-color)" : warningCondition ? "var(--warning-color)" : "var(--success-color)";
+    target.innerHTML = rows.map((day) => `
+      <article class="advanced-day-card" style="--advanced-status-color:${statusColor}">
+        <div class="advanced-day-card-header">
+          <strong>${escapeReportText(day.date_label || formatIsoToJalaliDisplay(day.date_iso))}</strong>
+          <time datetime="${escapeReportText(day.date_iso)}">${toPersianDigits(day.date_iso)}</time>
+        </div>
+        <div class="advanced-day-badges">${advancedDayBadges(day, domain, item)}</div>
+      </article>`).join("");
+  }
+
+  function applyAdvancedReportPreset(preset) {
+    const presets = {
+      "life-missing": { domain: "life", item: "", condition: "missing" },
+      "habit-missing": { domain: "habit", item: "", condition: "missing" },
+      "prayer-qaza": { domain: "prayer", item: "", condition: "qaza" },
+      "prayer-none": { domain: "prayer", item: "", condition: "none" },
+      "quran-missing": { domain: "quran", item: "", condition: "missing" },
+    };
+    const selected = presets[preset];
+    if (!selected) return;
+    setAdvancedDropdownOptions("advancedDomain", [
+      { value: "life", label: "🌱 روزمرگی" },
+      { value: "habit", label: "🎯 عادت‌ها" },
+      { value: "prayer", label: "🕌 نمازها" },
+      { value: "quran", label: "📖 تلاوت قرآن" },
+    ], selected.domain);
+    setAdvancedDropdownOptions("advancedItem", getAdvancedItemOptions(selected.domain), selected.item);
+    setAdvancedDropdownOptions("advancedCondition", getAdvancedConditionOptions(selected.domain), selected.condition);
+    renderAdvancedReportResults();
+  }
+
+  function initAdvancedReportExplorer() {
+    initAdvancedReportDropdown("advancedDomain", () => configureAdvancedReportFilters(true));
+    initAdvancedReportDropdown("advancedItem", renderAdvancedReportResults);
+    initAdvancedReportDropdown("advancedCondition", renderAdvancedReportResults);
+    initAdvancedReportDropdown("advancedSort", renderAdvancedReportResults);
+    document.querySelectorAll("[data-advanced-preset]").forEach((button) => {
+      button.addEventListener("click", () => {
+        document.querySelectorAll("[data-advanced-preset]").forEach((item) => item.classList.toggle("active", item === button));
+        applyAdvancedReportPreset(button.dataset.advancedPreset);
+        haptic("light");
+      });
+    });
+    document.querySelectorAll("[data-advanced-view]").forEach((button) => {
+      button.addEventListener("click", () => {
+        advancedReportView = button.dataset.advancedView || "cards";
+        document.querySelectorAll("[data-advanced-view]").forEach((item) => item.classList.toggle("active", item === button));
+        renderAdvancedReportResults();
+      });
+    });
+    document.getElementById("btnExportAdvancedReport")?.addEventListener("click", () => {
+      if (!advancedFilteredDays.length) {
+        showToast("نتیجه‌ای برای خروجی گرفتن وجود ندارد", "warning");
+        return;
+      }
+      const rows = [
+        ["date", "habit_percent", "life_types", "sobh", "zohr", "asr", "maghreb", "eshsa", "quran_sessions"],
+        ...advancedFilteredDays.map((day) => [
+          day.date_iso,
+          day.habit_pct,
+          (day.life_types || []).join(" | "),
+          ...["sobh", "zohr", "asr", "maghreb", "eshsa"].map((key) => day.prayer_statuses?.[key] || "none"),
+          day.quran_count || 0,
+        ]),
+      ];
+      const csv = "\uFEFF" + rows.map((row) => row.map((cell) => `"${String(cell ?? "").replace(/"/g, '""')}"`).join(",")).join("\n");
+      const url = URL.createObjectURL(new Blob([csv], { type: "text/csv;charset=utf-8" }));
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = `notionyar-advanced-${currentReportPeriod}.csv`;
+      link.click();
+      URL.revokeObjectURL(url);
+      showToast("خروجی فیلترشده آماده شد", "success");
+    });
+    configureAdvancedReportFilters(true);
+  }
+
   function renderReportRows(target, items, valueLabel, color = "var(--button-color)") {
     if (!target) return;
     if (!items.length) {
@@ -4777,6 +5086,8 @@
         </div>`;
       }).join("") : '<div class="report-empty">برای این بازه گزارش نماز موجود نیست.</div>';
     }
+
+    configureAdvancedReportFilters(false);
   }
 
   async function loadReportsDashboard(period = currentReportPeriod) {
@@ -4850,6 +5161,7 @@
   // ==========================================
   // START APPLICATION
   // ==========================================
+  initAdvancedReportExplorer();
   setupOfflineSupport();
   initApp();
 })();

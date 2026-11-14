@@ -17,7 +17,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Vazirmatn:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="/static/app.css?v=6.12.0">
+  <link rel="stylesheet" href="/static/app.css?v=6.13.0">
 </head>
 
 <body class="auth-pending">
@@ -696,11 +696,13 @@
           <button type="button" class="seg-btn" data-report-section-target="habits">🎯 عادت‌ها</button>
           <button type="button" class="seg-btn" data-report-section-target="life">🌱 روزمرگی</button>
           <button type="button" class="seg-btn" data-report-section-target="spiritual">🕌 معنوی</button>
+          <button type="button" class="seg-btn" data-report-section-target="advanced">🔎 کاوش پیشرفته</button>
         </nav>
         <div class="report-period-selector reports-periods" aria-label="انتخاب بازه گزارش">
           <button type="button" class="btn-pill active" data-report-period="7d">۷ روز اخیر</button>
           <button type="button" class="btn-pill" data-report-period="month">ماه جاری</button>
           <button type="button" class="btn-pill" data-report-period="30d">۳۰ روز اخیر</button>
+          <button type="button" class="btn-pill" data-report-period="90d">۹۰ روز اخیر</button>
         </div>
 
         <div id="reportsWarnings" class="reports-warnings" hidden></div>
@@ -745,6 +747,87 @@
             </div>
             <div class="report-inline-stats" id="reportsSpiritualStats"></div>
             <div class="prayer-report-grid" id="reportsPrayerBreakdown"></div>
+          </section>
+
+          <section class="report-panel report-panel-wide advanced-report-panel" data-report-section="advanced" hidden aria-labelledby="advancedReportTitle">
+            <div class="report-panel-heading advanced-report-heading">
+              <div>
+                <span class="report-eyebrow">جست‌وجوی روزها با شرط دلخواه</span>
+                <h3 id="advancedReportTitle">کاوشگر پیشرفته گزارش‌ها</h3>
+              </div>
+              <div class="segmented-control advanced-view-switch" aria-label="نمای نتایج گزارش پیشرفته">
+                <button type="button" class="seg-btn active" data-advanced-view="cards">▦ کارت‌ها</button>
+                <button type="button" class="seg-btn" data-advanced-view="compact">☷ فهرست</button>
+              </div>
+            </div>
+
+            <div class="advanced-report-presets" aria-label="فیلترهای آماده">
+              <button type="button" class="advanced-preset" data-advanced-preset="life-missing">روزهای بدون روزمرگی</button>
+              <button type="button" class="advanced-preset" data-advanced-preset="habit-missing">عادت‌های ثبت‌نشده</button>
+              <button type="button" class="advanced-preset" data-advanced-preset="prayer-qaza">نمازهای قضا</button>
+              <button type="button" class="advanced-preset" data-advanced-preset="prayer-none">نمازهای نخوانده</button>
+              <button type="button" class="advanced-preset" data-advanced-preset="quran-missing">روزهای بدون تلاوت</button>
+            </div>
+
+            <div class="advanced-filter-grid">
+              <div class="filter-col">
+                <label>حوزه گزارش</label>
+                <div class="custom-dropdown" id="advancedDomainDropdown" data-report-filter-dropdown>
+                  <input type="hidden" id="advancedDomain" value="life">
+                  <button type="button" class="custom-dropdown-trigger" id="advancedDomainTrigger" aria-haspopup="listbox" aria-expanded="false">
+                    <span class="custom-dropdown-selected" id="advancedDomainSelected">🌱 روزمرگی</span><span class="custom-dropdown-arrow">▾</span>
+                  </button>
+                  <div class="custom-dropdown-menu" id="advancedDomainMenu" role="listbox">
+                    <div class="custom-dropdown-item active" data-value="life"><span class="item-title">🌱 روزمرگی</span></div>
+                    <div class="custom-dropdown-item" data-value="habit"><span class="item-title">🎯 عادت‌ها</span></div>
+                    <div class="custom-dropdown-item" data-value="prayer"><span class="item-title">🕌 نمازها</span></div>
+                    <div class="custom-dropdown-item" data-value="quran"><span class="item-title">📖 تلاوت قرآن</span></div>
+                  </div>
+                </div>
+              </div>
+              <div class="filter-col">
+                <label>مورد</label>
+                <div class="custom-dropdown" id="advancedItemDropdown" data-report-filter-dropdown>
+                  <input type="hidden" id="advancedItem" value="">
+                  <button type="button" class="custom-dropdown-trigger" id="advancedItemTrigger" aria-haspopup="listbox" aria-expanded="false">
+                    <span class="custom-dropdown-selected" id="advancedItemSelected">همه فعالیت‌ها</span><span class="custom-dropdown-arrow">▾</span>
+                  </button>
+                  <div class="custom-dropdown-menu" id="advancedItemMenu" role="listbox"></div>
+                </div>
+              </div>
+              <div class="filter-col">
+                <label>شرط</label>
+                <div class="custom-dropdown" id="advancedConditionDropdown" data-report-filter-dropdown>
+                  <input type="hidden" id="advancedCondition" value="missing">
+                  <button type="button" class="custom-dropdown-trigger" id="advancedConditionTrigger" aria-haspopup="listbox" aria-expanded="false">
+                    <span class="custom-dropdown-selected" id="advancedConditionSelected">ثبت نشده</span><span class="custom-dropdown-arrow">▾</span>
+                  </button>
+                  <div class="custom-dropdown-menu" id="advancedConditionMenu" role="listbox"></div>
+                </div>
+              </div>
+              <div class="filter-col">
+                <label>مرتب‌سازی</label>
+                <div class="custom-dropdown" id="advancedSortDropdown" data-report-filter-dropdown>
+                  <input type="hidden" id="advancedSort" value="newest">
+                  <button type="button" class="custom-dropdown-trigger" id="advancedSortTrigger" aria-haspopup="listbox" aria-expanded="false">
+                    <span class="custom-dropdown-selected" id="advancedSortSelected">جدیدترین</span><span class="custom-dropdown-arrow">▾</span>
+                  </button>
+                  <div class="custom-dropdown-menu" id="advancedSortMenu" role="listbox">
+                    <div class="custom-dropdown-item active" data-value="newest"><span class="item-title">جدیدترین</span></div>
+                    <div class="custom-dropdown-item" data-value="oldest"><span class="item-title">قدیمی‌ترین</span></div>
+                    <div class="custom-dropdown-item" data-value="severity"><span class="item-title">مهم‌ترین وضعیت</span></div>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div class="advanced-results-toolbar">
+              <div><strong id="advancedResultCount">۰ روز</strong><span id="advancedResultSummary"> مطابق فیلتر فعلی</span></div>
+              <button type="button" class="btn-step" id="btnExportAdvancedReport">خروجی فیلترشده</button>
+            </div>
+            <div class="advanced-report-results" id="advancedReportResults" data-view="cards">
+              <div class="report-empty">برای مشاهده نتیجه، یک فیلتر انتخاب کنید.</div>
+            </div>
           </section>
         </div>
       </section>
@@ -1126,6 +1209,6 @@
   </div>
 
   <script src="/static/vendor/lucide.min.js?v=1.72.0"></script>
-  <script src="/static/app.js?v=6.12.0"></script>
+  <script src="/static/app.js?v=6.13.0"></script>
 </body>
 </html>
