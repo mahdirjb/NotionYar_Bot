@@ -1,5 +1,5 @@
 // app/static/app.js
-// NotionYar Telegram Mini App v6.11.2
+// NotionYar Telegram Mini App v6.12.0
 
 (function () {
   const tg = window.Telegram?.WebApp;
@@ -13,6 +13,8 @@
   let offlineMutationQueued = false;
   let pendingQueueCount = 0;
   let originReachable = navigator.onLine;
+  let offlinePrimeStarted = false;
+  let networkRefreshUntil = 0;
   let currentReportPeriod = "7d";
   let currentReportData = null;
   let lifeHistorySearchTimer = null;
@@ -146,7 +148,9 @@
     try {
       const body = await response.clone().text();
       const headers = {};
-      response.headers.forEach((value, key) => { headers[key] = value; });
+      response.headers.forEach((value, key) => {
+        if (!["content-encoding", "content-length"].includes(key.toLowerCase())) headers[key] = value;
+      });
       const db = await openOfflineCacheDb();
       await new Promise((resolve, reject) => {
         const transaction = db.transaction(OFFLINE_CACHE_STORE, "readwrite");
@@ -178,10 +182,12 @@
       });
       db.close();
       if (!item) return null;
+      const headers = new Headers(item.headers || { "Content-Type": "application/json" });
+      headers.set("X-Offline-Cache", "indexeddb");
       return new Response(item.body, {
         status: item.status || 200,
         statusText: item.statusText || "OK",
-        headers: item.headers || { "Content-Type": "application/json" },
+        headers,
       });
     } catch (_) {
       return null;
@@ -296,14 +302,73 @@
       && request.method === "GET";
   }
 
-  window.fetch = async (...args) => {
+  async function revalidateOfflineApiRequest(request) {
     try {
-      const response = await nativeFetch(...args);
-      const request = new Request(args[0], args[1]);
+      const headers = new Headers(request.headers);
+      headers.set("X-NotionYar-Network-Only", "1");
+      const response = await nativeFetch(new Request(request, { headers, cache: "no-store" }));
+      if (response.ok) {
+        originReachable = true;
+        await cacheOfflineApiResponse(request, response);
+      }
+    } catch (_) {
+      originReachable = false;
+      updateSyncStatus({ online: false });
+    }
+  }
+
+  async function persistOfflineJson(url, data) {
+    const request = new Request(new URL(url, window.location.origin).toString(), { method: "GET" });
+    const response = new Response(JSON.stringify(data), {
+      status: 200,
+      headers: { "Content-Type": "application/json; charset=utf-8" },
+    });
+    await cacheOfflineApiResponse(request, response);
+  }
+
+  async function updateOfflineJson(url, updater) {
+    const absoluteUrl = new URL(url, window.location.origin).toString();
+    const cached = await getOfflineApiResponse(absoluteUrl);
+    if (!cached) return null;
+    try {
+      const current = await cached.json();
+      const updated = updater(current) || current;
+      await persistOfflineJson(url, updated);
+      return updated;
+    } catch (_) {
+      return null;
+    }
+  }
+
+  window.fetch = async (...args) => {
+    const request = new Request(args[0], args[1]);
+    const cacheEligible = isOfflineCacheEligibleRequest(request);
+    const isSessionCheck = new URL(request.url).pathname === "/api/me";
+    const forceNetwork = cacheEligible && navigator.onLine && (Date.now() < networkRefreshUntil || isSessionCheck);
+    if (cacheEligible && !forceNetwork) {
+      const cached = await getOfflineApiResponse(request.url);
+      if (cached) {
+        if (navigator.onLine && originReachable) revalidateOfflineApiRequest(request);
+        else updateSyncStatus({ online: false });
+        return cached;
+      }
+    }
+
+    try {
+      let response;
+      if (forceNetwork) {
+        const headers = new Headers(request.headers);
+        headers.set("X-NotionYar-Network-Only", "1");
+        response = await nativeFetch(new Request(request, { headers, cache: "no-store" }));
+      } else {
+        response = await nativeFetch(...args);
+      }
+      const queued = response.headers.get("X-Offline-Queued") === "1";
       if (response.ok && isOfflineCacheEligibleRequest(request)) {
         await cacheOfflineApiResponse(request, response);
       }
-      if (response.ok && isOfflineEligibleRequest(request)) {
+      if (response.ok && isOfflineEligibleRequest(request) && !queued) {
+        networkRefreshUntil = Date.now() + 10000;
         invalidateDataCache("lifeHistory", "lifeRadar", "habits", "spiritual", "quranHistory", "habitAnalytics", "reports");
       }
       if (isTransientNetworkStatus(response.status) && isOfflineEligibleRequest(request)) {
@@ -317,12 +382,13 @@
           return cached;
         }
       }
-      if (response.headers.get("X-Offline-Queued") === "1") {
+      if (queued) {
         offlineMutationQueued = true;
+        updateSyncStatus({ online: false, count: await getOfflineQueueCount() });
       }
       return response;
     } catch (error) {
-      const request = new Request(args[0], args[1]);
+      originReachable = false;
       if (isOfflineEligibleRequest(request)) {
         try {
           offlineMutationQueued = true;
@@ -376,6 +442,7 @@
 
   async function setupOfflineSupport() {
     updateSyncStatus();
+    navigator.storage?.persist?.().catch(() => false);
     if (!("serviceWorker" in navigator)) return;
 
     try {
@@ -396,6 +463,8 @@
       } else if (data.type === "SYNC_COMPLETE") {
         updateSyncStatus({ online: true, count: pendingQueueCount });
         showToast(`${data.count} مورد آفلاین با موفقیت همگام شد`, "success");
+        networkRefreshUntil = Date.now() + 15000;
+        invalidateDataCache("lifeHistory", "lifeRadar", "habits", "spiritual", "quranHistory", "habitAnalytics", "reports");
         initApp();
       } else if (data.type === "SYNC_FAILED") {
         updateSyncStatus({ online: true, count: pendingQueueCount });
@@ -411,7 +480,34 @@
     });
   }
 
+  function scheduleOfflineDataPrime() {
+    if (offlinePrimeStarted || !navigator.onLine) return;
+    offlinePrimeStarted = true;
+    window.setTimeout(async () => {
+      const urls = [
+        "/api/life-tracker/history",
+        "/api/life-tracker/insights",
+        "/api/habits/analytics?period=30d",
+        "/api/spiritual/quran/history",
+        "/api/spiritual/report?period=30d",
+        "/api/reports/dashboard?period=30d",
+      ];
+      for (const url of urls) {
+        try {
+          await fetch(url, { headers: getHeaders() });
+        } catch (_) {
+          originReachable = false;
+          break;
+        }
+      }
+    }, 700);
+  }
+
   window.addEventListener("online", () => {
+    originReachable = true;
+    offlinePrimeStarted = false;
+    networkRefreshUntil = Date.now() + 10000;
+    scheduleOfflineDataPrime();
     if (pendingQueueCount > 0) {
       updateSyncStatus({ online: true, count: pendingQueueCount, syncing: true });
       flushOfflineQueueDirectly();
@@ -848,6 +944,7 @@
       loadHabitsForDate(currentHabitDateIso),
       loadSpiritualDay(currentSpiritualDateIso),
     ]);
+    scheduleOfflineDataPrime();
     const activePanel = document.querySelector(".tab-panel.active");
     const activeSubtab = activePanel?.querySelector(".subtab-content.active")?.id;
     if (activeSubtab === "life-sub-radar") loadLifeRadar();
@@ -924,6 +1021,7 @@
         loadHabitsForDate(currentHabitDateIso),
         loadSpiritualDay(currentSpiritualDateIso),
       ]);
+      scheduleOfflineDataPrime();
 
       const activePanel = document.querySelector(".tab-panel.active");
       const activeSubtab = activePanel?.querySelector(".subtab-content.active")?.id;
@@ -1121,6 +1219,9 @@
   document.getElementById("btnRefresh")?.addEventListener("click", async () => {
     haptic("medium");
     showToast("در حال بروزرسانی اطلاعات...", "info");
+    networkRefreshUntil = Date.now() + 15000;
+    offlinePrimeStarted = false;
+    invalidateDataCache("lifeHistory", "lifeRadar", "habits", "spiritual", "quranHistory", "habitAnalytics", "reports");
     await initApp();
     showToast("داده‌ها بروز شدند", "success");
   });
@@ -1613,6 +1714,33 @@
 
       const data = await res.json();
       if (!res.ok) throw new Error(data.detail || "خطا در ثبت لاگ");
+
+      const queued = data.queued === true || res.headers.get("X-Offline-Queued") === "1";
+      if (queued) {
+        const localEntry = {
+          id: `offline-life-${Date.now()}`,
+          type: selectedLifeType,
+          mode: selectedLifeModes.join("، "),
+          modes: [...selectedLifeModes],
+          notes: notes || "",
+          date_iso: selectedLifeDate,
+          date: formatIsoToJalaliDisplay(selectedLifeDate),
+          offline_pending: true,
+        };
+        if (Array.isArray(dataCache.lifeHistory)) {
+          dataCache.lifeHistory.unshift(localEntry);
+          allLifeEntriesCache = dataCache.lifeHistory;
+        } else {
+          await updateOfflineJson("/api/life-tracker/history", (cached) => {
+            cached.entries = [localEntry, ...(Array.isArray(cached.entries) ? cached.entries : [])];
+            return cached;
+          });
+        }
+        document.getElementById("lifeNotes").value = "";
+        renderFilteredLifeHistory();
+        showToast(`لاگ «${selectedLifeType}» ذخیره شد`, "success");
+        return;
+      }
 
       showToast(`لاگ «${selectedLifeType}» با موفقیت ذخیره شد! 🌿`, "success");
       invalidateDataCache("lifeHistory", "lifeRadar");
@@ -2838,6 +2966,8 @@
     const fillEl = document.getElementById("habitProgressFill");
     if (fillEl) fillEl.style.width = fillPct;
     document.querySelector(".progress-ring-box")?.style.setProperty("--p-fill", fillPct);
+    dataCache.habits.set(currentHabitDateIso, habitDayData);
+    persistOfflineJson(`/api/habits/day?date_iso=${encodeURIComponent(currentHabitDateIso)}`, habitDayData);
 
     // 2. Asynchronous backend sync
     try {
@@ -2857,6 +2987,7 @@
       habitObj.status = prevStatus;
       habitObj.is_done = prevIsDone;
       renderGroupedHabits(habitDayData.categories);
+      persistOfflineJson(`/api/habits/day?date_iso=${encodeURIComponent(currentHabitDateIso)}`, habitDayData);
       showToast("خطا در همگام‌سازی با نوشن", "error");
     }
   }
@@ -4024,6 +4155,28 @@
     });
   }
 
+  function applyLocalPrayerStatus(prayerKey, targetStatus) {
+    if (!spiritualDayData) return;
+    if (!spiritualDayData.prayers) spiritualDayData.prayers = {};
+    if (!spiritualDayData.prayers[prayerKey]) spiritualDayData.prayers[prayerKey] = {};
+    spiritualDayData.prayers[prayerKey].status = targetStatus;
+    const statuses = Object.values(spiritualDayData.prayers).map((prayer) => prayer?.status || "none");
+    spiritualDayData.ada_count = statuses.filter((status) => status === "ada").length;
+    spiritualDayData.qaza_count = statuses.filter((status) => status === "qaza").length;
+    spiritualDayData.completed_count = spiritualDayData.ada_count + spiritualDayData.qaza_count;
+    spiritualDayData.progress_percent = Math.round((spiritualDayData.completed_count / 5) * 100);
+
+    document.getElementById("spiritualPercent").textContent = `${toPersianDigits(spiritualDayData.progress_percent)}٪`;
+    document.getElementById("spiritualCountDisplay").textContent = `${toPersianDigits(spiritualDayData.completed_count)} از ۵`;
+    document.getElementById("spiritualAdaCount").textContent = toPersianDigits(spiritualDayData.ada_count);
+    document.getElementById("spiritualQazaCount").textContent = toPersianDigits(spiritualDayData.qaza_count);
+    document.getElementById("spiritualPendingCount").textContent = toPersianDigits(Math.max(0, 5 - spiritualDayData.completed_count));
+    document.getElementById("spiritualProgressFill").style.width = `${spiritualDayData.progress_percent}%`;
+    renderPrayersList(spiritualDayData);
+    dataCache.spiritual.set(currentSpiritualDateIso, spiritualDayData);
+    persistOfflineJson(`/api/spiritual/day?date_iso=${encodeURIComponent(currentSpiritualDateIso)}`, spiritualDayData);
+  }
+
   async function changePrayerStatus(prayerKey, targetStatus) {
     if (!spiritualDayData || !spiritualDayData.page_id) {
       showToast("شناسه روز مشخص نیست", "error");
@@ -4047,6 +4200,11 @@
 
       const pName = PRAYER_DISPLAY_META[prayerKey]?.name || prayerKey;
       const statusTitle = targetStatus === "ada" ? "اداء" : (targetStatus === "qaza" ? "قضاء" : "نخوانده");
+      if (res.headers.get("X-Offline-Queued") === "1") {
+        applyLocalPrayerStatus(prayerKey, targetStatus);
+        showToast(`نماز ${pName}: ${statusTitle} ذخیره شد`, "success");
+        return;
+      }
       showToast(`نماز ${pName}: ${statusTitle} ثبت شد`, "success");
       invalidateDataCache("spiritual");
 
@@ -4287,6 +4445,31 @@
         })
       });
       if (!res.ok) throw new Error("خطا در ذخیره تلاوت قرآن");
+
+      if (res.headers.get("X-Offline-Queued") === "1") {
+        const localEntry = {
+          id: `offline-quran-${Date.now()}`,
+          name: title || "تلاوت قرآن",
+          pages,
+          date_iso: selectedQuranDateIso,
+          shamsi_date: formatIsoToJalaliDisplay(selectedQuranDateIso),
+          offline_pending: true,
+        };
+        if (dataCache.quranHistory) {
+          dataCache.quranHistory.entries = [localEntry, ...(dataCache.quranHistory.entries || [])];
+          await persistOfflineJson("/api/spiritual/quran/history", dataCache.quranHistory);
+        } else {
+          dataCache.quranHistory = await updateOfflineJson("/api/spiritual/quran/history", (cached) => {
+            cached.entries = [localEntry, ...(Array.isArray(cached.entries) ? cached.entries : [])];
+            return cached;
+          }) || { entries: [localEntry] };
+        }
+        document.getElementById("quranPagesInput").value = "";
+        document.getElementById("quranTitleInput").value = "";
+        showToast("جلسه تلاوت قرآن ذخیره شد", "success");
+        loadQuranHistory();
+        return;
+      }
 
       showToast("جلسه تلاوت قرآن در نوشن ثبت شد! ✨", "success");
       invalidateDataCache("quranHistory");
@@ -4639,6 +4822,8 @@
   });
 
   document.getElementById("btnRefreshReports")?.addEventListener("click", () => {
+    networkRefreshUntil = Date.now() + 10000;
+    dataCache.reports.delete(currentReportPeriod);
     loadReportsDashboard(currentReportPeriod);
   });
 

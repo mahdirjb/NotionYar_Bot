@@ -1,5 +1,5 @@
-const SHELL_CACHE = "notionyar-shell-v6.11.2";
-const API_CACHE = "notionyar-api-v6.11.2";
+const SHELL_CACHE = "notionyar-shell-v6.12.0";
+const API_CACHE = "notionyar-api-persistent-v1";
 const DB_NAME = "notionyar-offline";
 const DB_VERSION = 1;
 const QUEUE_STORE = "mutation-queue";
@@ -7,9 +7,9 @@ const QUEUE_STORE = "mutation-queue";
 const SHELL_ASSETS = [
   "/",
   "/manifest.webmanifest",
-  "/static/app.css?v=6.11.2",
+  "/static/app.css?v=6.12.0",
   "/static/vendor/lucide.min.js?v=1.72.0",
-  "/static/app.js?v=6.11.2",
+  "/static/app.js?v=6.12.0",
   "/static/icon.svg?v=5.0.2",
 ];
 
@@ -20,15 +20,27 @@ self.addEventListener("install", (event) => {
 });
 
 self.addEventListener("activate", (event) => {
-  event.waitUntil(
-    Promise.all([
-      caches.keys().then((keys) => Promise.all(
-        keys.filter((key) => ![SHELL_CACHE, API_CACHE].includes(key)).map((key) => caches.delete(key))
-      )),
-      self.clients.claim(),
-      broadcastQueueCount(),
-    ])
-  );
+  event.waitUntil((async () => {
+    const keys = await caches.keys();
+    const apiCache = await caches.open(API_CACHE);
+    const legacyApiCaches = keys.filter((key) => key.startsWith("notionyar-api-") && key !== API_CACHE);
+
+    for (const cacheName of legacyApiCaches) {
+      const legacyCache = await caches.open(cacheName);
+      const requests = await legacyCache.keys();
+      for (const request of requests) {
+        if (await apiCache.match(request, { ignoreVary: true })) continue;
+        const response = await legacyCache.match(request, { ignoreVary: true });
+        if (response) await apiCache.put(request, response);
+      }
+    }
+
+    await Promise.all(keys
+      .filter((key) => (key.startsWith("notionyar-shell-") && key !== SHELL_CACHE) || legacyApiCaches.includes(key))
+      .map((key) => caches.delete(key)));
+    await self.clients.claim();
+    await broadcastQueueCount();
+  })());
 });
 
 function openQueueDb() {
@@ -205,8 +217,17 @@ async function handleMutation(request) {
   }
 }
 
-async function handleApiGet(request) {
-  const cache = await caches.open(API_CACHE);
+function withOfflineCacheHeader(response) {
+  const headers = new Headers(response.headers);
+  headers.set("X-Offline-Cache", "1");
+  return new Response(response.clone().body, {
+    status: response.status,
+    statusText: response.statusText,
+    headers,
+  });
+}
+
+async function refreshApiCache(request, cache) {
   try {
     const response = await fetch(request);
     if (response.ok) await cache.put(request, response.clone());
@@ -214,11 +235,50 @@ async function handleApiGet(request) {
     return response;
   } catch (_) {
     await notifyClients({ type: "NETWORK_UNAVAILABLE" });
-    const cached = await cache.match(request);
-    if (cached) return cached;
-    return new Response(JSON.stringify({ detail: "این اطلاعات هنوز برای استفاده آفلاین ذخیره نشده‌اند." }), {
+    return null;
+  }
+}
+
+async function handleApiGet(request, event) {
+  const cache = await caches.open(API_CACHE);
+  if (request.headers.get("X-NotionYar-Network-Only") === "1") {
+    const response = await refreshApiCache(request, cache);
+    if (response) return response;
+  }
+  const cached = await cache.match(request, { ignoreVary: true });
+  if (cached) {
+    event.waitUntil(refreshApiCache(request, cache));
+    return withOfflineCacheHeader(cached);
+  }
+
+  const response = await refreshApiCache(request, cache);
+  if (response) return response;
+  return new Response(JSON.stringify({ detail: "این اطلاعات هنوز برای استفاده آفلاین ذخیره نشده‌اند." }), {
+    status: 503,
+    headers: { "Content-Type": "application/json" },
+  });
+}
+
+async function handleNavigation(request, event) {
+  const cache = await caches.open(SHELL_CACHE);
+  const cached = await cache.match(request, { ignoreSearch: true }) || await cache.match("/");
+  if (cached) {
+    event.waitUntil((async () => {
+      try {
+        const response = await fetch(request);
+        if (response.ok) await cache.put("/", response.clone());
+      } catch (_) {}
+    })());
+    return cached;
+  }
+  try {
+    const response = await fetch(request);
+    if (response.ok) await cache.put("/", response.clone());
+    return response;
+  } catch (_) {
+    return new Response("برنامه هنوز برای استفاده آفلاین آماده نشده است.", {
       status: 503,
-      headers: { "Content-Type": "application/json" },
+      headers: { "Content-Type": "text/plain; charset=utf-8" },
     });
   }
 }
@@ -237,11 +297,11 @@ self.addEventListener("fetch", (event) => {
     return;
   }
   if (isApi && request.method === "GET") {
-    event.respondWith(handleApiGet(request));
+    event.respondWith(handleApiGet(request, event));
     return;
   }
   if (request.mode === "navigate") {
-    event.respondWith(fetch(request).catch(() => caches.match("/")));
+    event.respondWith(handleNavigation(request, event));
     return;
   }
   if (request.method === "GET") {
