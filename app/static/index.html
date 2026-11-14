@@ -17,7 +17,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Vazirmatn:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="/static/app.css?v=6.13.0">
+  <link rel="stylesheet" href="/static/app.css?v=6.14.1">
 </head>
 
 <body class="auth-pending">
@@ -682,17 +682,17 @@
         <div class="reports-toolbar">
           <div>
             <span class="workspace-kicker">مرکز گزارش‌ها</span>
-            <h2>تصویر روشن از روندها و عملکرد</h2>
             <p id="reportsPeriodCaption">داده‌های ۷ روز اخیر به تفکیک هر بخش</p>
           </div>
           <div class="reports-actions">
-            <button type="button" class="btn-step" id="btnExportReports" title="دریافت داده‌های گزارش در فایل CSV">خروجی CSV</button>
+            <button type="button" class="btn-icon" id="btnExportReports" title="دریافت فایل CSV" aria-label="دریافت فایل CSV"></button>
             <button type="button" class="btn-icon" id="btnRefreshReports" title="بروزرسانی گزارش" aria-label="بروزرسانی گزارش"></button>
           </div>
         </div>
 
         <nav class="reports-section-nav" aria-label="بخش‌های گزارش">
           <button type="button" class="seg-btn active" data-report-section-target="overview">📊 نمای کلی</button>
+          <button type="button" class="seg-btn" data-report-section-target="metrics">٪ آمار کلیدی</button>
           <button type="button" class="seg-btn" data-report-section-target="habits">🎯 عادت‌ها</button>
           <button type="button" class="seg-btn" data-report-section-target="life">🌱 روزمرگی</button>
           <button type="button" class="seg-btn" data-report-section-target="spiritual">🕌 معنوی</button>
@@ -706,10 +706,6 @@
         </div>
 
         <div id="reportsWarnings" class="reports-warnings" hidden></div>
-        <div class="report-kpi-grid" id="reportsKpiGrid">
-          <div class="loading-state">در حال آماده‌سازی گزارش یکپارچه...</div>
-        </div>
-
         <div class="reports-layout">
           <section class="report-panel report-panel-wide" data-report-section="overview" aria-labelledby="activityReportTitle">
             <div class="report-panel-heading">
@@ -749,6 +745,15 @@
             <div class="prayer-report-grid" id="reportsPrayerBreakdown"></div>
           </section>
 
+          <section class="report-panel report-panel-wide" data-report-section="metrics" hidden aria-labelledby="metricsReportTitle">
+            <div class="report-panel-heading">
+              <div><span class="report-eyebrow">اعداد کلیدی</span><h3 id="metricsReportTitle">خلاصه عملکرد بازه</h3></div>
+            </div>
+            <div class="report-kpi-grid" id="reportsKpiGrid">
+              <div class="loading-state">در حال آماده‌سازی آمار...</div>
+            </div>
+          </section>
+
           <section class="report-panel report-panel-wide advanced-report-panel" data-report-section="advanced" hidden aria-labelledby="advancedReportTitle">
             <div class="report-panel-heading advanced-report-heading">
               <div>
@@ -761,15 +766,18 @@
               </div>
             </div>
 
-            <div class="advanced-report-presets" aria-label="فیلترهای آماده">
-              <button type="button" class="advanced-preset" data-advanced-preset="life-missing">روزهای بدون روزمرگی</button>
-              <button type="button" class="advanced-preset" data-advanced-preset="habit-missing">عادت‌های ثبت‌نشده</button>
-              <button type="button" class="advanced-preset" data-advanced-preset="prayer-qaza">نمازهای قضا</button>
-              <button type="button" class="advanced-preset" data-advanced-preset="prayer-none">نمازهای نخوانده</button>
-              <button type="button" class="advanced-preset" data-advanced-preset="quran-missing">روزهای بدون تلاوت</button>
-            </div>
+            <details class="advanced-filters-panel" id="advancedFiltersPanel">
+              <summary><span><i data-lucide="sliders-horizontal"></i> فیلترها و شروط</span><small>برای تنظیم باز کنید</small></summary>
+              <div class="advanced-filters-body">
+                <div class="advanced-report-presets" aria-label="فیلترهای آماده">
+                  <button type="button" class="advanced-preset" data-advanced-preset="life-missing">روزهای بدون روزمرگی</button>
+                  <button type="button" class="advanced-preset" data-advanced-preset="habit-missing">عادت‌های ثبت‌نشده</button>
+                  <button type="button" class="advanced-preset" data-advanced-preset="prayer-qaza">نمازهای قضا</button>
+                  <button type="button" class="advanced-preset" data-advanced-preset="prayer-none">نمازهای نخوانده</button>
+                  <button type="button" class="advanced-preset" data-advanced-preset="quran-missing">روزهای بدون تلاوت</button>
+                </div>
 
-            <div class="advanced-filter-grid">
+                <div class="advanced-filter-grid">
               <div class="filter-col">
                 <label>حوزه گزارش</label>
                 <div class="custom-dropdown" id="advancedDomainDropdown" data-report-filter-dropdown>
@@ -785,7 +793,7 @@
                   </div>
                 </div>
               </div>
-              <div class="filter-col">
+              <div class="filter-col" id="advancedItemField">
                 <label>مورد</label>
                 <div class="custom-dropdown" id="advancedItemDropdown" data-report-filter-dropdown>
                   <input type="hidden" id="advancedItem" value="">
@@ -795,7 +803,7 @@
                   <div class="custom-dropdown-menu" id="advancedItemMenu" role="listbox"></div>
                 </div>
               </div>
-              <div class="filter-col">
+              <div class="filter-col" id="advancedConditionField">
                 <label>شرط</label>
                 <div class="custom-dropdown" id="advancedConditionDropdown" data-report-filter-dropdown>
                   <input type="hidden" id="advancedCondition" value="missing">
@@ -821,6 +829,28 @@
               </div>
             </div>
 
+                <div class="advanced-multi-panel" id="advancedLifeMultiPanel" hidden>
+                  <div class="advanced-multi-heading"><strong>فعالیت‌ها</strong><span>چند مورد را هم‌زمان انتخاب کنید</span></div>
+                  <div class="advanced-choice-grid" id="advancedLifeChoices"></div>
+                  <div class="advanced-match-control">
+                    <span>ترکیب انتخاب‌ها:</span>
+                    <button type="button" class="active" data-advanced-life-match="any">حداقل یکی</button>
+                    <button type="button" data-advanced-life-match="all">همه موارد</button>
+                  </div>
+                </div>
+
+                <div class="advanced-multi-panel" id="advancedPrayerRulesPanel" hidden>
+                  <div class="advanced-multi-heading"><strong>شرط هر نماز</strong><span>نمازهای دلخواه را فعال و وضعیت هر کدام را تعیین کنید</span></div>
+                  <div class="advanced-prayer-rules" id="advancedPrayerRules"></div>
+                  <div class="advanced-match-control">
+                    <span>ترکیب شروط:</span>
+                    <button type="button" class="active" data-advanced-prayer-match="any">حداقل یکی</button>
+                    <button type="button" data-advanced-prayer-match="all">همه شروط</button>
+                  </div>
+                </div>
+              </div>
+            </details>
+
             <div class="advanced-results-toolbar">
               <div><strong id="advancedResultCount">۰ روز</strong><span id="advancedResultSummary"> مطابق فیلتر فعلی</span></div>
               <button type="button" class="btn-step" id="btnExportAdvancedReport">خروجی فیلترشده</button>
@@ -839,6 +869,7 @@
           <button type="button" class="seg-btn active" data-admin-section="admin-overview">📊 نمای کلی</button>
           <button type="button" class="seg-btn" data-admin-section="admin-security">🔐 امنیت ورود</button>
           <button type="button" class="seg-btn" data-admin-section="admin-users">👥 کاربران</button>
+          <button type="button" class="seg-btn" data-admin-section="admin-reminders">⏰ یادآورها</button>
         </div>
 
         <div class="card admin-section-card" id="admin-overview">
@@ -938,6 +969,52 @@
           <div class="timeline-list" id="adminUsersList" style="margin-top: 10px;">
             <div class="loading-state">در حال دریافت لیست کاربران...</div>
           </div>
+        </div>
+
+        <div class="card admin-section-card" id="admin-reminders" hidden>
+          <div class="card-title">
+            <span class="icon"><i data-lucide="alarm-clock"></i></span>
+            <span>مدیریت یادآورها</span>
+          </div>
+          <form id="formReminder" class="form-grid reminder-editor">
+            <input type="hidden" id="reminderEditId">
+            <div class="form-row">
+              <div class="form-group">
+                <label for="reminderName">نام یادآور</label>
+                <input id="reminderName" type="text" maxlength="80" placeholder="مثلاً چک‌این شبانه" required>
+              </div>
+              <div class="form-group">
+                <label for="reminderTime">زمان ارسال</label>
+                <input id="reminderTime" type="time" value="22:30" required>
+              </div>
+            </div>
+            <div class="form-group">
+              <label>مدل پیام</label>
+              <input type="hidden" id="reminderModel" value="full">
+              <div class="segmented-control reminder-model-control">
+                <button type="button" class="seg-btn active" data-reminder-model="full">کامل</button>
+                <button type="button" class="seg-btn" data-reminder-model="compact">خلاصه</button>
+                <button type="button" class="seg-btn" data-reminder-model="questions">سوالی</button>
+              </div>
+            </div>
+            <div class="form-group">
+              <label>مواردی که پرسیده شود</label>
+              <div class="reminder-question-grid">
+                <label><input type="checkbox" value="habits" checked> عادت‌ها</label>
+                <label><input type="checkbox" value="gratitude" checked> شکرگزاری</label>
+                <label><input type="checkbox" value="prayers"> نمازها</label>
+                <label><input type="checkbox" value="quran"> تلاوت قرآن</label>
+                <label><input type="checkbox" value="day_review"> مرور روز</label>
+              </div>
+            </div>
+            <label class="settings-toggle"><input type="checkbox" id="reminderEnabled" checked><span>یادآور فعال باشد</span></label>
+            <div class="reminder-editor-actions">
+              <button type="submit" class="btn-primary" id="btnSaveReminder"><i data-lucide="save"></i><span>ذخیره یادآور</span></button>
+              <button type="button" class="btn-step" id="btnCancelReminderEdit" hidden>انصراف</button>
+            </div>
+          </form>
+          <div class="section-subtitle">یادآورهای تنظیم‌شده</div>
+          <div class="reminder-list" id="reminderList"><div class="loading-state">در حال دریافت یادآورها...</div></div>
         </div>
       </section>
 
@@ -1209,6 +1286,6 @@
   </div>
 
   <script src="/static/vendor/lucide.min.js?v=1.72.0"></script>
-  <script src="/static/app.js?v=6.13.1"></script>
+  <script src="/static/app.js?v=6.14.1"></script>
 </body>
 </html>

@@ -2,8 +2,9 @@
 
 import logging
 import asyncio
+import html
 from datetime import datetime, timedelta, timezone
-from typing import List
+from typing import List, Optional
 from aiogram import Bot
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from apscheduler.triggers.cron import CronTrigger
@@ -14,13 +15,16 @@ from app.services.notion_service import (
     HABIT_ITEMS,
     get_or_create_habit_day,
     get_or_create_salah_day,
+    query_quran_entries,
 )
 
 from app.services.habit_analytics_service import is_day_frozen
 from app.keyboards.inline import build_nightly_checkin_keyboard
+from app.services.reminder_settings_service import DEFAULT_REMINDER, get_reminder, list_reminders
 
 logger = logging.getLogger(__name__)
 scheduler = AsyncIOScheduler()
+_scheduler_bot: Optional[Bot] = None
 
 
 def _get_tehran_date_info() -> tuple[str, str]:
@@ -65,12 +69,23 @@ def _get_target_admin_ids() -> List[int]:
     return admin_ids
 
 
-async def send_nightly_habit_checkin(bot: Bot, target_user_id: int | None = None) -> bool:
+async def send_nightly_habit_checkin(
+    bot: Bot,
+    target_user_id: int | None = None,
+    reminder_id: str | None = None,
+) -> bool:
     """
     Executes nightly check-in scan and dispatches reminders.
     If target_user_id is provided, sends directly to that user (for test command).
     """
     try:
+        reminder = get_reminder(reminder_id) if reminder_id else dict(DEFAULT_REMINDER)
+        if reminder_id and not reminder:
+            logger.warning("Reminder %s no longer exists; skipping.", reminder_id)
+            return False
+        reminder = reminder or dict(DEFAULT_REMINDER)
+        questions = set(reminder.get("questions") or ["habits", "gratitude"])
+        message_model = str(reminder.get("model") or "full")
         g_iso, full_jalali = _get_tehran_date_info()
         page_data = await asyncio.to_thread(get_or_create_habit_day, g_iso, full_jalali)
 
@@ -88,40 +103,69 @@ async def send_nightly_habit_checkin(bot: Bot, target_user_id: int | None = None
             if val not in ["1-💪 کامل", "2-🏃‍♂️ نیمه‌کامل", "3-🐢 سبک"]:
                 uncompleted.append(f"{h_info['emoji']} {h_info['fa']}")
 
-        if frozen:
-            text = (
-                "🌙 <b>چک‌این شبانه عادات روزانه</b>\n"
-                f"📅 <code>{full_jalali}</code>\n"
-                "━━━━━━━━━━━━━━━━━━━━━━\n"
-                "🧊 <b>امروز برای شما فریز (استراحت) ثبت شده است.</b>\n"
-                "🛡️ <i>زنجیره و تداوم شما در امان است. شبتون پر از آرامش و ریکاوری! ✨</i>"
-            )
-            kb = build_nightly_checkin_keyboard(is_completed=True)
-        elif prog_pct >= 100 or len(uncompleted) == 0:
-            text = (
-                "👑 <b>ماشاءالله! کارنامه بی‌نقص امروز</b>\n"
-                f"📅 <code>{full_jalali}</code>\n"
-                "━━━━━━━━━━━━━━━━━━━━━━\n"
-                f"📊 <b>پیشرفت:</b> {prog_bar}\n\n"
-                "🎉 <i>تمام ۱۳ عادت امروزت با موفقیت ثبت شده! دمت گرم بابت این پایبندی، شبت آروم و پر ستاره ✨</i>"
-            )
-            kb = build_nightly_checkin_keyboard(is_completed=True)
-        else:
-            pending_list_str = "\n".join([f"  ▫️ {item}" for item in uncompleted])
-            grat_status = "✅ ثبت شده" if gratitude_done else "▫️ ثبت‌نشده"
+        prayer_data = None
+        if "prayers" in questions:
+            prayer_data = await asyncio.to_thread(get_or_create_salah_day, g_iso, f"Salah - {g_iso}")
+        prayer_pending = [
+            f"{item.get('emoji', '🕌')} {item.get('name', key)}"
+            for key, item in (prayer_data or {}).get("prayers", {}).items()
+            if item.get("status") == "none"
+        ]
+        quran_done = False
+        if "quran" in questions:
+            quran_done = bool(await asyncio.to_thread(query_quran_entries, g_iso, g_iso, 1))
 
-            text = (
-                "⏰ <b>وقت چک‌این و بستن پرونده امروز!</b>\n"
-                f"📅 <code>{full_jalali}</code>\n"
-                "━━━━━━━━━━━━━━━━━━━━━━\n"
-                f"📊 <b>پیشرفت تا این لحظه:</b> {prog_bar}\n"
-                f"🌸 <b>شکرگزاری:</b> {grat_status}\n\n"
-                f"📋 <b>عادات باقی‌مانده ({len(uncompleted)} مورد):</b>\n"
-                f"{pending_list_str}\n"
-                "━━━━━━━━━━━━━━━━━━━━━━\n"
-                "💡 <i>حتی ثبت سریع با سطح ۳ (سبک) یا فریز کردن، زنجیره شما را زنده نگه می‌دارد!</i>"
-            )
-            kb = build_nightly_checkin_keyboard(is_completed=False)
+        title = html.escape(str(reminder.get("name") or "یادآوری روزانه"))
+        lines = [f"⏰ <b>{title}</b>", f"📅 <code>{full_jalali}</code>", "━━━━━━━━━━━━━━━━━━━━━━"]
+
+        if message_model == "questions":
+            if "habits" in questions:
+                lines.append(f"❓ عادت‌های امروز را کامل ثبت کردی؟ ({prog_pct}٪ ثبت شده)")
+            if "gratitude" in questions:
+                lines.append("❓ شکرگزاری امروز را نوشتی؟" if not gratitude_done else "✅ شکرگزاری امروز ثبت شده است.")
+            if "prayers" in questions:
+                lines.append("❓ وضعیت نمازهای امروز را کامل کردی؟" if prayer_pending else "✅ وضعیت همه نمازها مشخص است.")
+            if "quran" in questions:
+                lines.append("❓ تلاوت قرآن امروز را ثبت کردی؟" if not quran_done else "✅ تلاوت قرآن امروز ثبت شده است.")
+            if "day_review" in questions:
+                lines.append("❓ مهم‌ترین اتفاق یا نکته امروز چه بود؟")
+        elif message_model == "compact":
+            if "habits" in questions:
+                lines.append(f"🎯 عادت‌ها: {prog_pct}٪ | {len(uncompleted)} مورد باقی‌مانده")
+            if "gratitude" in questions:
+                lines.append(f"🌸 شکرگزاری: {'ثبت شده' if gratitude_done else 'ثبت نشده'}")
+            if "prayers" in questions:
+                lines.append(f"🕌 نمازها: {len(prayer_pending)} مورد بدون وضعیت")
+            if "quran" in questions:
+                lines.append(f"📖 تلاوت: {'ثبت شده' if quran_done else 'ثبت نشده'}")
+            if "day_review" in questions:
+                lines.append("📝 مرور روز را فراموش نکن.")
+        else:
+            if "habits" in questions:
+                if frozen:
+                    lines.append("🧊 امروز فریز ثبت شده و زنجیره عادت‌ها محفوظ است.")
+                else:
+                    lines.append(f"📊 <b>پیشرفت عادت‌ها:</b> {prog_bar}")
+                    if uncompleted:
+                        lines.append(f"📋 <b>عادت‌های باقی‌مانده ({len(uncompleted)}):</b>")
+                        lines.extend(f"  ▫️ {item}" for item in uncompleted)
+                    else:
+                        lines.append("✅ همه عادت‌های امروز تکمیل شده‌اند.")
+            if "gratitude" in questions:
+                lines.append(f"🌸 <b>شکرگزاری:</b> {'✅ ثبت شده' if gratitude_done else '▫️ ثبت‌نشده'}")
+            if "prayers" in questions:
+                if prayer_pending:
+                    lines.append("🕌 <b>نمازهای بدون وضعیت:</b> " + "، ".join(prayer_pending))
+                else:
+                    lines.append("🕌 وضعیت همه نمازهای امروز مشخص است.")
+            if "quran" in questions:
+                lines.append(f"📖 <b>تلاوت قرآن:</b> {'✅ ثبت شده' if quran_done else '▫️ ثبت‌نشده'}")
+            if "day_review" in questions:
+                lines.append("📝 چند دقیقه برای مرور اتفاق‌های مهم امروز وقت بگذار.")
+
+        text = "\n".join(lines)
+        habits_complete = frozen or prog_pct >= 100 or len(uncompleted) == 0
+        kb = build_nightly_checkin_keyboard(is_completed=habits_complete)
 
         # Dispatch
         recipients = [target_user_id] if target_user_id else _get_target_admin_ids()
@@ -151,26 +195,51 @@ async def auto_initialize_daily_spiritual() -> None:
 
 def start_scheduler(bot: Bot) -> None:
     """Configures and starts the background job scheduler."""
+    global _scheduler_bot
+    _scheduler_bot = bot
     tehran_tz = timezone(timedelta(hours=3, minutes=30))
-    trigger_nightly = CronTrigger(hour=22, minute=30, timezone=tehran_tz)
     trigger_daily_init = CronTrigger(hour=0, minute=5, timezone=tehran_tz)
 
-    scheduler.add_job(
-        send_nightly_habit_checkin,
-        trigger=trigger_nightly,
-        args=[bot],
-        id="nightly_habit_checkin",
-        replace_existing=True,
-    )
     scheduler.add_job(
         auto_initialize_daily_spiritual,
         trigger=trigger_daily_init,
         id="daily_spiritual_init",
         replace_existing=True,
     )
+    refresh_reminder_jobs(bot)
     if not scheduler.running:
         scheduler.start()
-        logger.info("APScheduler started successfully (Nightly Check-in at 22:30, Daily Init at 00:05).")
+        logger.info("APScheduler started with configurable reminders and Daily Init at 00:05.")
+
+
+def refresh_reminder_jobs(bot: Optional[Bot] = None) -> int:
+    """Rebuilds configurable reminder jobs after an in-app settings change."""
+    global _scheduler_bot
+    if bot is not None:
+        _scheduler_bot = bot
+    if _scheduler_bot is None:
+        return 0
+
+    for job in scheduler.get_jobs():
+        if job.id.startswith("configured_reminder_") or job.id == "nightly_habit_checkin":
+            scheduler.remove_job(job.id)
+
+    tehran_tz = timezone(timedelta(hours=3, minutes=30))
+    scheduled = 0
+    for reminder in list_reminders():
+        if not reminder.get("enabled"):
+            continue
+        hour, minute = (int(part) for part in str(reminder["time"]).split(":"))
+        scheduler.add_job(
+            send_nightly_habit_checkin,
+            trigger=CronTrigger(hour=hour, minute=minute, timezone=tehran_tz),
+            args=[_scheduler_bot, None, reminder["id"]],
+            id=f"configured_reminder_{reminder['id']}",
+            replace_existing=True,
+        )
+        scheduled += 1
+    logger.info("Configured %s reminder job(s).", scheduled)
+    return scheduled
 
 
 

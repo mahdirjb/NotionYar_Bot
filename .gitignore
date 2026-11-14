@@ -4,6 +4,7 @@ __pycache__/
 .DS_Store
 .vscode/
 data/web_credentials.json
+data/reminder_settings.json
 android/.gradle/
 android/build/
 android/app/build/

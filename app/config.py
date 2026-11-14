@@ -25,6 +25,10 @@ WEB_SESSION_SECRET_FILE = os.getenv(
     "WEB_SESSION_SECRET_FILE",
     os.path.join(os.path.dirname(WEB_CREDENTIALS_FILE) or ".", "web_session_secret.txt"),
 ).strip()
+REMINDER_SETTINGS_FILE = os.getenv(
+    "REMINDER_SETTINGS_FILE",
+    os.path.join("data", "reminder_settings.json"),
+).strip()
 ALLOWED_HOSTS = [
     host.strip()
     for host in os.getenv("ALLOWED_HOSTS", "").split(",")

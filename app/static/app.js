@@ -1,5 +1,5 @@
 // app/static/app.js
-// NotionYar Telegram Mini App v6.13.1
+// NotionYar Telegram Mini App v6.14.1
 
 (function () {
   const tg = window.Telegram?.WebApp;
@@ -19,6 +19,10 @@
   let currentReportData = null;
   let advancedReportView = "cards";
   let advancedFilteredDays = [];
+  let advancedLifeSelections = [];
+  let advancedLifeMatch = "any";
+  let advancedPrayerMatch = "any";
+  let advancedPrayerRulesState = {};
   let lifeHistorySearchTimer = null;
   const dataCache = {
     lifeHistory: null,
@@ -1616,13 +1620,14 @@
     if (!container || !lifeOptionsData?.groups) return;
 
     container.innerHTML = "";
-    lifeOptionsData.groups.forEach((grp) => {
-      const groupCard = document.createElement("div");
+    lifeOptionsData.groups.forEach((grp, groupIndex) => {
+      const groupCard = document.createElement("details");
       groupCard.className = "life-group-card";
+      groupCard.open = groupIndex === 0;
 
-      const header = document.createElement("div");
+      const header = document.createElement("summary");
       header.className = "life-group-header";
-      header.innerHTML = `<span>${grp.emoji}</span> <span>${grp.title}</span>`;
+      header.innerHTML = `<span class="life-group-title"><span>${grp.emoji}</span><span>${grp.title}</span></span><span class="life-group-count">${toPersianDigits(grp.types.length)} مورد</span>`;
       groupCard.appendChild(header);
 
       const grid = document.createElement("div");
@@ -3811,7 +3816,151 @@
     loadAdminStats();
     loadAdminUsers();
     loadWebAuthSettings();
+    loadAdminReminders();
   }
+
+  const REMINDER_MODEL_LABELS = { full: "کامل", compact: "خلاصه", questions: "سوالی" };
+  const REMINDER_QUESTION_LABELS = {
+    habits: "عادت‌ها",
+    gratitude: "شکرگزاری",
+    prayers: "نمازها",
+    quran: "تلاوت قرآن",
+    day_review: "مرور روز",
+  };
+
+  function setReminderModel(value) {
+    const input = document.getElementById("reminderModel");
+    if (input) input.value = value;
+    document.querySelectorAll("[data-reminder-model]").forEach((button) => {
+      button.classList.toggle("active", button.dataset.reminderModel === value);
+    });
+  }
+
+  function resetReminderEditor() {
+    document.getElementById("formReminder")?.reset();
+    const idInput = document.getElementById("reminderEditId");
+    if (idInput) idInput.value = "";
+    const timeInput = document.getElementById("reminderTime");
+    if (timeInput) timeInput.value = "22:30";
+    const enabledInput = document.getElementById("reminderEnabled");
+    if (enabledInput) enabledInput.checked = true;
+    document.querySelectorAll(".reminder-question-grid input").forEach((input) => {
+      input.checked = ["habits", "gratitude"].includes(input.value);
+    });
+    setReminderModel("full");
+    document.getElementById("btnCancelReminderEdit")?.setAttribute("hidden", "");
+    const label = document.querySelector("#btnSaveReminder span");
+    if (label) label.textContent = "ذخیره یادآور";
+  }
+
+  async function loadAdminReminders() {
+    const list = document.getElementById("reminderList");
+    if (!list) return;
+    list.innerHTML = '<div class="loading-state">در حال دریافت یادآورها...</div>';
+    try {
+      const response = await fetch("/api/admin/reminders", { headers: getHeaders() });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(data.detail || "دریافت یادآورها ممکن نشد.");
+      const reminders = data.reminders || [];
+      if (!reminders.length) {
+        list.innerHTML = '<div class="report-empty">یادآوری تنظیم نشده است.</div>';
+        return;
+      }
+      list.innerHTML = reminders.map((item) => `
+        <article class="reminder-row${item.enabled ? "" : " is-disabled"}" data-reminder-id="${escapeReportText(item.id)}">
+          <div class="reminder-time"><i data-lucide="clock-3"></i><strong>${toPersianDigits(item.time)}</strong></div>
+          <div class="reminder-info">
+            <strong>${escapeReportText(item.name)}</strong>
+            <span>${REMINDER_MODEL_LABELS[item.model] || item.model} · ${(item.questions || []).map((key) => REMINDER_QUESTION_LABELS[key] || key).join("، ")}</span>
+          </div>
+          <span class="reminder-state">${item.enabled ? "فعال" : "غیرفعال"}</span>
+          <div class="reminder-actions">
+            <button type="button" class="btn-icon" data-edit-reminder aria-label="ویرایش یادآور"><i data-lucide="pencil"></i></button>
+            <button type="button" class="btn-icon danger" data-delete-reminder aria-label="حذف یادآور"><i data-lucide="trash-2"></i></button>
+          </div>
+        </article>`).join("");
+      window.lucide?.createIcons?.();
+      list.querySelectorAll("[data-edit-reminder]").forEach((button) => {
+        button.addEventListener("click", () => {
+          const id = button.closest("[data-reminder-id]")?.dataset.reminderId;
+          const item = reminders.find((entry) => entry.id === id);
+          if (!item) return;
+          document.getElementById("reminderEditId").value = item.id;
+          document.getElementById("reminderName").value = item.name;
+          document.getElementById("reminderTime").value = item.time;
+          document.getElementById("reminderEnabled").checked = Boolean(item.enabled);
+          document.querySelectorAll(".reminder-question-grid input").forEach((input) => {
+            input.checked = (item.questions || []).includes(input.value);
+          });
+          setReminderModel(item.model || "full");
+          document.getElementById("btnCancelReminderEdit")?.removeAttribute("hidden");
+          const label = document.querySelector("#btnSaveReminder span");
+          if (label) label.textContent = "ذخیره تغییرات";
+          document.getElementById("formReminder")?.scrollIntoView({ behavior: "smooth", block: "start" });
+        });
+      });
+      list.querySelectorAll("[data-delete-reminder]").forEach((button) => {
+        button.addEventListener("click", async () => {
+          const row = button.closest("[data-reminder-id]");
+          if (!row || !confirm("این یادآور حذف شود؟")) return;
+          const response = await nativeFetch(`/api/admin/reminders/${encodeURIComponent(row.dataset.reminderId)}`, {
+            method: "DELETE",
+            headers: getHeaders(),
+          });
+          if (!response.ok) {
+            showToast("حذف یادآور ممکن نشد", "error");
+            return;
+          }
+          showToast("یادآور حذف شد", "success");
+          resetReminderEditor();
+          loadAdminReminders();
+          loadAdminStats();
+        });
+      });
+    } catch (error) {
+      renderRetryState(list, error.message, loadAdminReminders);
+    }
+  }
+
+  document.querySelectorAll("[data-reminder-model]").forEach((button) => {
+    button.addEventListener("click", () => setReminderModel(button.dataset.reminderModel || "full"));
+  });
+  document.getElementById("btnCancelReminderEdit")?.addEventListener("click", resetReminderEditor);
+  document.getElementById("formReminder")?.addEventListener("submit", async (event) => {
+    event.preventDefault();
+    const reminderId = document.getElementById("reminderEditId")?.value || "";
+    const questions = [...document.querySelectorAll(".reminder-question-grid input:checked")].map((input) => input.value);
+    if (!questions.length) {
+      showToast("حداقل یک مورد برای پرسش انتخاب کنید", "warning");
+      return;
+    }
+    const payload = {
+      name: document.getElementById("reminderName")?.value.trim() || "",
+      time: document.getElementById("reminderTime")?.value || "",
+      enabled: Boolean(document.getElementById("reminderEnabled")?.checked),
+      model: document.getElementById("reminderModel")?.value || "full",
+      questions,
+    };
+    const button = document.getElementById("btnSaveReminder");
+    if (button) button.disabled = true;
+    try {
+      const response = await nativeFetch(reminderId ? `/api/admin/reminders/${encodeURIComponent(reminderId)}` : "/api/admin/reminders", {
+        method: reminderId ? "PUT" : "POST",
+        headers: getHeaders(),
+        body: JSON.stringify(payload),
+      });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(data.detail || "ذخیره یادآور ممکن نشد.");
+      showToast(reminderId ? "تغییرات یادآور ذخیره شد" : "یادآور جدید ساخته شد", "success");
+      resetReminderEditor();
+      loadAdminReminders();
+      loadAdminStats();
+    } catch (error) {
+      showToast(error.message, "error");
+    } finally {
+      if (button) button.disabled = false;
+    }
+  });
 
   async function loadWebAuthSettings() {
     const usernameInput = document.getElementById("settingsWebUsername");
@@ -4747,9 +4896,10 @@
       ];
     }
     if (domain === "quran") return [{ value: "", label: "📖 تلاوت قرآن" }];
+    const lifeTypes = currentReportData?.life?.available_types || currentReportData?.life?.breakdown || [];
     return [
       { value: "", label: "همه فعالیت‌ها" },
-      ...((currentReportData?.life?.breakdown || []).map((item) => ({
+      ...(lifeTypes.map((item) => ({
         value: item.name,
         label: `${item.emoji || "🌱"} ${item.name}`,
       }))),
@@ -4790,7 +4940,65 @@
     const currentCondition = resetValues ? "" : (document.getElementById("advancedCondition")?.value || "");
     setAdvancedDropdownOptions("advancedItem", getAdvancedItemOptions(domain), currentItem);
     setAdvancedDropdownOptions("advancedCondition", getAdvancedConditionOptions(domain), currentCondition);
+    renderAdvancedMultiControls(domain, resetValues);
     renderAdvancedReportResults();
+  }
+
+  function renderAdvancedMultiControls(domain, resetValues = false) {
+    const itemField = document.getElementById("advancedItemField");
+    const conditionField = document.getElementById("advancedConditionField");
+    const lifePanel = document.getElementById("advancedLifeMultiPanel");
+    const prayerPanel = document.getElementById("advancedPrayerRulesPanel");
+    if (itemField) itemField.hidden = domain === "life" || domain === "prayer";
+    if (conditionField) conditionField.hidden = domain === "prayer";
+    if (lifePanel) lifePanel.hidden = domain !== "life";
+    if (prayerPanel) prayerPanel.hidden = domain !== "prayer";
+
+    if (domain === "life") {
+      const options = getAdvancedItemOptions("life").filter((option) => option.value);
+      if (resetValues) advancedLifeSelections = [];
+      advancedLifeSelections = advancedLifeSelections.filter((value) => options.some((option) => option.value === value));
+      const target = document.getElementById("advancedLifeChoices");
+      if (target) {
+        target.innerHTML = options.map((option) => `
+          <button type="button" class="advanced-choice${advancedLifeSelections.includes(option.value) ? " active" : ""}" data-advanced-life-value="${escapeReportText(option.value)}">
+            ${escapeReportText(option.label)}
+          </button>`).join("");
+      }
+      document.querySelectorAll("[data-advanced-life-match]").forEach((button) => {
+        button.classList.toggle("active", button.dataset.advancedLifeMatch === advancedLifeMatch);
+      });
+    }
+
+    if (domain === "prayer") {
+      if (resetValues || !Object.keys(advancedPrayerRulesState).length) {
+        advancedPrayerRulesState = Object.fromEntries(
+          Object.keys(ADVANCED_PRAYER_META).map((key) => [key, { enabled: false, status: "qaza" }])
+        );
+      }
+      const target = document.getElementById("advancedPrayerRules");
+      if (target) {
+        target.innerHTML = Object.entries(ADVANCED_PRAYER_META).map(([key, meta]) => {
+          const rule = advancedPrayerRulesState[key] || { enabled: false, status: "qaza" };
+          return `<div class="advanced-prayer-rule${rule.enabled ? " active" : ""}" data-prayer-rule="${key}">
+            <button type="button" class="advanced-prayer-toggle" data-prayer-toggle="${key}" aria-pressed="${rule.enabled}">${meta.label}</button>
+            <div class="advanced-prayer-statuses">
+              ${[["ada", "اداء"], ["qaza", "قضا"], ["none", "نخوانده"]].map(([value, label]) => `
+                <button type="button" data-prayer-status="${value}" class="${rule.status === value ? "active" : ""}" ${rule.enabled ? "" : "disabled"}>${label}</button>`).join("")}
+            </div>
+          </div>`;
+        }).join("");
+      }
+      document.querySelectorAll("[data-advanced-prayer-match]").forEach((button) => {
+        button.classList.toggle("active", button.dataset.advancedPrayerMatch === advancedPrayerMatch);
+      });
+    }
+  }
+
+  function getEnabledPrayerRules() {
+    return Object.entries(advancedPrayerRulesState)
+      .filter(([, rule]) => rule.enabled)
+      .map(([key, rule]) => ({ key, status: rule.status }));
   }
 
   function habitConditionMatches(status, condition) {
@@ -4816,15 +5024,22 @@
     }
     if (domain === "prayer") {
       const statuses = day.prayer_statuses || {};
-      const values = item ? [statuses[item] || "none"] : Object.keys(ADVANCED_PRAYER_META).map((key) => statuses[key] || "none");
-      if (condition === "perfect") return values.length === 5 && values.every((status) => status === "ada");
-      if (condition === "not_ada") return values.some((status) => status !== "ada");
-      return values.some((status) => status === condition);
+      const rules = getEnabledPrayerRules();
+      if (rules.length) {
+        const matches = rules.map((rule) => (statuses[rule.key] || "none") === rule.status);
+        return advancedPrayerMatch === "all" ? matches.every(Boolean) : matches.some(Boolean);
+      }
+      return false;
     }
     if (domain === "quran") {
       return condition === "exists" ? Number(day.quran_count || 0) > 0 : Number(day.quran_count || 0) === 0;
     }
     const types = day.life_types || [];
+    if (advancedLifeSelections.length) {
+      const presence = advancedLifeSelections.map((value) => types.includes(value));
+      const matches = condition === "exists" ? presence : presence.map((value) => !value);
+      return advancedLifeMatch === "all" ? matches.every(Boolean) : matches.some(Boolean);
+    }
     const exists = item ? types.includes(item) : Number(day.life_count || 0) > 0;
     return condition === "exists" ? exists : !exists;
   }
@@ -4841,7 +5056,8 @@
 
   function advancedDayBadges(day, domain, item) {
     if (domain === "prayer") {
-      const keys = item ? [item] : Object.keys(ADVANCED_PRAYER_META);
+      const selectedRules = getEnabledPrayerRules();
+      const keys = selectedRules.length ? selectedRules.map((rule) => rule.key) : (item ? [item] : Object.keys(ADVANCED_PRAYER_META));
       return keys.map((key) => {
         const status = day.prayer_statuses?.[key] || "none";
         const meta = ADVANCED_PRAYER_STATUS[status] || ADVANCED_PRAYER_STATUS.none;
@@ -4865,7 +5081,8 @@
     }
     const types = day.life_types || [];
     if (!types.length) return '<span class="advanced-day-badge is-alert">بدون ثبت روزمرگی</span>';
-    return types.map((type) => `<span class="advanced-day-badge is-success">🌱 ${escapeReportText(type)}</span>`).join("");
+    const visibleTypes = advancedLifeSelections.length ? types.filter((type) => advancedLifeSelections.includes(type)) : types;
+    return (visibleTypes.length ? visibleTypes : types).map((type) => `<span class="advanced-day-badge is-success">🌱 ${escapeReportText(type)}</span>`).join("");
   }
 
   function renderAdvancedReportResults() {
@@ -4876,8 +5093,19 @@
     const item = document.getElementById("advancedItem")?.value || "";
     const condition = document.getElementById("advancedCondition")?.value || "missing";
     const sort = document.getElementById("advancedSort")?.value || "newest";
-    const itemLabel = document.getElementById("advancedItemSelected")?.textContent || "همه موارد";
-    const conditionLabel = document.getElementById("advancedConditionSelected")?.textContent || "شرط انتخابی";
+    let itemLabel = document.getElementById("advancedItemSelected")?.textContent || "همه موارد";
+    let conditionLabel = document.getElementById("advancedConditionSelected")?.textContent || "شرط انتخابی";
+    if (domain === "life" && advancedLifeSelections.length) {
+      itemLabel = advancedLifeSelections.join("، ");
+      conditionLabel = `${conditionLabel} · ${advancedLifeMatch === "all" ? "همه موارد" : "حداقل یکی"}`;
+    }
+    if (domain === "prayer") {
+      const rules = getEnabledPrayerRules();
+      itemLabel = rules.length
+        ? rules.map((rule) => `${ADVANCED_PRAYER_META[rule.key]?.name}: ${ADVANCED_PRAYER_STATUS[rule.status]?.label || rule.status}`).join("، ")
+        : "نمازی انتخاب نشده";
+      conditionLabel = rules.length ? (advancedPrayerMatch === "all" ? "همه شروط" : "حداقل یک شرط") : "یک یا چند نماز را فعال کنید";
+    }
     const rows = timeline.filter((day) => advancedDayMatches(day, domain, item, condition));
     rows.sort((a, b) => {
       if (sort === "oldest") return String(a.date_iso).localeCompare(String(b.date_iso));
@@ -4898,8 +5126,11 @@
       target.innerHTML = '<div class="report-empty">هیچ روزی با این ترکیب فیلتر پیدا نشد.</div>';
       return;
     }
-    const dangerCondition = ["missing", "none", "not_ada", "failed", "without_reason"].includes(condition);
-    const warningCondition = condition === "qaza" || condition === "with_reason";
+    const prayerRuleStatuses = getEnabledPrayerRules().map((rule) => rule.status);
+    const dangerCondition = ["missing", "none", "not_ada", "failed", "without_reason"].includes(condition)
+      || (domain === "prayer" && prayerRuleStatuses.includes("none"));
+    const warningCondition = condition === "qaza" || condition === "with_reason"
+      || (domain === "prayer" && prayerRuleStatuses.includes("qaza"));
     const statusColor = dangerCondition ? "var(--danger-color)" : warningCondition ? "var(--warning-color)" : "var(--success-color)";
     target.innerHTML = rows.map((day) => `
       <article class="advanced-day-card" style="--advanced-status-color:${statusColor}">
@@ -4921,6 +5152,15 @@
     };
     const selected = presets[preset];
     if (!selected) return;
+    advancedLifeSelections = [];
+    advancedLifeMatch = "any";
+    advancedPrayerMatch = "any";
+    advancedPrayerRulesState = Object.fromEntries(
+      Object.keys(ADVANCED_PRAYER_META).map((key) => [key, {
+        enabled: selected.domain === "prayer",
+        status: selected.condition === "none" ? "none" : "qaza",
+      }])
+    );
     setAdvancedDropdownOptions("advancedDomain", [
       { value: "life", label: "🌱 روزمرگی" },
       { value: "habit", label: "🎯 عادت‌ها" },
@@ -4929,6 +5169,7 @@
     ], selected.domain);
     setAdvancedDropdownOptions("advancedItem", getAdvancedItemOptions(selected.domain), selected.item);
     setAdvancedDropdownOptions("advancedCondition", getAdvancedConditionOptions(selected.domain), selected.condition);
+    renderAdvancedMultiControls(selected.domain, false);
     renderAdvancedReportResults();
   }
 
@@ -4948,6 +5189,43 @@
       button.addEventListener("click", () => {
         advancedReportView = button.dataset.advancedView || "cards";
         document.querySelectorAll("[data-advanced-view]").forEach((item) => item.classList.toggle("active", item === button));
+        renderAdvancedReportResults();
+      });
+    });
+    document.getElementById("advancedLifeChoices")?.addEventListener("click", (event) => {
+      const button = event.target.closest("[data-advanced-life-value]");
+      if (!button) return;
+      const value = button.dataset.advancedLifeValue;
+      advancedLifeSelections = advancedLifeSelections.includes(value)
+        ? advancedLifeSelections.filter((item) => item !== value)
+        : [...advancedLifeSelections, value];
+      button.classList.toggle("active", advancedLifeSelections.includes(value));
+      document.querySelectorAll("[data-advanced-preset]").forEach((item) => item.classList.remove("active"));
+      renderAdvancedReportResults();
+    });
+    document.querySelectorAll("[data-advanced-life-match]").forEach((button) => {
+      button.addEventListener("click", () => {
+        advancedLifeMatch = button.dataset.advancedLifeMatch || "any";
+        document.querySelectorAll("[data-advanced-life-match]").forEach((item) => item.classList.toggle("active", item === button));
+        renderAdvancedReportResults();
+      });
+    });
+    document.getElementById("advancedPrayerRules")?.addEventListener("click", (event) => {
+      const toggle = event.target.closest("[data-prayer-toggle]");
+      const statusButton = event.target.closest("[data-prayer-status]");
+      const row = event.target.closest("[data-prayer-rule]");
+      const key = row?.dataset.prayerRule;
+      if (!key || !advancedPrayerRulesState[key]) return;
+      if (toggle) advancedPrayerRulesState[key].enabled = !advancedPrayerRulesState[key].enabled;
+      if (statusButton && advancedPrayerRulesState[key].enabled) advancedPrayerRulesState[key].status = statusButton.dataset.prayerStatus;
+      renderAdvancedMultiControls("prayer", false);
+      document.querySelectorAll("[data-advanced-preset]").forEach((item) => item.classList.remove("active"));
+      renderAdvancedReportResults();
+    });
+    document.querySelectorAll("[data-advanced-prayer-match]").forEach((button) => {
+      button.addEventListener("click", () => {
+        advancedPrayerMatch = button.dataset.advancedPrayerMatch || "any";
+        document.querySelectorAll("[data-advanced-prayer-match]").forEach((item) => item.classList.toggle("active", item === button));
         renderAdvancedReportResults();
       });
     });

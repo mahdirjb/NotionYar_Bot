@@ -84,6 +84,8 @@ from app.services.notion_service import (
 from app.services.date_helper import format_jalali_full_display, get_preset_date_range
 from app.services.insights_service import calculate_habit_insights
 from app.services.habit_analytics_service import calculate_habit_streaks, calculate_consistency_matrix
+from app.services.reminder_settings_service import delete_reminder, list_reminders, save_reminder
+from app.services.scheduler_service import refresh_reminder_jobs
 
 from aiogram.utils.web_app import safe_parse_webapp_init_data
 
@@ -459,6 +461,14 @@ class AdminUserSaveRequest(BaseModel):
     user_id: int
     name: str
     role: str = "member"
+
+
+class ReminderSaveRequest(BaseModel):
+    name: str
+    time: str
+    enabled: bool = True
+    model: str = "full"
+    questions: List[str]
 
 
 class SpiritualPrayerToggleRequest(BaseModel):
@@ -1087,6 +1097,58 @@ async def batch_update_habits(
 # 👑 ADMIN PANEL ENDPOINTS
 # ==========================================
 
+@app.get("/api/admin/reminders")
+async def admin_get_reminders(user: Dict[str, Any] = Depends(get_current_user)):
+    if not user.get("is_admin"):
+        raise HTTPException(status_code=403, detail="دسترسی غیرمجاز است.")
+    return {"reminders": list_reminders()}
+
+
+@app.post("/api/admin/reminders")
+async def admin_create_reminder(
+    payload: ReminderSaveRequest,
+    user: Dict[str, Any] = Depends(get_current_user),
+):
+    if not user.get("is_admin"):
+        raise HTTPException(status_code=403, detail="دسترسی غیرمجاز است.")
+    try:
+        reminder = save_reminder(payload.model_dump())
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    refresh_reminder_jobs()
+    return {"success": True, "reminder": reminder}
+
+
+@app.put("/api/admin/reminders/{reminder_id}")
+async def admin_update_reminder(
+    reminder_id: str,
+    payload: ReminderSaveRequest,
+    user: Dict[str, Any] = Depends(get_current_user),
+):
+    if not user.get("is_admin"):
+        raise HTTPException(status_code=403, detail="دسترسی غیرمجاز است.")
+    if not any(item["id"] == reminder_id for item in list_reminders()):
+        raise HTTPException(status_code=404, detail="یادآور پیدا نشد.")
+    try:
+        reminder = save_reminder(payload.model_dump(), reminder_id)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    refresh_reminder_jobs()
+    return {"success": True, "reminder": reminder}
+
+
+@app.delete("/api/admin/reminders/{reminder_id}")
+async def admin_delete_reminder(
+    reminder_id: str,
+    user: Dict[str, Any] = Depends(get_current_user),
+):
+    if not user.get("is_admin"):
+        raise HTTPException(status_code=403, detail="دسترسی غیرمجاز است.")
+    if not delete_reminder(reminder_id):
+        raise HTTPException(status_code=404, detail="یادآور پیدا نشد.")
+    refresh_reminder_jobs()
+    return {"success": True}
+
 @app.get("/api/admin/users")
 async def admin_get_users(user: Dict[str, Any] = Depends(get_current_user)):
     """Returns all registered users with their roles."""
@@ -1141,11 +1203,17 @@ async def admin_get_stats(user: Dict[str, Any] = Depends(get_current_user)):
     except Exception:
         recent_count = 0
 
+    reminders = list_reminders()
+    enabled_reminders = [item for item in reminders if item.get("enabled")]
+    reminder_status = "غیرفعال"
+    if enabled_reminders:
+        reminder_status = "، ".join(item["time"] for item in enabled_reminders)
     return {
         "total_users": len(all_users),
         "recent_life_count": recent_count,
         "server_status": "🟢 آنلاین و فعال",
-        "scheduler_status": "🟢 فعال (ساعت ۲۲:۳۰)"
+        "scheduler_status": reminder_status,
+        "reminder_count": len(enabled_reminders),
     }
 
 
@@ -1554,6 +1622,10 @@ async def api_get_reports_dashboard(
             "breakdown": life_breakdown,
             "recent": life_entries[:12],
             "entries": life_entries,
+            "available_types": [
+                {"name": name, "emoji": TYPE_EMOJIS.get(name, "🌱")}
+                for name in LIFE_TRACKER_TYPES
+            ],
         },
         "spiritual": spiritual_report,
         "daily_timeline": daily_timeline,
