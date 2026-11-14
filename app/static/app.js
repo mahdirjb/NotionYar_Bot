@@ -1,5 +1,5 @@
 // app/static/app.js
-// NotionYar Telegram Mini App v6.13.0
+// NotionYar Telegram Mini App v6.13.1
 
 (function () {
   const tg = window.Telegram?.WebApp;
@@ -1128,11 +1128,36 @@
   let swipeStartX = 0;
   let swipeStartY = 0;
   let swipeTracking = false;
+
+  function shouldIgnoreMainTabSwipe(target) {
+    if (!(target instanceof Element)) return false;
+    if (target.closest(
+      "button, a, input, select, textarea, [role='button'], [role='listbox'], "
+      + ".custom-dropdown, .reports-section-nav, .report-period-selector, "
+      + ".advanced-report-presets, .segmented-control, .bottom-nav, dialog, [role='dialog']"
+    )) return true;
+
+    let node = target;
+    const app = document.getElementById("app");
+    while (node && node !== app) {
+      const style = getComputedStyle(node);
+      const scrollsHorizontally = ["auto", "scroll"].includes(style.overflowX)
+        && node.scrollWidth > node.clientWidth + 2;
+      if (scrollsHorizontally) return true;
+      node = node.parentElement;
+    }
+    return false;
+  }
+
   document.getElementById("app")?.addEventListener("touchstart", (event) => {
-    if (event.touches.length !== 1) return;
+    swipeTracking = false;
+    if (event.touches.length !== 1 || shouldIgnoreMainTabSwipe(event.target)) return;
     swipeStartX = event.touches[0].clientX;
     swipeStartY = event.touches[0].clientY;
     swipeTracking = true;
+  }, { passive: true });
+  document.getElementById("app")?.addEventListener("touchcancel", () => {
+    swipeTracking = false;
   }, { passive: true });
   document.getElementById("app")?.addEventListener("touchend", (event) => {
     if (!swipeTracking || !event.changedTouches.length) return;
@@ -1143,10 +1168,11 @@
     const visibleItems = Array.from(navItems).filter((item) => getComputedStyle(item).display !== "none");
     const current = visibleItems.findIndex((item) => item.classList.contains("active"));
     if (current < 0 || visibleItems.length < 2) return;
-    const nextIndex = dx < 0
+    // In RTL, a swipe toward the right advances through the visual tab order.
+    const nextIndex = dx > 0
       ? (current + 1) % visibleItems.length
       : (current - 1 + visibleItems.length) % visibleItems.length;
-    activateMainTab(visibleItems[nextIndex].getAttribute("data-tab"), dx < 0 ? 1 : -1);
+    activateMainTab(visibleItems[nextIndex].getAttribute("data-tab"), dx > 0 ? 1 : -1);
   }, { passive: true });
   updateWorkspaceIntro("tab-habits");
 

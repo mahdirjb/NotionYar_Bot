@@ -1,4 +1,4 @@
-const SHELL_CACHE = "notionyar-shell-v6.13.0";
+const SHELL_CACHE = "notionyar-shell-v6.13.1";
 const API_CACHE = "notionyar-api-persistent-v1";
 const DB_NAME = "notionyar-offline";
 const DB_VERSION = 1;
@@ -9,7 +9,7 @@ const SHELL_ASSETS = [
   "/manifest.webmanifest",
   "/static/app.css?v=6.13.0",
   "/static/vendor/lucide.min.js?v=1.72.0",
-  "/static/app.js?v=6.13.0",
+  "/static/app.js?v=6.13.1",
   "/static/icon.svg?v=5.0.2",
 ];
 
