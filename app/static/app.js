@@ -1,5 +1,5 @@
 // app/static/app.js
-// NotionYar Telegram Mini App v6.11.0
+// NotionYar Telegram Mini App v6.11.1
 
 (function () {
   const tg = window.Telegram?.WebApp;
@@ -1128,6 +1128,49 @@
   // ==========================================
   // 3. PERSIAN DATE PICKER MODAL
   // ==========================================
+  function placePortalMenu(menu, trigger, options = {}) {
+    if (!menu || !trigger) return;
+    const rect = trigger.getBoundingClientRect();
+    const viewport = window.visualViewport;
+    const viewportLeft = viewport?.offsetLeft || 0;
+    const viewportTop = viewport?.offsetTop || 0;
+    const viewportWidth = viewport?.width || document.documentElement.clientWidth || window.innerWidth;
+    const viewportHeight = viewport?.height || document.documentElement.clientHeight || window.innerHeight;
+    const viewportRight = viewportLeft + viewportWidth;
+    const viewportBottom = viewportTop + viewportHeight;
+    const gap = options.gap ?? 6;
+    const edge = options.edge ?? 8;
+    const width = Math.min(rect.width, viewportWidth - edge * 2);
+    const left = Math.max(viewportLeft + edge, Math.min(rect.left, viewportRight - width - edge));
+    const maxHeight = Math.min(options.maxHeight || 280, viewportHeight - edge * 2);
+
+    ["inset", "inset-inline", "inset-block", "right", "bottom", "margin", "transform"].forEach((property) => {
+      menu.style.setProperty(property, property === "transform" ? "none" : "auto", "important");
+    });
+    menu.style.setProperty("position", "fixed", "important");
+    menu.style.setProperty("left", `${left}px`, "important");
+    menu.style.setProperty("top", `${viewportTop + edge}px`, "important");
+    menu.style.setProperty("width", `${width}px`, "important");
+    menu.style.setProperty("max-width", `${width}px`, "important");
+    menu.style.setProperty("max-height", `${maxHeight}px`, "important");
+    menu.style.setProperty("z-index", String(options.zIndex || 1000), "important");
+    menu.style.setProperty("visibility", "hidden", "important");
+
+    const actualHeight = Math.min(Math.max(menu.scrollHeight, menu.offsetHeight), maxHeight);
+    const spaceAbove = rect.top - viewportTop - gap - edge;
+    const spaceBelow = viewportBottom - rect.bottom - gap - edge;
+    let placement = options.placement || "auto";
+    if (placement === "auto") placement = spaceBelow >= Math.min(actualHeight, 150) || spaceBelow >= spaceAbove ? "below" : "above";
+    if (placement === "above" && spaceAbove < Math.min(actualHeight, 80) && spaceBelow > spaceAbove) placement = "below";
+    if (placement === "below" && spaceBelow < Math.min(actualHeight, 80) && spaceAbove > spaceBelow) placement = "above";
+    const top = placement === "above"
+      ? Math.max(viewportTop + edge, rect.top - actualHeight - gap)
+      : Math.min(viewportBottom - actualHeight - edge, rect.bottom + gap);
+
+    menu.style.setProperty("top", `${top}px`, "important");
+    menu.style.removeProperty("visibility");
+  }
+
   function initPersianDatePickerModal() {
     const modal = document.getElementById("persianDateModal");
     const daySelect = document.getElementById("shamsiDaySelect");
@@ -1188,19 +1231,15 @@
         document.querySelectorAll(".custom-date-dropdown.open").forEach((other) => {
           if (other !== dropdown) closeCustomDateDropdown(other);
         });
-        const bounds = dropdown.getBoundingClientRect();
         if (open) {
           if (control.menu.parentElement !== document.body) document.body.appendChild(control.menu);
           control.menu.classList.add("portal-open");
-          const menuHeight = Math.min(420, Math.floor(window.innerHeight * .56));
-          const dropUp = bounds.bottom + menuHeight + 8 > window.innerHeight && bounds.top > menuHeight + 8;
-          dropdown.classList.toggle("dropup", dropUp);
-          control.menu.style.position = "fixed";
-          control.menu.style.left = `${bounds.left}px`;
-          control.menu.style.width = `${bounds.width}px`;
-          control.menu.style.top = dropUp ? `${bounds.top - menuHeight - 6}px` : `${bounds.bottom + 6}px`;
-          control.menu.style.maxHeight = `${menuHeight}px`;
-          control.menu.style.zIndex = "1200";
+          dropdown.classList.add("dropup");
+          placePortalMenu(control.menu, control.trigger, {
+            placement: "above",
+            maxHeight: Math.min(420, Math.floor((window.visualViewport?.height || window.innerHeight) * .56)),
+            zIndex: 1200,
+          });
         } else {
           closeCustomDateDropdown(dropdown);
         }
@@ -1683,16 +1722,9 @@
     const menu = getHistoryDropdownMenu(dropdown);
     if (!menu) return;
     dropdown.classList.add("open");
-    const bounds = trigger.getBoundingClientRect();
-    const maxHeight = Math.min(280, Math.max(150, window.innerHeight - 24));
     if (menu.parentElement !== document.body) document.body.appendChild(menu);
     menu.classList.add("history-filter-portal-menu");
-    menu.style.position = "fixed";
-    menu.style.left = `${Math.max(8, bounds.left)}px`;
-    menu.style.top = `${Math.min(window.innerHeight - 12, bounds.bottom + 6)}px`;
-    menu.style.width = `${bounds.width}px`;
-    menu.style.maxHeight = `${maxHeight}px`;
-    menu.style.zIndex = "1000";
+    placePortalMenu(menu, trigger, { placement: "auto", maxHeight: 280, zIndex: 1000 });
     trigger.setAttribute("aria-expanded", "true");
   }
 
@@ -1810,6 +1842,38 @@
     });
   }
 
+  function initLifeHistorySortDropdown() {
+    const dropdown = document.getElementById("lifeHistorySortDropdown");
+    const trigger = document.getElementById("lifeHistorySortTrigger");
+    const menu = document.getElementById("lifeHistorySortMenu");
+    const hiddenInput = document.getElementById("lifeHistorySort");
+    const selectedSpan = document.getElementById("lifeHistorySortSelected");
+    if (!dropdown || !trigger || !menu || !hiddenInput || !selectedSpan || dropdown.dataset.ready === "1") return;
+    dropdown.dataset.ready = "1";
+
+    trigger.addEventListener("click", (event) => {
+      event.stopPropagation();
+      if (dropdown.classList.contains("open")) closeHistoryDropdown(dropdown);
+      else openHistoryDropdown(dropdown, trigger);
+      haptic("light");
+    });
+    menu.querySelectorAll(".custom-dropdown-item").forEach((item) => {
+      item.addEventListener("click", (event) => {
+        event.stopPropagation();
+        hiddenInput.value = item.dataset.value || "newest";
+        selectedSpan.textContent = item.querySelector(".item-title")?.textContent || "🕒 جدیدترین";
+        menu.querySelectorAll(".custom-dropdown-item").forEach((entry) => entry.classList.remove("active"));
+        item.classList.add("active");
+        closeHistoryDropdown(dropdown);
+        hiddenInput.dispatchEvent(new Event("change", { bubbles: true }));
+        haptic("selection");
+      });
+    });
+    document.addEventListener("click", (event) => {
+      if (!dropdown.contains(event.target)) closeHistoryDropdown(dropdown);
+    });
+  }
+
   function initLifeHistoryPeriodDropdown() {
     const dropdown = document.getElementById("lifeHistoryPeriodDropdown");
     const trigger = document.getElementById("lifeHistoryPeriodTrigger");
@@ -1859,13 +1923,14 @@
     if (!root || root.dataset.controlsReady === "1") return;
     root.dataset.controlsReady = "1";
     initLifeHistoryModeDropdown();
+    initLifeHistorySortDropdown();
 
     const filtersPanel = document.getElementById("lifeHistoryFiltersPanel");
     filtersPanel?.addEventListener("toggle", () => {
       const state = filtersPanel.querySelector(".history-filter-state");
       if (state) state.textContent = filtersPanel.open ? "فیلترها باز هستند" : "برای نمایش گزینه‌ها باز کنید";
       if (!filtersPanel.open) {
-        ["lifeHistoryFilterDropdown", "lifeHistoryPeriodDropdown", "lifeHistoryModeDropdown"].forEach((id) => {
+        ["lifeHistoryFilterDropdown", "lifeHistoryPeriodDropdown", "lifeHistoryModeDropdown", "lifeHistorySortDropdown"].forEach((id) => {
           closeHistoryDropdown(document.getElementById(id));
         });
       }
@@ -1915,8 +1980,11 @@
       if (typeLabel) typeLabel.textContent = "تمام فعالیت‌ها";
       if (periodLabel) periodLabel.textContent = "تمام تاریخچه";
       const modeLabel = document.getElementById("lifeHistoryModeSelected");
+      const sortLabel = document.getElementById("lifeHistorySortSelected");
       if (modeLabel) modeLabel.textContent = "🎛️ تمام حالت‌ها";
+      if (sortLabel) sortLabel.textContent = "🕒 جدیدترین";
       document.querySelectorAll("#lifeHistoryModeMenu .custom-dropdown-item").forEach((item) => item.classList.toggle("active", !item.dataset.value));
+      document.querySelectorAll("#lifeHistorySortMenu .custom-dropdown-item").forEach((item) => item.classList.toggle("active", item.dataset.value === "newest"));
       document.querySelectorAll("#lifeHistoryFilterMenu .custom-dropdown-item, #lifeHistoryPeriodMenu .custom-dropdown-item").forEach((item) => item.classList.toggle("active", !item.dataset.value || item.dataset.value === "all"));
       renderFilteredLifeHistory();
     });

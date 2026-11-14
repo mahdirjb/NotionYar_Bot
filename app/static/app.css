@@ -6030,6 +6030,17 @@ textarea,
 .custom-date-dropdown.dropup .custom-date-menu { top: auto !important; bottom: calc(100% + 6px) !important; }
 .custom-date-menu { max-height: min(420px, 56vh) !important; }
 .custom-date-menu.portal-open { display: grid !important; gap: 3px; }
+.custom-date-menu.portal-open,
+.history-filter-portal-menu {
+  inset: auto !important;
+  inset-inline: auto !important;
+  inset-block: auto !important;
+  right: auto !important;
+  bottom: auto !important;
+  margin: 0 !important;
+  transform: none !important;
+  box-sizing: border-box !important;
+}
 .history-filter-portal-menu {
   position: fixed !important;
   display: block !important;
@@ -6043,6 +6054,7 @@ textarea,
   background: var(--card-bg) !important;
   box-shadow: 0 16px 34px rgba(0, 0, 0, .34) !important;
   z-index: 1000 !important;
+  animation: none !important;
 }
 .history-filter-portal-menu .custom-dropdown-item { display: block !important; width: 100% !important; }
 .history-filter-portal-menu .custom-dropdown-item:hover,
