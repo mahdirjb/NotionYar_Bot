@@ -1,5 +1,5 @@
 // app/static/app.js
-// NotionYar Telegram Mini App v6.11.1
+// NotionYar Telegram Mini App v6.11.2
 
 (function () {
   const tg = window.Telegram?.WebApp;
@@ -1137,12 +1137,20 @@
     const viewportWidth = viewport?.width || document.documentElement.clientWidth || window.innerWidth;
     const viewportHeight = viewport?.height || document.documentElement.clientHeight || window.innerHeight;
     const viewportRight = viewportLeft + viewportWidth;
-    const viewportBottom = viewportTop + viewportHeight;
+    let viewportBottom = viewportTop + viewportHeight;
+    if (options.avoidBottomNav) {
+      const bottomNav = document.querySelector(".bottom-nav");
+      const navRect = bottomNav?.getBoundingClientRect();
+      const navVisible = bottomNav && getComputedStyle(bottomNav).display !== "none" && navRect?.height > 0;
+      if (navVisible && navRect.top > viewportTop && navRect.top < viewportBottom) {
+        viewportBottom = navRect.top;
+      }
+    }
     const gap = options.gap ?? 6;
     const edge = options.edge ?? 8;
     const width = Math.min(rect.width, viewportWidth - edge * 2);
     const left = Math.max(viewportLeft + edge, Math.min(rect.left, viewportRight - width - edge));
-    const maxHeight = Math.min(options.maxHeight || 280, viewportHeight - edge * 2);
+    const maxHeight = Math.min(options.maxHeight || 280, viewportBottom - viewportTop - edge * 2);
 
     ["inset", "inset-inline", "inset-block", "right", "bottom", "margin", "transform"].forEach((property) => {
       menu.style.setProperty(property, property === "transform" ? "none" : "auto", "important");
@@ -1724,7 +1732,7 @@
     dropdown.classList.add("open");
     if (menu.parentElement !== document.body) document.body.appendChild(menu);
     menu.classList.add("history-filter-portal-menu");
-    placePortalMenu(menu, trigger, { placement: "auto", maxHeight: 280, zIndex: 1000 });
+    placePortalMenu(menu, trigger, { placement: "auto", maxHeight: 280, zIndex: 1000, avoidBottomNav: true });
     trigger.setAttribute("aria-expanded", "true");
   }
 
@@ -1924,6 +1932,15 @@
     root.dataset.controlsReady = "1";
     initLifeHistoryModeDropdown();
     initLifeHistorySortDropdown();
+
+    const closeHistoryMenusOnScroll = (event) => {
+      if (event.target instanceof Element && event.target.closest(".history-filter-portal-menu")) return;
+      document.querySelectorAll(".history-filter-grid .custom-dropdown.open").forEach(closeHistoryDropdown);
+    };
+    window.addEventListener("scroll", closeHistoryMenusOnScroll, { passive: true });
+    document.addEventListener("scroll", closeHistoryMenusOnScroll, { passive: true, capture: true });
+    window.visualViewport?.addEventListener("scroll", closeHistoryMenusOnScroll, { passive: true });
+    window.visualViewport?.addEventListener("resize", closeHistoryMenusOnScroll, { passive: true });
 
     const filtersPanel = document.getElementById("lifeHistoryFiltersPanel");
     filtersPanel?.addEventListener("toggle", () => {
