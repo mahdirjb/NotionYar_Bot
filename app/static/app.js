@@ -1,5 +1,5 @@
 // app/static/app.js
-// NotionYar Telegram Mini App v6.10.2
+// NotionYar Telegram Mini App v6.11.0
 
 (function () {
   const tg = window.Telegram?.WebApp;
@@ -1159,10 +1159,7 @@
           event.stopPropagation();
           control.select.value = option.value;
           control.select.dispatchEvent(new Event("change", { bubbles: true }));
-          control.menu.classList.remove("portal-open");
-          control.menu.style.cssText = "";
-          control.trigger?.closest(".custom-date-dropdown")?.classList.remove("open");
-          control.trigger?.setAttribute("aria-expanded", "false");
+          closeCustomDateDropdown(control.dropdown || control.trigger?.closest(".custom-date-dropdown"));
         });
         control.menu.appendChild(item);
       });
@@ -1172,22 +1169,30 @@
     }
     window.__notionyarSyncDateDropdown = syncCustomDateDropdown;
 
+    function closeCustomDateDropdown(dropdown) {
+      if (!dropdown) return;
+      dropdown.classList.remove("open", "dropup");
+      dropdown.querySelector(".custom-date-trigger")?.setAttribute("aria-expanded", "false");
+      const menu = dropdown._dateMenu;
+      menu?.classList.remove("portal-open");
+      if (menu) menu.style.cssText = "";
+    }
+
     Object.entries(customDateDropdowns).forEach(([kind, control]) => {
+      control.dropdown = control.trigger?.closest(".custom-date-dropdown");
+      if (control.dropdown) control.dropdown._dateMenu = control.menu;
       control.trigger?.addEventListener("click", (event) => {
         event.stopPropagation();
-        const dropdown = control.trigger.closest(".custom-date-dropdown");
+        const dropdown = control.dropdown;
         const open = dropdown.classList.toggle("open");
         document.querySelectorAll(".custom-date-dropdown.open").forEach((other) => {
-          if (other !== dropdown) {
-            other.classList.remove("open");
-            other.querySelector(".custom-date-menu")?.classList.remove("portal-open");
-          }
+          if (other !== dropdown) closeCustomDateDropdown(other);
         });
         const bounds = dropdown.getBoundingClientRect();
         if (open) {
           if (control.menu.parentElement !== document.body) document.body.appendChild(control.menu);
           control.menu.classList.add("portal-open");
-          const menuHeight = Math.min(220, Math.floor(window.innerHeight * .42));
+          const menuHeight = Math.min(420, Math.floor(window.innerHeight * .56));
           const dropUp = bounds.bottom + menuHeight + 8 > window.innerHeight && bounds.top > menuHeight + 8;
           dropdown.classList.toggle("dropup", dropUp);
           control.menu.style.position = "fixed";
@@ -1197,8 +1202,7 @@
           control.menu.style.maxHeight = `${menuHeight}px`;
           control.menu.style.zIndex = "1200";
         } else {
-          control.menu.classList.remove("portal-open");
-          control.menu.style.cssText = "";
+          closeCustomDateDropdown(dropdown);
         }
         control.trigger.setAttribute("aria-expanded", String(open));
       });
@@ -1206,9 +1210,7 @@
     });
     document.addEventListener("click", () => {
       document.querySelectorAll(".custom-date-dropdown.open").forEach((dropdown) => {
-        dropdown.classList.remove("open");
-        dropdown.querySelector(".custom-date-trigger")?.setAttribute("aria-expanded", "false");
-        dropdown.querySelector(".custom-date-menu")?.classList.remove("portal-open");
+        closeCustomDateDropdown(dropdown);
       });
     });
 
@@ -1244,11 +1246,13 @@
     window.__notionyarSyncDateDropdown?.("year");
 
     btnClose?.addEventListener("click", () => {
+      document.querySelectorAll(".custom-date-dropdown.open").forEach(closeCustomDateDropdown);
       modal.style.display = "none";
     });
 
     modal?.addEventListener("click", (e) => {
       if (e.target === modal) {
+        document.querySelectorAll(".custom-date-dropdown.open").forEach(closeCustomDateDropdown);
         modal.style.display = "none";
       }
     });
@@ -1325,6 +1329,7 @@
         if (display) display.textContent = `📅 ${toPersianDigits(jd)} ${PERSIAN_MONTH_NAMES[jm - 1]} ${toPersianDigits(jy)}`;
       }
 
+      document.querySelectorAll(".custom-date-dropdown.open").forEach(closeCustomDateDropdown);
       modal.style.display = "none";
       haptic("medium");
       showToast("تاریخ شمسی انتخاب شد", "success");
@@ -1855,22 +1860,15 @@
     root.dataset.controlsReady = "1";
     initLifeHistoryModeDropdown();
 
-    document.querySelectorAll("[data-life-report-section-target]").forEach((button) => {
-      button.addEventListener("click", (event) => {
-        event.preventDefault();
-        const target = button.dataset.lifeReportSectionTarget || "overview";
-        document.querySelectorAll("[data-life-report-section-target]").forEach((item) => item.classList.toggle("active", item === button));
-        root.querySelectorAll("[data-life-report-sections]").forEach((section) => {
-          const sections = (section.dataset.lifeReportSections || "").split(",");
-          section.hidden = !sections.includes(target);
+    const filtersPanel = document.getElementById("lifeHistoryFiltersPanel");
+    filtersPanel?.addEventListener("toggle", () => {
+      const state = filtersPanel.querySelector(".history-filter-state");
+      if (state) state.textContent = filtersPanel.open ? "فیلترها باز هستند" : "برای نمایش گزینه‌ها باز کنید";
+      if (!filtersPanel.open) {
+        ["lifeHistoryFilterDropdown", "lifeHistoryPeriodDropdown", "lifeHistoryModeDropdown"].forEach((id) => {
+          closeHistoryDropdown(document.getElementById(id));
         });
-        if (target === "grouping") {
-          lifeHistoryView = "date";
-          document.querySelectorAll("[data-life-history-view]").forEach((item) => item.classList.toggle("active", item.dataset.lifeHistoryView === "date"));
-        }
-        renderFilteredLifeHistory();
-        haptic("light");
-      });
+      }
     });
 
     ["lifeHistorySearch", "lifeHistorySort"].forEach((id) => {

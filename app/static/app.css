@@ -3353,19 +3353,6 @@ body {
 
 .gratitude-tag-dropdown { margin-bottom: 10px; }
 .grat-tags-chips { display: block !important; }
-.life-reports-section-nav {
-  display: flex;
-  gap: 4px;
-  margin: 4px 0 16px;
-  padding: 3px;
-  border: 1px solid var(--card-border);
-  border-radius: var(--control-radius);
-  background: var(--subtle-surface);
-  overflow-x: auto;
-  scrollbar-width: none;
-}
-.life-reports-section-nav::-webkit-scrollbar { display: none; }
-.life-reports-section-nav .seg-btn { flex: 1 0 auto; min-width: 120px; }
 .habit-card .habit-actions-inline {
   width: auto !important;
   max-width: 100%;
@@ -6041,7 +6028,7 @@ textarea,
 .history-filter-grid { position: relative; z-index: 10; }
 .history-filter-grid .custom-dropdown-menu { width: 100% !important; max-width: 100% !important; }
 .custom-date-dropdown.dropup .custom-date-menu { top: auto !important; bottom: calc(100% + 6px) !important; }
-.custom-date-menu { max-height: min(220px, 42vh) !important; }
+.custom-date-menu { max-height: min(420px, 56vh) !important; }
 .custom-date-menu.portal-open { display: grid !important; gap: 3px; }
 .history-filter-portal-menu {
   position: fixed !important;
@@ -6058,3 +6045,63 @@ textarea,
   z-index: 1000 !important;
 }
 .history-filter-portal-menu .custom-dropdown-item { display: block !important; width: 100% !important; }
+.history-filter-portal-menu .custom-dropdown-item:hover,
+.history-filter-portal-menu .custom-dropdown-item.active {
+  border-color: var(--card-border) !important;
+  background: var(--input-bg) !important;
+  color: var(--text-color) !important;
+}
+.custom-date-menu,
+.custom-date-menu.portal-open {
+  border-color: var(--card-border) !important;
+  background: var(--card-bg) !important;
+  background-image: none !important;
+}
+.custom-date-option:hover,
+.custom-date-option.active {
+  border-color: var(--card-border) !important;
+  background: var(--input-bg) !important;
+  color: var(--text-color) !important;
+}
+.history-filter-panel {
+  margin: 14px 0;
+  border: 1px solid var(--card-border);
+  border-radius: var(--control-radius);
+  background: color-mix(in srgb, var(--card-bg) 94%, transparent);
+  overflow: visible;
+}
+.history-filter-panel > summary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  min-height: 48px;
+  padding: 10px 12px;
+  border-radius: var(--control-radius);
+  color: var(--text-color);
+  font-size: 13px;
+  font-weight: 800;
+  cursor: pointer;
+  list-style: none;
+}
+.history-filter-panel > summary::-webkit-details-marker { display: none; }
+.history-filter-panel > summary > span:first-child { display: inline-flex; align-items: center; gap: 7px; }
+.history-filter-panel > summary::after { content: "▾"; color: var(--hint-color); transition: transform .18s ease; }
+.history-filter-panel[open] > summary { border-bottom: 1px solid var(--card-border); border-radius: var(--control-radius) var(--control-radius) 0 0; }
+.history-filter-panel[open] > summary::after { transform: rotate(180deg); }
+.history-filter-state { margin-inline-start: auto; color: var(--hint-color); font-size: 11px; font-weight: 500; }
+.history-filter-panel-body { padding: 12px; }
+.history-filter-panel .history-search-row { margin-top: 0; }
+@media (max-width: 520px) {
+  .history-filter-state { display: none; }
+  .history-filter-panel-body { padding: 10px; }
+}
+.report-period-selector {
+  gap: 4px !important;
+  padding: 4px !important;
+  border: 1px solid var(--card-border);
+  border-radius: var(--control-radius) !important;
+  background: var(--card-bg);
+  overflow-x: auto !important;
+}
+.report-period-selector > button { border-radius: 6px !important; border: 0 !important; }

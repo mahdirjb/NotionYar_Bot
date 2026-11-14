@@ -17,7 +17,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Vazirmatn:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="/static/app.css?v=6.10.2">
+  <link rel="stylesheet" href="/static/app.css?v=6.11.0">
 </head>
 
 <body class="auth-pending">
@@ -182,20 +182,20 @@
               <span>گزارش‌های روزمرگی</span>
             </div>
 
-            <nav class="life-reports-section-nav" aria-label="بخش‌های گزارش روزمرگی">
-              <button type="button" class="seg-btn active" data-life-report-section-target="overview">📊 نمای کلی</button>
-              <button type="button" class="seg-btn" data-life-report-section-target="records">🧾 رکوردها</button>
-              <button type="button" class="seg-btn" data-life-report-section-target="grouping">🗂️ گروه‌بندی و تحلیل</button>
-            </nav>
-
-            <div class="history-summary-grid" id="lifeHistorySummary" data-life-report-sections="overview,records,grouping">
+            <div class="history-summary-grid" id="lifeHistorySummary">
               <div class="history-summary-item"><strong>۰</strong><span>رکورد</span></div>
               <div class="history-summary-item"><strong>۰</strong><span>روز فعال</span></div>
               <div class="history-summary-item"><strong>۰</strong><span>فعالیت متفاوت</span></div>
               <div class="history-summary-item"><strong>—</strong><span>پرتکرارترین</span></div>
             </div>
 
-            <div class="history-search-row" data-life-report-sections="records,grouping" hidden>
+            <details class="history-filter-panel" id="lifeHistoryFiltersPanel">
+              <summary>
+                <span><i data-lucide="sliders-horizontal"></i> فیلتر و جستجو</span>
+                <span class="history-filter-state">برای نمایش گزینه‌ها باز کنید</span>
+              </summary>
+              <div class="history-filter-panel-body">
+            <div class="history-search-row">
               <label class="history-search-box" for="lifeHistorySearch">
                 <i data-lucide="search"></i>
                 <input id="lifeHistorySearch" type="search" placeholder="جست‌وجو در فعالیت، حالت و توضیحات">
@@ -204,7 +204,7 @@
               <button type="button" class="btn-step" id="btnExportLifeHistory"><i data-lucide="download"></i><span>CSV</span></button>
             </div>
 
-            <div class="filter-row history-filter-grid" data-life-report-sections="records,grouping" hidden>
+            <div class="filter-row history-filter-grid">
               <div class="filter-col">
                 <label>فعالیت:</label>
                 <div class="custom-dropdown" id="lifeHistoryFilterDropdown">
@@ -271,7 +271,7 @@
             </div>
 
             <!-- Custom Date Range Selector (Hidden unless custom is chosen) -->
-            <div id="lifeCustomDateRangeRow" data-life-report-sections="records,grouping" style="display: none; margin-bottom: 12px; background: var(--input-bg); border: 1px solid var(--card-border); border-radius: 8px; padding: 10px;">
+            <div id="lifeCustomDateRangeRow" style="display: none; margin-bottom: 12px; background: var(--input-bg); border: 1px solid var(--card-border); border-radius: 8px; padding: 10px;">
               <div style="font-size: 11px; font-weight: 700; color: var(--link-color); margin-bottom: 8px;">تعیین بازه تاریخی دلخواه (شمسی):</div>
               <div class="form-row">
                 <div class="form-group">
@@ -284,8 +284,10 @@
                 </div>
               </div>
             </div>
+              </div>
+            </details>
 
-            <div class="history-view-row" data-life-report-sections="overview,records,grouping">
+            <div class="history-view-row">
               <div class="segmented-control history-view-switch" aria-label="نحوه نمایش تاریخچه">
                 <button type="button" class="seg-btn active" data-life-history-view="date">📅 گروه‌بندی روز</button>
                 <button type="button" class="seg-btn" data-life-history-view="type">🌱 گروه‌بندی فعالیت</button>
@@ -294,10 +296,10 @@
               <span id="lifeHistoryResultCount" class="history-result-count">۰ نتیجه</span>
             </div>
 
-            <div class="timeline-list" id="lifeHistoryList" data-life-report-sections="overview,records,grouping">
+            <div class="timeline-list" id="lifeHistoryList">
               <div class="loading-state">در حال بارگذاری تاریخچه...</div>
             </div>
-            <div class="history-pagination" id="lifeHistoryPagination" data-life-report-sections="overview,records,grouping" hidden></div>
+            <div class="history-pagination" id="lifeHistoryPagination" hidden></div>
           </div>
         </div>
       </section>
@@ -1117,6 +1119,6 @@
   </div>
 
   <script src="/static/vendor/lucide.min.js?v=1.72.0"></script>
-  <script src="/static/app.js?v=6.10.2"></script>
+  <script src="/static/app.js?v=6.11.0"></script>
 </body>
 </html>
