@@ -1,5 +1,5 @@
 // app/static/app.js
-// NotionYar Telegram Mini App v6.14.2
+// NotionYar Telegram Mini App v6.14.3
 
 (function () {
   const tg = window.Telegram?.WebApp;
@@ -1276,7 +1276,10 @@
       const bottomNav = document.querySelector(".bottom-nav");
       const navRect = bottomNav?.getBoundingClientRect();
       const navVisible = bottomNav && getComputedStyle(bottomNav).display !== "none" && navRect?.height > 0;
-      if (navVisible && navRect.top > viewportTop && navRect.top < viewportBottom) {
+      const isBottomBar = navVisible
+        && navRect.width >= viewportWidth * 0.5
+        && navRect.bottom >= viewportBottom - 24;
+      if (isBottomBar && navRect.top > viewportTop && navRect.top < viewportBottom) {
         viewportBottom = navRect.top;
       }
     }
