@@ -17,7 +17,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Vazirmatn:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="/static/app.css?v=6.14.3">
+  <link rel="stylesheet" href="/static/app.css?v=6.15.1">
 </head>
 
 <body class="auth-pending">
@@ -866,19 +866,52 @@
       <!-- ================= TAB 5: ADMIN PANEL ================= -->
       <section id="tab-admin" class="tab-panel">
         <div class="segmented-control admin-section-tabs" aria-label="بخش‌های مدیریت">
-          <button type="button" class="seg-btn active" data-admin-section="admin-overview">📊 نمای کلی</button>
+          <button type="button" class="seg-btn active" data-admin-section="admin-overview">🧭 وضعیت برنامه</button>
+          <button type="button" class="seg-btn" data-admin-section="admin-appearance">🔤 ظاهر و خوانایی</button>
           <button type="button" class="seg-btn" data-admin-section="admin-security">🔐 امنیت ورود</button>
-          <button type="button" class="seg-btn" data-admin-section="admin-users">👥 کاربران</button>
           <button type="button" class="seg-btn" data-admin-section="admin-reminders">⏰ یادآورها</button>
+          <button type="button" class="seg-btn" data-admin-section="admin-users" data-feature="admin-users" hidden>👥 کاربران</button>
         </div>
 
         <div class="card admin-section-card" id="admin-overview">
           <div class="card-title">
-            <span class="icon">👑</span>
-            <span>پنل مدیریت سامانه</span>
+            <span class="icon"><i data-lucide="gauge"></i></span>
+            <span>وضعیت برنامه و داده‌های آفلاین</span>
           </div>
+          <p class="settings-help">وضعیت اتصال، اطلاعات ذخیره‌شده روی این دستگاه و موارد در انتظار همگام‌سازی را از اینجا ببین.</p>
           <div class="admin-stats-grid" id="adminStatsGrid">
-            <div class="loading-state">در حال بررسی وضعیت سامانه...</div>
+            <div class="loading-state">در حال بررسی وضعیت برنامه...</div>
+          </div>
+          <div class="admin-quick-actions">
+            <button type="button" class="btn-primary" id="btnAdminSyncNow"><i data-lucide="cloud-upload"></i><span>همگام‌سازی موارد منتظر</span></button>
+            <button type="button" class="btn-step" id="btnRefreshAdminOverview"><i data-lucide="refresh-cw"></i><span>به‌روزرسانی وضعیت</span></button>
+          </div>
+        </div>
+
+        <div class="card admin-section-card" id="admin-appearance" hidden>
+          <div class="card-title">
+            <span class="icon"><i data-lucide="type"></i></span>
+            <span>ظاهر و خوانایی</span>
+          </div>
+          <p class="settings-help">اندازه متن در گزارش‌ها، کارت‌ها، فرم‌ها و نوارهای پیمایش روی همین دستگاه ذخیره می‌شود.</p>
+          <div class="font-scale-setting">
+            <div class="font-scale-heading">
+              <label for="uiFontScale">اندازه متن برنامه</label>
+              <output id="uiFontScaleValue" for="uiFontScale">۱۱۰٪</output>
+            </div>
+            <input id="uiFontScale" type="range" min="90" max="140" step="5" value="110">
+            <div class="segmented-control font-scale-presets" aria-label="اندازه‌های آماده متن">
+              <button type="button" class="seg-btn" data-font-scale="95">جمع‌وجور</button>
+              <button type="button" class="seg-btn" data-font-scale="110">خوانا</button>
+              <button type="button" class="seg-btn" data-font-scale="125">درشت</button>
+              <button type="button" class="seg-btn" data-font-scale="140">خیلی درشت</button>
+            </div>
+            <div class="font-scale-preview" aria-live="polite">
+              <strong>نمونه متن گزارش</strong>
+              <span>توزیع فعالیت‌ها، جزئیات روزانه و وضعیت همگام‌سازی با این اندازه نمایش داده می‌شوند.</span>
+              <small>متن توضیحی و اطلاعات تکمیلی</small>
+            </div>
+            <button type="button" class="btn-step" id="btnResetFontScale"><i data-lucide="rotate-ccw"></i><span>بازگشت به اندازه خوانا</span></button>
           </div>
         </div>
 
@@ -915,7 +948,7 @@
           </form>
         </div>
 
-        <div class="card admin-section-card" id="admin-users" hidden>
+        <div class="card admin-section-card" id="admin-users" data-feature="admin-users" hidden>
           <div class="card-title">
             <span class="icon">👥</span>
             <span>مدیریت کاربران و دسترسی‌ها</span>
@@ -1286,6 +1319,6 @@
   </div>
 
   <script src="/static/vendor/lucide.min.js?v=1.72.0"></script>
-  <script src="/static/app.js?v=6.14.3"></script>
+  <script src="/static/app.js?v=6.15.1"></script>
 </body>
 </html>

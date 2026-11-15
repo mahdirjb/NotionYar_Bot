@@ -1,5 +1,5 @@
 // app/static/app.js
-// NotionYar Telegram Mini App v6.14.3
+// NotionYar Telegram Mini App v6.15.1
 
 (function () {
   const tg = window.Telegram?.WebApp;
@@ -33,6 +33,38 @@
     habitAnalytics: new Map(),
     reports: new Map(),
   };
+  const FEATURE_FLAGS = Object.freeze({
+    adminUsers: false,
+  });
+  const UI_FONT_SCALE_KEY = "notionyar_ui_font_scale";
+  const DEFAULT_UI_FONT_SCALE = 110;
+  const UI_PERSIAN_DIGITS = "۰۱۲۳۴۵۶۷۸۹";
+
+  function normalizeUIFontScale(value) {
+    const numeric = Number(value);
+    if (!Number.isFinite(numeric)) return DEFAULT_UI_FONT_SCALE;
+    return Math.min(140, Math.max(90, Math.round(numeric / 5) * 5));
+  }
+
+  function applyUIFontScale(value, persist = false) {
+    const scale = normalizeUIFontScale(value);
+    const displayScale = String(scale).replace(/\d/g, (digit) => UI_PERSIAN_DIGITS[Number(digit)]);
+    document.documentElement.style.setProperty("--ui-font-scale", String(scale / 100));
+    document.documentElement.dataset.fontScale = String(scale);
+    if (persist) localStorage.setItem(UI_FONT_SCALE_KEY, String(scale));
+    const slider = document.getElementById("uiFontScale");
+    const output = document.getElementById("uiFontScaleValue");
+    const overviewValue = document.getElementById("adminCurrentFontScale");
+    if (slider) slider.value = String(scale);
+    if (output) output.textContent = `${displayScale}٪`;
+    if (overviewValue) overviewValue.textContent = `${displayScale}٪`;
+    document.querySelectorAll("[data-font-scale]").forEach((button) => {
+      button.classList.toggle("active", Number(button.dataset.fontScale) === scale);
+    });
+    return scale;
+  }
+
+  applyUIFontScale(localStorage.getItem(UI_FONT_SCALE_KEY) || DEFAULT_UI_FONT_SCALE);
 
   function invalidateDataCache(...keys) {
     keys.forEach((key) => {
@@ -306,6 +338,25 @@
     return request.url.startsWith(window.location.origin + "/api/")
       && !request.url.includes("/api/auth/")
       && request.method === "GET";
+  }
+
+  async function getOfflineCacheStats() {
+    try {
+      const db = await openOfflineCacheDb();
+      const items = await new Promise((resolve, reject) => {
+        const transaction = db.transaction(OFFLINE_CACHE_STORE, "readonly");
+        const request = transaction.objectStore(OFFLINE_CACHE_STORE).getAll();
+        request.onsuccess = () => resolve(request.result || []);
+        request.onerror = () => reject(request.error);
+      });
+      db.close();
+      return {
+        count: items.length,
+        updatedAt: items.reduce((latest, item) => Math.max(latest, Number(item.updatedAt || 0)), 0),
+      };
+    } catch (_) {
+      return { count: 0, updatedAt: 0 };
+    }
   }
 
   async function revalidateOfflineApiRequest(request) {
@@ -1078,7 +1129,7 @@
     "tab-life": ["روزمرگی", "اتفاق‌های کوچک روز را از دست نده", "ثبت‌های روزمره را سریع وارد کن و فاصله‌ها را زیر نظر بگیر.", "ثبت سریع"],
     "tab-spiritual": ["مسیر معنوی", "نماز و تلاوت را با آرامش دنبال کن", "وضعیت روزانه و جزئیات مسیر معنوی در دسترس توست.", "مسیر من"],
     "tab-reports": ["گزارش‌ها", "روندها را روشن و قابل مقایسه ببین", "خلاصه و جزئیات همه بخش‌ها در بازه دلخواه.", "تحلیل"],
-    "tab-admin": ["مدیریت", "سامانه و دسترسی‌ها را مدیریت کن", "وضعیت سرویس و نقش اعضا را از اینجا کنترل کن.", "مدیریت"],
+    "tab-admin": ["مدیریت", "برنامه را مطابق نیازت تنظیم کن", "خوانایی، همگام‌سازی، ورود وب و یادآورها را از اینجا کنترل کن.", "تنظیمات"],
   };
 
   function updateWorkspaceIntro(targetTabId) {
@@ -1180,8 +1231,14 @@
   }, { passive: true });
   updateWorkspaceIntro("tab-habits");
 
+  const adminUsersTab = document.querySelector('[data-admin-section="admin-users"]');
+  const adminUsersSection = document.getElementById("admin-users");
+  if (adminUsersTab) adminUsersTab.hidden = !FEATURE_FLAGS.adminUsers;
+  if (!FEATURE_FLAGS.adminUsers && adminUsersSection) adminUsersSection.hidden = true;
+
   document.querySelectorAll("[data-admin-section]").forEach((button) => {
     button.addEventListener("click", () => {
+      if (button.hidden) return;
       const target = button.dataset.adminSection;
       document.querySelectorAll("[data-admin-section]").forEach((item) => item.classList.toggle("active", item === button));
       document.querySelectorAll(".admin-section-card").forEach((section) => {
@@ -1194,8 +1251,28 @@
 
   const savedAdminSection = localStorage.getItem("notionyar_admin_section");
   if (savedAdminSection) {
-    document.querySelector(`[data-admin-section="${savedAdminSection}"]`)?.click();
+    const savedButton = document.querySelector(`[data-admin-section="${savedAdminSection}"]`);
+    if (savedButton && !savedButton.hidden) savedButton.click();
+    else localStorage.setItem("notionyar_admin_section", "admin-overview");
   }
+
+  const fontScaleInput = document.getElementById("uiFontScale");
+  applyUIFontScale(localStorage.getItem(UI_FONT_SCALE_KEY) || DEFAULT_UI_FONT_SCALE);
+  fontScaleInput?.addEventListener("input", () => applyUIFontScale(fontScaleInput.value));
+  fontScaleInput?.addEventListener("change", () => {
+    const scale = applyUIFontScale(fontScaleInput.value, true);
+    showToast(`اندازه متن روی ${toPersianDigits(scale)} درصد ذخیره شد`, "success");
+  });
+  document.querySelectorAll("[data-font-scale]").forEach((button) => {
+    button.addEventListener("click", () => {
+      const scale = applyUIFontScale(button.dataset.fontScale, true);
+      showToast(`اندازه متن روی ${toPersianDigits(scale)} درصد تنظیم شد`, "success");
+    });
+  });
+  document.getElementById("btnResetFontScale")?.addEventListener("click", () => {
+    applyUIFontScale(DEFAULT_UI_FONT_SCALE, true);
+    showToast("اندازه خوانای پیش‌فرض بازگردانده شد", "success");
+  });
 
   // Segmented Controls (Sub-tabs)
   document.querySelectorAll(".segmented-control").forEach((segControl) => {
@@ -3817,7 +3894,7 @@
   // ==========================================
   async function loadAdminPanel() {
     loadAdminStats();
-    loadAdminUsers();
+    if (FEATURE_FLAGS.adminUsers) loadAdminUsers();
     loadWebAuthSettings();
     loadAdminReminders();
   }
@@ -4049,35 +4126,83 @@
   async function loadAdminStats() {
     const grid = document.getElementById("adminStatsGrid");
     if (!grid) return;
-    grid.innerHTML = '<div class="loading-state">در حال بررسی وضعیت سامانه...</div>';
+    grid.innerHTML = '<div class="loading-state">در حال بررسی وضعیت برنامه...</div>';
 
+    const [queueCount, cacheStats] = await Promise.all([
+      getOfflineQueueCount(),
+      getOfflineCacheStats(),
+    ]);
+    let stats = {};
     try {
       const res = await fetch("/api/admin/stats", { headers: getHeaders() });
-      if (!res.ok) throw new Error();
-      const stats = await res.json();
+      if (res.ok) stats = await res.json();
+    } catch (_) {}
 
-      grid.innerHTML = `
-        <div class="admin-stat-card">
-          <span class="admin-stat-val">${toPersianDigits(stats.total_users)}</span>
-          <span class="admin-stat-lbl">👥 کل کاربران مجاز</span>
-        </div>
-        <div class="admin-stat-card">
-          <span class="admin-stat-val">${toPersianDigits(stats.recent_life_count)}</span>
-          <span class="admin-stat-lbl">🌱 لاگ‌های امروز</span>
-        </div>
-        <div class="admin-stat-card">
-          <span class="admin-stat-val" style="font-size:13px; color:var(--success-color);">${stats.server_status}</span>
-          <span class="admin-stat-lbl">سرور مینی‌اپ</span>
-        </div>
-        <div class="admin-stat-card">
-          <span class="admin-stat-val" style="font-size:13px; color:var(--success-color);">${toPersianDigits(stats.scheduler_status)}</span>
-          <span class="admin-stat-lbl">زمان‌بند یادآور شبانه</span>
-        </div>
-      `;
-    } catch (e) {
-      grid.innerHTML = '<div class="loading-state" style="color:var(--danger-color)">خطا در دریافت وضعیت ادمین</div>';
-    }
+    const isOnline = navigator.onLine && originReachable;
+    const cacheTime = cacheStats.updatedAt
+      ? new Intl.DateTimeFormat("fa-IR", { hour: "2-digit", minute: "2-digit", month: "short", day: "numeric" }).format(new Date(cacheStats.updatedAt))
+      : "هنوز ذخیره نشده";
+    const reminderValue = Number(stats.reminder_count || 0)
+      ? `${toPersianDigits(stats.reminder_count)} فعال`
+      : "بدون یادآور";
+    const currentScale = normalizeUIFontScale(localStorage.getItem(UI_FONT_SCALE_KEY) || DEFAULT_UI_FONT_SCALE);
+
+    grid.innerHTML = `
+      <div class="admin-stat-card ${isOnline ? "is-success" : "is-warning"}">
+        <span class="admin-stat-val">${isOnline ? "آنلاین" : "آفلاین"}</span>
+        <span class="admin-stat-lbl">🌐 وضعیت اتصال</span>
+      </div>
+      <div class="admin-stat-card ${queueCount ? "is-warning" : "is-success"}">
+        <span class="admin-stat-val">${toPersianDigits(queueCount)}</span>
+        <span class="admin-stat-lbl">☁️ مورد در انتظار همگام‌سازی</span>
+      </div>
+      <div class="admin-stat-card">
+        <span class="admin-stat-val">${toPersianDigits(cacheStats.count)}</span>
+        <span class="admin-stat-lbl">📦 پاسخ ذخیره‌شده برای آفلاین</span>
+      </div>
+      <div class="admin-stat-card">
+        <span class="admin-stat-val admin-stat-text">${toPersianDigits(cacheTime)}</span>
+        <span class="admin-stat-lbl">🕓 آخرین به‌روزرسانی کش</span>
+      </div>
+      <div class="admin-stat-card">
+        <span class="admin-stat-val">${toPersianDigits(stats.recent_life_count || 0)}</span>
+        <span class="admin-stat-lbl">🌱 ثبت روزمرگی امروز</span>
+      </div>
+      <div class="admin-stat-card">
+        <span class="admin-stat-val admin-stat-text">${reminderValue}</span>
+        <span class="admin-stat-lbl">⏰ ${escapeReportText(stats.scheduler_status || "یادآوری زمان‌بندی نشده")}</span>
+      </div>
+      <div class="admin-stat-card">
+        <span class="admin-stat-val" id="adminCurrentFontScale">${toPersianDigits(currentScale)}٪</span>
+        <span class="admin-stat-lbl">🔤 اندازه فعلی متن</span>
+      </div>
+      <div class="admin-stat-card">
+        <span class="admin-stat-val admin-stat-text">نسخه ۶.۱۵</span>
+        <span class="admin-stat-lbl">📱 نسخه رابط کاربری</span>
+      </div>`;
   }
+
+  document.getElementById("btnAdminSyncNow")?.addEventListener("click", async () => {
+    if (!navigator.onLine) {
+      showToast("برای همگام‌سازی باید به اینترنت متصل باشید", "warning");
+      return;
+    }
+    const count = await getOfflineQueueCount();
+    if (!count) {
+      showToast("موردی در صف همگام‌سازی نیست", "success");
+      loadAdminStats();
+      return;
+    }
+    updateSyncStatus({ online: true, count, syncing: true });
+    await flushOfflineQueueDirectly();
+    window.setTimeout(loadAdminStats, 500);
+  });
+
+  document.getElementById("btnRefreshAdminOverview")?.addEventListener("click", async () => {
+    networkRefreshUntil = Date.now() + 10000;
+    await loadAdminStats();
+    showToast("وضعیت برنامه به‌روز شد", "success");
+  });
 
   async function loadAdminUsers() {
     const list = document.getElementById("adminUsersList");
