@@ -5455,8 +5455,10 @@ body {
   flex-wrap: nowrap;
 }
 
-body.reports-view .app-content {
-  max-width: 1440px;
+@media (min-width: 900px) {
+  body.reports-view .app-content {
+    max-width: 1180px;
+  }
 }
 
 #tab-reports,
