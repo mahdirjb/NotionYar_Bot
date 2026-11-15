@@ -6493,6 +6493,86 @@ body { font-size: calc(14px * var(--ui-font-scale)); }
   font-size: calc(12px * var(--ui-font-scale));
 }
 
+/* V6.15.2: the font preference also scales report data and analysis results. */
+#habit-sub-analytics .streak-value,
+#life-sub-radar .radar-stat .stat-num,
+#life-sub-history .history-summary-item strong,
+#tab-reports .prayer-report-item strong {
+  font-size: calc(18px * var(--ui-font-scale));
+}
+
+#spiritual-sub-report .sp-stat-value {
+  font-size: calc(20px * var(--ui-font-scale));
+}
+
+#tab-reports .report-kpi strong {
+  font-size: calc(23px * var(--ui-font-scale));
+}
+
+#habit-sub-analytics .analytics-section-title,
+#spiritual-sub-report .analytics-section-title,
+#tab-reports .advanced-day-card-header strong {
+  font-size: calc(13px * var(--ui-font-scale));
+}
+
+#habit-sub-analytics .ranking-item > span {
+  font-size: calc(13px * var(--ui-font-scale)) !important;
+}
+
+#life-sub-radar .radar-name {
+  font-size: calc(14px * var(--ui-font-scale));
+}
+
+#habit-sub-analytics .management-title,
+#habit-sub-analytics .ranking-item,
+#life-sub-radar .radar-details,
+#life-sub-history .history-entry-title,
+#spiritual-sub-report .sp-bar-header,
+#tab-reports .report-kpi-top,
+#tab-reports .report-list-name,
+#tab-reports .prayer-report-item span {
+  font-size: calc(12px * var(--ui-font-scale));
+}
+
+#habit-sub-analytics .heatmap-table,
+#habit-sub-analytics .matrix-legend,
+#life-sub-radar .radar-status-pill,
+#life-sub-radar .radar-date-badge,
+#life-sub-history .history-result-count,
+#life-sub-history .history-group > header strong,
+#life-sub-history .history-group > header span,
+#life-sub-history .history-entry-title span,
+#life-sub-history .history-entry-meta,
+#spiritual-sub-report .sp-stat-label,
+#tab-reports .report-list-row,
+#tab-reports .report-kpi small,
+#tab-reports .advanced-day-card,
+#tab-reports .advanced-day-badge {
+  font-size: calc(11px * var(--ui-font-scale));
+}
+
+#habit-sub-analytics .streak-label,
+#life-sub-radar .radar-stat .stat-lbl,
+#life-sub-history .history-summary-item span,
+#tab-reports .report-mini-stat span,
+#tab-reports .report-list-value,
+#tab-reports .prayer-report-item small,
+#tab-reports .advanced-day-card-header time {
+  font-size: calc(10px * var(--ui-font-scale));
+}
+
+#habit-sub-analytics .heatmap-table th > div:first-child {
+  font-size: calc(10px * var(--ui-font-scale)) !important;
+}
+
+#habit-sub-analytics .heatmap-table th > div:last-child {
+  font-size: calc(9px * var(--ui-font-scale)) !important;
+}
+
+#tab-reports .report-mini-stat strong {
+  font-size: calc(16px * var(--ui-font-scale));
+}
+
 .admin-section-tabs { grid-template-columns: repeat(4, minmax(0, 1fr)); }
 .admin-section-tabs [hidden],
 .admin-section-card[hidden] { display: none !important; }

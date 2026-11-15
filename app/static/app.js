@@ -1,5 +1,5 @@
 // app/static/app.js
-// NotionYar Telegram Mini App v6.15.1
+// NotionYar Telegram Mini App v6.15.2
 
 (function () {
   const tg = window.Telegram?.WebApp;
