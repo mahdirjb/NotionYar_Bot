@@ -6446,7 +6446,10 @@ textarea,
 }
 
 /* V6.15: readable type controls and a useful single-user control center */
-:root { --ui-font-scale: 1.1; }
+:root {
+  --ui-font-scale: 1.1;
+  --report-font-scale: 1.1;
+}
 
 body { font-size: calc(14px * var(--ui-font-scale)); }
 .app-content :where(button:not(.btn-icon), input, textarea, select) {
@@ -6494,33 +6497,49 @@ body { font-size: calc(14px * var(--ui-font-scale)); }
 }
 
 /* V6.15.2: the font preference also scales report data and analysis results. */
+#habit-sub-analytics,
+#life-sub-radar,
+#life-sub-history,
+#spiritual-sub-report,
+#tab-reports {
+  font-size: calc(14px * var(--report-font-scale));
+}
+
+#habit-sub-analytics .card-title,
+#life-sub-radar .card-title,
+#life-sub-history .card-title,
+#spiritual-sub-report .card-title,
+#tab-reports .report-panel h3 {
+  font-size: calc(14px * var(--report-font-scale));
+}
+
 #habit-sub-analytics .streak-value,
 #life-sub-radar .radar-stat .stat-num,
 #life-sub-history .history-summary-item strong,
 #tab-reports .prayer-report-item strong {
-  font-size: calc(18px * var(--ui-font-scale));
+  font-size: calc(18px * var(--report-font-scale));
 }
 
 #spiritual-sub-report .sp-stat-value {
-  font-size: calc(20px * var(--ui-font-scale));
+  font-size: calc(20px * var(--report-font-scale));
 }
 
 #tab-reports .report-kpi strong {
-  font-size: calc(23px * var(--ui-font-scale));
+  font-size: calc(23px * var(--report-font-scale));
 }
 
 #habit-sub-analytics .analytics-section-title,
 #spiritual-sub-report .analytics-section-title,
 #tab-reports .advanced-day-card-header strong {
-  font-size: calc(13px * var(--ui-font-scale));
+  font-size: calc(13px * var(--report-font-scale));
 }
 
 #habit-sub-analytics .ranking-item > span {
-  font-size: calc(13px * var(--ui-font-scale)) !important;
+  font-size: calc(13px * var(--report-font-scale)) !important;
 }
 
 #life-sub-radar .radar-name {
-  font-size: calc(14px * var(--ui-font-scale));
+  font-size: calc(14px * var(--report-font-scale));
 }
 
 #habit-sub-analytics .management-title,
@@ -6531,7 +6550,7 @@ body { font-size: calc(14px * var(--ui-font-scale)); }
 #tab-reports .report-kpi-top,
 #tab-reports .report-list-name,
 #tab-reports .prayer-report-item span {
-  font-size: calc(12px * var(--ui-font-scale));
+  font-size: calc(12px * var(--report-font-scale));
 }
 
 #habit-sub-analytics .heatmap-table,
@@ -6548,7 +6567,7 @@ body { font-size: calc(14px * var(--ui-font-scale)); }
 #tab-reports .report-kpi small,
 #tab-reports .advanced-day-card,
 #tab-reports .advanced-day-badge {
-  font-size: calc(11px * var(--ui-font-scale));
+  font-size: calc(11px * var(--report-font-scale));
 }
 
 #habit-sub-analytics .streak-label,
@@ -6558,19 +6577,19 @@ body { font-size: calc(14px * var(--ui-font-scale)); }
 #tab-reports .report-list-value,
 #tab-reports .prayer-report-item small,
 #tab-reports .advanced-day-card-header time {
-  font-size: calc(10px * var(--ui-font-scale));
+  font-size: calc(10px * var(--report-font-scale));
 }
 
 #habit-sub-analytics .heatmap-table th > div:first-child {
-  font-size: calc(10px * var(--ui-font-scale)) !important;
+  font-size: calc(10px * var(--report-font-scale)) !important;
 }
 
 #habit-sub-analytics .heatmap-table th > div:last-child {
-  font-size: calc(9px * var(--ui-font-scale)) !important;
+  font-size: calc(9px * var(--report-font-scale)) !important;
 }
 
 #tab-reports .report-mini-stat strong {
-  font-size: calc(16px * var(--ui-font-scale));
+  font-size: calc(16px * var(--report-font-scale));
 }
 
 .admin-section-tabs { grid-template-columns: repeat(4, minmax(0, 1fr)); }
@@ -6611,7 +6630,8 @@ body { font-size: calc(14px * var(--ui-font-scale)); }
   font-weight: 900;
   text-align: center;
 }
-#uiFontScale { width: 100%; min-height: 28px; accent-color: var(--section-accent); cursor: pointer; }
+#uiFontScale,
+#reportFontScale { width: 100%; min-height: 28px; accent-color: var(--section-accent); cursor: pointer; }
 .font-scale-presets { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); width: 100%; margin: 0; }
 .font-scale-presets .seg-btn { min-width: 0; }
 .font-scale-preview {
@@ -6625,7 +6645,133 @@ body { font-size: calc(14px * var(--ui-font-scale)); }
 .font-scale-preview strong { color: var(--text-color); font-size: calc(15px * var(--ui-font-scale)); }
 .font-scale-preview span { color: var(--text-color); font-size: calc(12px * var(--ui-font-scale)); line-height: 1.9; }
 .font-scale-preview small { color: var(--hint-color); font-size: calc(10px * var(--ui-font-scale)); }
-#btnResetFontScale { width: fit-content; margin: 0; }
+/* V6.16: independent typography controls and customizable palettes. */
+.appearance-settings { display: grid; gap: 0; }
+.appearance-setting-group {
+  display: grid;
+  gap: 14px;
+  padding: 18px 0;
+  border-top: 1px solid var(--card-border);
+}
+.appearance-setting-group:first-child { border-top: 0; padding-top: 4px; }
+.setting-group-heading > div { display: grid; gap: 3px; }
+.setting-group-heading strong { color: var(--text-color); font-size: calc(14px * var(--ui-font-scale)); }
+.setting-group-heading span { color: var(--hint-color); font-size: calc(11px * var(--ui-font-scale)); line-height: 1.7; }
+.interface-font-preview { grid-template-columns: auto minmax(0, 1fr); align-items: center; }
+.interface-font-preview .btn-step { margin: 0; }
+.report-font-preview strong { font-size: calc(15px * var(--report-font-scale)); }
+.report-font-preview span { font-size: calc(12px * var(--report-font-scale)); }
+.report-font-preview small { font-size: calc(10px * var(--report-font-scale)); }
+.theme-mode-control { width: min(100%, 360px); }
+.theme-mode-control .seg-btn { flex: 1; }
+.theme-preset-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 8px;
+}
+.theme-preset {
+  min-width: 0;
+  min-height: 96px;
+  display: grid;
+  align-content: center;
+  justify-items: start;
+  gap: 5px;
+  padding: 11px;
+  border: 1px solid var(--card-border);
+  border-radius: 7px;
+  background: var(--card-bg);
+  color: var(--text-color);
+  text-align: right;
+  cursor: pointer;
+}
+.theme-preset:hover { border-color: color-mix(in srgb, var(--section-accent) 45%, var(--card-border)); }
+.theme-preset.active {
+  border-color: var(--section-accent);
+  box-shadow: inset 0 0 0 2px color-mix(in srgb, var(--section-accent) 18%, transparent);
+}
+.theme-preset strong { font-size: calc(12px * var(--ui-font-scale)); }
+.theme-preset small { color: var(--hint-color); font-size: calc(9px * var(--ui-font-scale)); }
+.theme-preset-swatches { display: flex; gap: 4px; direction: ltr; }
+.theme-preset-swatches i { width: 24px; height: 9px; border-radius: 3px; background: var(--swatch); }
+.custom-accent-setting {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 52px auto;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 0;
+}
+.custom-accent-setting label { display: grid; gap: 2px; }
+.custom-accent-setting label span { color: var(--text-color); font-weight: 800; }
+.custom-accent-setting label small { color: var(--hint-color); line-height: 1.6; }
+#customAccentColor {
+  width: 52px;
+  height: 42px;
+  padding: 4px;
+  border: 1px solid var(--input-border);
+  border-radius: 7px;
+  background: var(--input-bg);
+  cursor: pointer;
+}
+#btnClearCustomAccent,
+#btnResetFontScales { margin: 0; }
+
+#tab-reports :where(.report-eyebrow, .chart-legend, .report-chart-label, .report-empty) {
+  font-size: calc(10px * var(--report-font-scale));
+}
+
+html[data-palette="ocean"][data-theme="light"],
+body[data-palette="ocean"][data-theme="light"] {
+  --bg-color: #f3f8fa; --secondary-bg-color: #ffffff; --card-bg: #ffffff; --card-border: #d5e3e8;
+  --text-color: #20323c; --hint-color: #657985; --input-bg: #f8fbfc; --input-border: #cbdde3;
+  --button-color: #176b87; --link-color: #176b87; --active-chip: #176b87; --subtle-surface: #eaf2f5;
+}
+html[data-palette="ocean"][data-theme="dark"],
+body[data-palette="ocean"][data-theme="dark"] {
+  --bg-color: #111b22; --secondary-bg-color: #18252d; --card-bg: #1c2a33; --card-border: #31434e;
+  --text-color: #f3f8fa; --hint-color: #a9bac3; --input-bg: #142129; --input-border: #3b505c;
+  --button-color: #54b8cf; --link-color: #74c8d9; --active-chip: #54b8cf; --subtle-surface: #263741;
+}
+html[data-palette="forest"][data-theme="light"],
+body[data-palette="forest"][data-theme="light"] {
+  --bg-color: #f5f8f4; --secondary-bg-color: #ffffff; --card-bg: #ffffff; --card-border: #d8e2d8;
+  --text-color: #29362f; --hint-color: #687a6f; --input-bg: #f9fbf8; --input-border: #cedace;
+  --button-color: #2f7654; --link-color: #2f7654; --active-chip: #2f7654; --subtle-surface: #edf3ed;
+}
+html[data-palette="forest"][data-theme="dark"],
+body[data-palette="forest"][data-theme="dark"] {
+  --bg-color: #141c17; --secondary-bg-color: #1b2720; --card-bg: #202c25; --card-border: #35483b;
+  --text-color: #f5faf6; --hint-color: #adbdaf; --input-bg: #17231b; --input-border: #405446;
+  --button-color: #65bd8e; --link-color: #7acb9e; --active-chip: #65bd8e; --subtle-surface: #2a392f;
+}
+html[data-palette="graphite"][data-theme="light"],
+body[data-palette="graphite"][data-theme="light"] {
+  --bg-color: #f5f7f9; --secondary-bg-color: #ffffff; --card-bg: #ffffff; --card-border: #dce1e6;
+  --text-color: #29323b; --hint-color: #6e7882; --input-bg: #fafbfc; --input-border: #d2d8de;
+  --button-color: #4e6374; --link-color: #405f78; --active-chip: #4e6374; --subtle-surface: #edf0f3;
+}
+html[data-palette="graphite"][data-theme="dark"],
+body[data-palette="graphite"][data-theme="dark"] {
+  --bg-color: #171a20; --secondary-bg-color: #20242b; --card-bg: #242932; --card-border: #3c434e;
+  --text-color: #f5f7fa; --hint-color: #b1b8c1; --input-bg: #1c2027; --input-border: #484f5b;
+  --button-color: #86a3b8; --link-color: #9bb5c7; --active-chip: #86a3b8; --subtle-surface: #303640;
+}
+
+body[data-palette="ocean"][data-section="habits"] { --section-accent: #147d8d; }
+body[data-palette="ocean"][data-section="life"] { --section-accent: #d26072; }
+body[data-palette="ocean"][data-section="spiritual"] { --section-accent: #596bc4; }
+body[data-palette="ocean"][data-section="reports"] { --section-accent: #b87816; }
+body[data-palette="ocean"][data-section="admin"] { --section-accent: #3677a5; }
+body[data-palette="forest"][data-section="habits"] { --section-accent: #2f7654; }
+body[data-palette="forest"][data-section="life"] { --section-accent: #c45d68; }
+body[data-palette="forest"][data-section="spiritual"] { --section-accent: #7654a8; }
+body[data-palette="forest"][data-section="reports"] { --section-accent: #a8751d; }
+body[data-palette="forest"][data-section="admin"] { --section-accent: #39758c; }
+body[data-palette="graphite"][data-section="habits"] { --section-accent: #4e6374; }
+body[data-palette="graphite"][data-section="life"] { --section-accent: #a45570; }
+body[data-palette="graphite"][data-section="spiritual"] { --section-accent: #6667a5; }
+body[data-palette="graphite"][data-section="reports"] { --section-accent: #987122; }
+body[data-palette="graphite"][data-section="admin"] { --section-accent: #3d718d; }
+body[data-palette][data-section] { --section-soft: color-mix(in srgb, var(--section-accent) 12%, var(--card-bg)); }
 
 @media (max-width: 900px) {
   .admin-stats-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
@@ -6635,5 +6781,8 @@ body { font-size: calc(14px * var(--ui-font-scale)); }
   .admin-quick-actions { grid-template-columns: 1fr; }
   .font-scale-presets { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .font-scale-presets .seg-btn { min-height: 42px; white-space: normal; }
-  #btnResetFontScale { width: 100%; }
+  .theme-preset-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .custom-accent-setting { grid-template-columns: minmax(0, 1fr) 52px; }
+  #btnClearCustomAccent { grid-column: 1 / -1; width: 100%; }
+  #btnResetFontScales { width: 100%; }
 }

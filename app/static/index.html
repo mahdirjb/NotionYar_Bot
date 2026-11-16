@@ -17,7 +17,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Vazirmatn:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="/static/app.css?v=6.15.2">
+  <link rel="stylesheet" href="/static/app.css?v=6.16.0">
 </head>
 
 <body class="auth-pending">
@@ -893,25 +893,101 @@
             <span class="icon"><i data-lucide="type"></i></span>
             <span>ظاهر و خوانایی</span>
           </div>
-          <p class="settings-help">اندازه متن در گزارش‌ها، کارت‌ها، فرم‌ها و نوارهای پیمایش روی همین دستگاه ذخیره می‌شود.</p>
-          <div class="font-scale-setting">
-            <div class="font-scale-heading">
-              <label for="uiFontScale">اندازه متن برنامه</label>
-              <output id="uiFontScaleValue" for="uiFontScale">۱۱۰٪</output>
-            </div>
-            <input id="uiFontScale" type="range" min="90" max="140" step="5" value="110">
-            <div class="segmented-control font-scale-presets" aria-label="اندازه‌های آماده متن">
-              <button type="button" class="seg-btn" data-font-scale="95">جمع‌وجور</button>
-              <button type="button" class="seg-btn" data-font-scale="110">خوانا</button>
-              <button type="button" class="seg-btn" data-font-scale="125">درشت</button>
-              <button type="button" class="seg-btn" data-font-scale="140">خیلی درشت</button>
-            </div>
-            <div class="font-scale-preview" aria-live="polite">
-              <strong>نمونه متن گزارش</strong>
-              <span>توزیع فعالیت‌ها، جزئیات روزانه و وضعیت همگام‌سازی با این اندازه نمایش داده می‌شوند.</span>
-              <small>متن توضیحی و اطلاعات تکمیلی</small>
-            </div>
-            <button type="button" class="btn-step" id="btnResetFontScale"><i data-lucide="rotate-ccw"></i><span>بازگشت به اندازه خوانا</span></button>
+          <p class="settings-help">اندازه متن رابط و گزارش‌ها را جدا تنظیم کن و ظاهر برنامه را با تم دلخواهت هماهنگ کن. همه انتخاب‌ها روی همین دستگاه ذخیره می‌شوند.</p>
+          <div class="appearance-settings">
+            <section class="appearance-setting-group" aria-labelledby="interfaceFontTitle">
+              <div class="setting-group-heading">
+                <div>
+                  <strong id="interfaceFontTitle">متن رابط و دکمه‌ها</strong>
+                  <span>دکمه‌ها، تب‌ها، فرم‌ها و متن عمومی برنامه</span>
+                </div>
+              </div>
+              <div class="font-scale-setting">
+                <div class="font-scale-heading">
+                  <label for="uiFontScale">اندازه متن رابط</label>
+                  <output id="uiFontScaleValue" for="uiFontScale">۱۱۰٪</output>
+                </div>
+                <input id="uiFontScale" type="range" min="90" max="140" step="5" value="110">
+                <div class="segmented-control font-scale-presets" aria-label="اندازه‌های آماده متن رابط">
+                  <button type="button" class="seg-btn" data-ui-font-scale="95">جمع‌وجور</button>
+                  <button type="button" class="seg-btn" data-ui-font-scale="110">خوانا</button>
+                  <button type="button" class="seg-btn" data-ui-font-scale="125">درشت</button>
+                  <button type="button" class="seg-btn" data-ui-font-scale="140">خیلی درشت</button>
+                </div>
+                <div class="font-scale-preview interface-font-preview" aria-live="polite">
+                  <button type="button" class="btn-step">نمونه دکمه</button>
+                  <span>نمونه متن فرم و توضیحات رابط</span>
+                </div>
+              </div>
+            </section>
+
+            <section class="appearance-setting-group" aria-labelledby="reportFontTitle">
+              <div class="setting-group-heading">
+                <div>
+                  <strong id="reportFontTitle">متن داده‌ها و گزارش‌ها</strong>
+                  <span>عددها، رکوردها، ماتریس‌ها، رادار و تحلیل‌های آماری</span>
+                </div>
+              </div>
+              <div class="font-scale-setting">
+                <div class="font-scale-heading">
+                  <label for="reportFontScale">اندازه متن گزارش</label>
+                  <output id="reportFontScaleValue" for="reportFontScale">۱۱۰٪</output>
+                </div>
+                <input id="reportFontScale" type="range" min="90" max="140" step="5" value="110">
+                <div class="segmented-control font-scale-presets" aria-label="اندازه‌های آماده متن گزارش">
+                  <button type="button" class="seg-btn" data-report-font-scale="95">جمع‌وجور</button>
+                  <button type="button" class="seg-btn" data-report-font-scale="110">خوانا</button>
+                  <button type="button" class="seg-btn" data-report-font-scale="125">درشت</button>
+                  <button type="button" class="seg-btn" data-report-font-scale="140">خیلی درشت</button>
+                </div>
+                <div class="font-scale-preview report-font-preview" aria-live="polite">
+                  <strong>۸۴٪ مداومت</strong>
+                  <span>۲۱ روز فعال از ۳۰ روز اخیر</span>
+                  <small>جزئیات و اطلاعات تکمیلی گزارش</small>
+                </div>
+              </div>
+            </section>
+
+            <section class="appearance-setting-group" aria-labelledby="themeTitle">
+              <div class="setting-group-heading">
+                <div>
+                  <strong id="themeTitle">تم و رنگ‌بندی</strong>
+                  <span>یک ترکیب آماده انتخاب کن یا رنگ اصلی را خودت بساز.</span>
+                </div>
+              </div>
+              <div class="segmented-control theme-mode-control" aria-label="حالت روشنایی تم">
+                <button type="button" class="seg-btn" data-theme-mode="light">روشن</button>
+                <button type="button" class="seg-btn" data-theme-mode="dark">تاریک</button>
+              </div>
+              <div class="theme-preset-grid" role="radiogroup" aria-label="تم‌های آماده">
+                <button type="button" class="theme-preset" data-theme-palette="balanced" role="radio">
+                  <span class="theme-preset-swatches"><i style="--swatch:#087f8c"></i><i style="--swatch:#e85d75"></i><i style="--swatch:#5b5bb7"></i></span>
+                  <strong>متعادل</strong><small>چندرنگ و آشنا</small>
+                </button>
+                <button type="button" class="theme-preset" data-theme-palette="ocean" role="radio">
+                  <span class="theme-preset-swatches"><i style="--swatch:#176b87"></i><i style="--swatch:#d26072"></i><i style="--swatch:#596bc4"></i></span>
+                  <strong>اقیانوسی</strong><small>شفاف و آرام</small>
+                </button>
+                <button type="button" class="theme-preset" data-theme-palette="forest" role="radio">
+                  <span class="theme-preset-swatches"><i style="--swatch:#2f7654"></i><i style="--swatch:#c45d68"></i><i style="--swatch:#7654a8"></i></span>
+                  <strong>جنگلی</strong><small>طبیعی و متمرکز</small>
+                </button>
+                <button type="button" class="theme-preset" data-theme-palette="graphite" role="radio">
+                  <span class="theme-preset-swatches"><i style="--swatch:#4e6374"></i><i style="--swatch:#a45570"></i><i style="--swatch:#6667a5"></i></span>
+                  <strong>گرافیتی</strong><small>خنثی و حرفه‌ای</small>
+                </button>
+              </div>
+              <div class="custom-accent-setting">
+                <label for="customAccentColor">
+                  <span>رنگ اصلی سفارشی</span>
+                  <small>روی دکمه‌های اصلی و لینک‌ها اعمال می‌شود.</small>
+                </label>
+                <input id="customAccentColor" type="color" value="#087f8c" aria-label="انتخاب رنگ اصلی سفارشی">
+                <button type="button" class="btn-step" id="btnClearCustomAccent"><i data-lucide="rotate-ccw"></i><span>رنگ تم</span></button>
+              </div>
+            </section>
+
+            <button type="button" class="btn-step" id="btnResetFontScales"><i data-lucide="rotate-ccw"></i><span>بازگشت اندازه‌ها به حالت خوانا</span></button>
           </div>
         </div>
 
@@ -1319,6 +1395,6 @@
   </div>
 
   <script src="/static/vendor/lucide.min.js?v=1.72.0"></script>
-  <script src="/static/app.js?v=6.15.2"></script>
+  <script src="/static/app.js?v=6.16.0"></script>
 </body>
 </html>

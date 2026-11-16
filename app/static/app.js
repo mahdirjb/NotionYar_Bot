@@ -1,5 +1,5 @@
 // app/static/app.js
-// NotionYar Telegram Mini App v6.15.2
+// NotionYar Telegram Mini App v6.16.0
 
 (function () {
   const tg = window.Telegram?.WebApp;
@@ -37,7 +37,9 @@
     adminUsers: false,
   });
   const UI_FONT_SCALE_KEY = "notionyar_ui_font_scale";
+  const REPORT_FONT_SCALE_KEY = "notionyar_report_font_scale";
   const DEFAULT_UI_FONT_SCALE = 110;
+  const DEFAULT_REPORT_FONT_SCALE = 110;
   const UI_PERSIAN_DIGITS = "۰۱۲۳۴۵۶۷۸۹";
 
   function normalizeUIFontScale(value) {
@@ -58,13 +60,32 @@
     if (slider) slider.value = String(scale);
     if (output) output.textContent = `${displayScale}٪`;
     if (overviewValue) overviewValue.textContent = `${displayScale}٪`;
-    document.querySelectorAll("[data-font-scale]").forEach((button) => {
-      button.classList.toggle("active", Number(button.dataset.fontScale) === scale);
+    document.querySelectorAll("[data-ui-font-scale]").forEach((button) => {
+      button.classList.toggle("active", Number(button.dataset.uiFontScale) === scale);
+    });
+    return scale;
+  }
+
+  function applyReportFontScale(value, persist = false) {
+    const scale = normalizeUIFontScale(value);
+    const displayScale = String(scale).replace(/\d/g, (digit) => UI_PERSIAN_DIGITS[Number(digit)]);
+    document.documentElement.style.setProperty("--report-font-scale", String(scale / 100));
+    document.documentElement.dataset.reportFontScale = String(scale);
+    if (persist) localStorage.setItem(REPORT_FONT_SCALE_KEY, String(scale));
+    const slider = document.getElementById("reportFontScale");
+    const output = document.getElementById("reportFontScaleValue");
+    const overviewValue = document.getElementById("adminCurrentReportFontScale");
+    if (slider) slider.value = String(scale);
+    if (output) output.textContent = `${displayScale}٪`;
+    if (overviewValue) overviewValue.textContent = `${displayScale}٪`;
+    document.querySelectorAll("[data-report-font-scale]").forEach((button) => {
+      button.classList.toggle("active", Number(button.dataset.reportFontScale) === scale);
     });
     return scale;
   }
 
   applyUIFontScale(localStorage.getItem(UI_FONT_SCALE_KEY) || DEFAULT_UI_FONT_SCALE);
+  applyReportFontScale(localStorage.getItem(REPORT_FONT_SCALE_KEY) || localStorage.getItem(UI_FONT_SCALE_KEY) || DEFAULT_REPORT_FONT_SCALE);
 
   function invalidateDataCache(...keys) {
     keys.forEach((key) => {
@@ -634,21 +655,64 @@
   });
 
   // ==========================================
-  // 🌓 THEME SWITCHER (DARK / LIGHT MODE)
+  // 🌓 THEME AND PALETTE SETTINGS
   // ==========================================
   function initTheme() {
     const btnToggle = document.getElementById("btnToggleTheme");
     const iconSpan = document.getElementById("themeIcon");
+    const themeKey = "notionyar_theme_v4";
+    const paletteKey = "notionyar_theme_palette";
+    const accentKey = "notionyar_custom_accent";
+    const palettes = new Set(["balanced", "ocean", "forest", "graphite"]);
+    const colorInput = document.getElementById("customAccentColor");
 
     function getInitialTheme() {
-      const saved = localStorage.getItem("notionyar_theme_v4");
+      const saved = localStorage.getItem(themeKey);
       if (saved === "light" || saved === "dark") return saved;
       return "light";
+    }
+
+    function applyPalette(value, persist = false) {
+      const palette = palettes.has(value) ? value : "balanced";
+      document.documentElement.setAttribute("data-palette", palette);
+      document.body.setAttribute("data-palette", palette);
+      if (persist) localStorage.setItem(paletteKey, palette);
+      document.querySelectorAll("[data-theme-palette]").forEach((button) => {
+        const active = button.dataset.themePalette === palette;
+        button.classList.toggle("active", active);
+        button.setAttribute("aria-checked", String(active));
+      });
+      return palette;
+    }
+
+    function applyCustomAccent(value, persist = false) {
+      const color = /^#[0-9a-f]{6}$/i.test(value || "") ? value : "";
+      [document.documentElement, document.body].forEach((element) => {
+        if (color) {
+          element.style.setProperty("--button-color", color);
+          element.style.setProperty("--link-color", color);
+          element.style.setProperty("--active-chip", color);
+        } else {
+          element.style.removeProperty("--button-color");
+          element.style.removeProperty("--link-color");
+          element.style.removeProperty("--active-chip");
+        }
+      });
+      if (colorInput && color) colorInput.value = color;
+      if (persist) {
+        if (color) localStorage.setItem(accentKey, color);
+        else localStorage.removeItem(accentKey);
+      }
+      document.querySelector(".custom-accent-setting")?.classList.toggle("has-custom-color", Boolean(color));
+      return color;
     }
 
     function applyTheme(theme) {
       document.documentElement.setAttribute("data-theme", theme);
       document.body.setAttribute("data-theme", theme);
+      document.querySelectorAll("[data-theme-mode]").forEach((button) => {
+        button.classList.toggle("active", button.dataset.themeMode === theme);
+      });
       if (iconSpan) {
         iconSpan.innerHTML = `<i class="ui-icon" data-lucide="${theme === "dark" ? "sun" : "moon"}"></i>`;
         refreshIconography();
@@ -667,13 +731,39 @@
     }
 
     let currentTheme = getInitialTheme();
+    applyPalette(localStorage.getItem(paletteKey) || "balanced");
+    applyCustomAccent(localStorage.getItem(accentKey) || "");
     applyTheme(currentTheme);
 
     btnToggle?.addEventListener("click", () => {
       currentTheme = currentTheme === "dark" ? "light" : "dark";
-      localStorage.setItem("notionyar_theme_v4", currentTheme);
+      localStorage.setItem(themeKey, currentTheme);
       applyTheme(currentTheme);
       haptic("medium");
+    });
+    document.querySelectorAll("[data-theme-mode]").forEach((button) => {
+      button.addEventListener("click", () => {
+        currentTheme = button.dataset.themeMode;
+        localStorage.setItem(themeKey, currentTheme);
+        applyTheme(currentTheme);
+        showToast(`حالت ${currentTheme === "dark" ? "تاریک" : "روشن"} فعال شد`, "success");
+      });
+    });
+    document.querySelectorAll("[data-theme-palette]").forEach((button) => {
+      button.addEventListener("click", () => {
+        applyCustomAccent("", true);
+        applyPalette(button.dataset.themePalette, true);
+        showToast("تم رنگی جدید اعمال شد", "success");
+      });
+    });
+    colorInput?.addEventListener("input", () => applyCustomAccent(colorInput.value));
+    colorInput?.addEventListener("change", () => {
+      applyCustomAccent(colorInput.value, true);
+      showToast("رنگ اصلی سفارشی ذخیره شد", "success");
+    });
+    document.getElementById("btnClearCustomAccent")?.addEventListener("click", () => {
+      applyCustomAccent("", true);
+      showToast("رنگ اصلی تم بازگردانده شد", "success");
     });
   }
 
@@ -1261,17 +1351,31 @@
   fontScaleInput?.addEventListener("input", () => applyUIFontScale(fontScaleInput.value));
   fontScaleInput?.addEventListener("change", () => {
     const scale = applyUIFontScale(fontScaleInput.value, true);
-    showToast(`اندازه متن روی ${toPersianDigits(scale)} درصد ذخیره شد`, "success");
+    showToast(`اندازه متن رابط روی ${toPersianDigits(scale)} درصد ذخیره شد`, "success");
   });
-  document.querySelectorAll("[data-font-scale]").forEach((button) => {
+  document.querySelectorAll("[data-ui-font-scale]").forEach((button) => {
     button.addEventListener("click", () => {
-      const scale = applyUIFontScale(button.dataset.fontScale, true);
-      showToast(`اندازه متن روی ${toPersianDigits(scale)} درصد تنظیم شد`, "success");
+      const scale = applyUIFontScale(button.dataset.uiFontScale, true);
+      showToast(`اندازه متن رابط روی ${toPersianDigits(scale)} درصد تنظیم شد`, "success");
     });
   });
-  document.getElementById("btnResetFontScale")?.addEventListener("click", () => {
+  const reportFontScaleInput = document.getElementById("reportFontScale");
+  applyReportFontScale(localStorage.getItem(REPORT_FONT_SCALE_KEY) || localStorage.getItem(UI_FONT_SCALE_KEY) || DEFAULT_REPORT_FONT_SCALE);
+  reportFontScaleInput?.addEventListener("input", () => applyReportFontScale(reportFontScaleInput.value));
+  reportFontScaleInput?.addEventListener("change", () => {
+    const scale = applyReportFontScale(reportFontScaleInput.value, true);
+    showToast(`اندازه متن گزارش‌ها روی ${toPersianDigits(scale)} درصد ذخیره شد`, "success");
+  });
+  document.querySelectorAll("[data-report-font-scale]").forEach((button) => {
+    button.addEventListener("click", () => {
+      const scale = applyReportFontScale(button.dataset.reportFontScale, true);
+      showToast(`اندازه متن گزارش‌ها روی ${toPersianDigits(scale)} درصد تنظیم شد`, "success");
+    });
+  });
+  document.getElementById("btnResetFontScales")?.addEventListener("click", () => {
     applyUIFontScale(DEFAULT_UI_FONT_SCALE, true);
-    showToast("اندازه خوانای پیش‌فرض بازگردانده شد", "success");
+    applyReportFontScale(DEFAULT_REPORT_FONT_SCALE, true);
+    showToast("اندازه‌های خوانای پیش‌فرض بازگردانده شدند", "success");
   });
 
   // Segmented Controls (Sub-tabs)
@@ -4146,6 +4250,7 @@
       ? `${toPersianDigits(stats.reminder_count)} فعال`
       : "بدون یادآور";
     const currentScale = normalizeUIFontScale(localStorage.getItem(UI_FONT_SCALE_KEY) || DEFAULT_UI_FONT_SCALE);
+    const currentReportScale = normalizeUIFontScale(localStorage.getItem(REPORT_FONT_SCALE_KEY) || currentScale);
 
     grid.innerHTML = `
       <div class="admin-stat-card ${isOnline ? "is-success" : "is-warning"}">
@@ -4174,10 +4279,14 @@
       </div>
       <div class="admin-stat-card">
         <span class="admin-stat-val" id="adminCurrentFontScale">${toPersianDigits(currentScale)}٪</span>
-        <span class="admin-stat-lbl">🔤 اندازه فعلی متن</span>
+        <span class="admin-stat-lbl">🔤 متن رابط و دکمه‌ها</span>
       </div>
       <div class="admin-stat-card">
-        <span class="admin-stat-val admin-stat-text">نسخه ۶.۱۵</span>
+        <span class="admin-stat-val" id="adminCurrentReportFontScale">${toPersianDigits(currentReportScale)}٪</span>
+        <span class="admin-stat-lbl">📊 متن داده‌ها و گزارش‌ها</span>
+      </div>
+      <div class="admin-stat-card">
+        <span class="admin-stat-val admin-stat-text">نسخه ۶.۱۶</span>
         <span class="admin-stat-lbl">📱 نسخه رابط کاربری</span>
       </div>`;
   }
