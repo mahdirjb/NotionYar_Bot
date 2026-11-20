@@ -1,5 +1,5 @@
 // app/static/app.js
-// NotionYar Telegram Mini App v6.17.0
+// NotionYar Telegram Mini App v6.17.1
 
 (function () {
   const tg = window.Telegram?.WebApp;
@@ -698,10 +698,12 @@
           element.style.setProperty("--button-color", color);
           element.style.setProperty("--link-color", color);
           element.style.setProperty("--active-chip", color);
+          element.style.setProperty("--section-accent", color);
         } else {
           element.style.removeProperty("--button-color");
           element.style.removeProperty("--link-color");
           element.style.removeProperty("--active-chip");
+          element.style.removeProperty("--section-accent");
         }
       });
       if (colorInput && color) colorInput.value = color;
@@ -5015,6 +5017,64 @@
     return { label: "نخوانده", className: "is-none" };
   }
 
+  function selectedSpiritualPrayerKeys() {
+    return ["sobh", "zohr", "asr", "maghreb", "eshsa"].filter((key) => spiritualReportPrayers.has(key));
+  }
+
+  function renderSpiritualReportAnalytics() {
+    const report = spiritualReportPayload;
+    const summaryGrid = document.getElementById("spiritualReportSummaryGrid");
+    const barsContainer = document.getElementById("spiritualPrayerBarsContainer");
+    if (!report || !summaryGrid || !barsContainer) return;
+
+    const prayerKeys = selectedSpiritualPrayerKeys();
+    const pStats = report.prayer_stats || {};
+    const totalDays = Number(report.total_days || 0);
+    const totalAda = prayerKeys.reduce((sum, key) => sum + Number(pStats[key]?.ada || 0), 0);
+    const totalQaza = prayerKeys.reduce((sum, key) => sum + Number(pStats[key]?.qaza || 0), 0);
+    const totalPossible = totalDays * prayerKeys.length;
+    const adaRate = totalPossible ? Math.round((totalAda / totalPossible) * 1000) / 10 : 0;
+    const perfectDays = (report.daily_salah || []).filter((day) => prayerKeys.every(
+      (key) => day.prayers?.[key]?.status === "ada"
+    )).length;
+    const selectionLabel = prayerKeys.length === 5 ? "همه نمازها" : `${toPersianDigits(prayerKeys.length)} نماز انتخابی`;
+
+    summaryGrid.innerHTML = `
+      <div class="sp-stat-card">
+        <span class="sp-stat-value">${toPersianDigits(adaRate)}٪</span>
+        <span class="sp-stat-label">نرخ ادای به‌موقع ${selectionLabel}</span>
+      </div>
+      <div class="sp-stat-card">
+        <span class="sp-stat-value">${toPersianDigits(perfectDays)} روز</span>
+        <span class="sp-stat-label">روزهای کامل در انتخاب فعلی</span>
+      </div>
+      <div class="sp-stat-card">
+        <span class="sp-stat-value sp-stat-success">${toPersianDigits(totalAda)}</span>
+        <span class="sp-stat-label">مجموع نمازهای اداء</span>
+      </div>
+      <div class="sp-stat-card">
+        <span class="sp-stat-value sp-stat-warning">${toPersianDigits(totalQaza)}</span>
+        <span class="sp-stat-label">مجموع نمازهای قضاء</span>
+      </div>
+    `;
+
+    barsContainer.innerHTML = prayerKeys.map((key) => {
+      const item = pStats[key] || {};
+      const meta = PRAYER_DISPLAY_META[key] || { name: key, emoji: "🕌" };
+      const rate = Number(item.rate || 0);
+      return `
+        <div class="sp-bar-item">
+          <div class="sp-bar-header">
+            <span>${meta.emoji} ${meta.name} (اداء: ${toPersianDigits(item.ada || 0)} | قضاء: ${toPersianDigits(item.qaza || 0)})</span>
+            <span class="sp-bar-rate">${toPersianDigits(rate)}٪</span>
+          </div>
+          <div class="sp-bar-track">
+            <div class="sp-bar-fill" style="width:${Math.max(0, Math.min(100, rate))}%;"></div>
+          </div>
+        </div>`;
+    }).join("");
+  }
+
   function renderSpiritualPrayerTimeline() {
     const container = document.getElementById("spiritualPrayerTimeline");
     if (!container) return;
@@ -5023,7 +5083,7 @@
       container.innerHTML = '<div class="loading-state">در حال آماده‌سازی نمای نمازها...</div>';
       return;
     }
-    const prayerKeys = ["sobh", "zohr", "asr", "maghreb", "eshsa"].filter((key) => spiritualReportPrayers.has(key));
+    const prayerKeys = selectedSpiritualPrayerKeys();
     if (!prayerKeys.length) {
       container.innerHTML = '<div class="report-empty">حداقل یک نماز را برای نمایش انتخاب کن.</div>';
       return;
@@ -5097,6 +5157,7 @@
     button.classList.toggle("active", active);
     button.setAttribute("aria-pressed", String(active));
     renderSpiritualPrayerTimeline();
+    renderSpiritualReportAnalytics();
   });
 
   document.querySelectorAll("[data-sp-report-period]").forEach((btn) => {
@@ -5139,48 +5200,7 @@
       const rep = data.report || {};
       spiritualReportPayload = rep;
       renderSpiritualPrayerTimeline();
-
-      summaryGrid.innerHTML = `
-        <div class="sp-stat-card">
-          <span class="sp-stat-value">${toPersianDigits(rep.overall_ada_rate || 0)}٪</span>
-          <span class="sp-stat-label">نرخ ادای به‌موقع نمازها</span>
-        </div>
-        <div class="sp-stat-card">
-          <span class="sp-stat-value">${toPersianDigits(rep.perfect_days || 0)} روز</span>
-          <span class="sp-stat-label">روزهای با ۵/۵ ادای کامل</span>
-        </div>
-        <div class="sp-stat-card">
-          <span class="sp-stat-value" style="color:#10b981;">${toPersianDigits(rep.total_ada || 0)}</span>
-          <span class="sp-stat-label">مجموع نمازهای اداء</span>
-        </div>
-        <div class="sp-stat-card">
-          <span class="sp-stat-value" style="color:#f59e0b;">${toPersianDigits(rep.total_qaza || 0)}</span>
-          <span class="sp-stat-label">مجموع نمازهای قضاء</span>
-        </div>
-      `;
-
-      const pStats = rep.prayer_stats || {};
-      const prayerKeys = ["sobh", "zohr", "asr", "maghreb", "eshsa"];
-      barsContainer.innerHTML = "";
-
-      prayerKeys.forEach((k) => {
-        const item = pStats[k] || {};
-        const meta = PRAYER_DISPLAY_META[k] || { name: k, emoji: "🕌" };
-        const rate = item.rate || 0;
-
-        const barEl = document.createElement("div");
-        barEl.className = "sp-bar-item";
-        barEl.innerHTML = `
-          <div class="sp-bar-header">
-            <span>${meta.emoji} ${meta.name} (اداء: ${toPersianDigits(item.ada || 0)} | قضاء: ${toPersianDigits(item.qaza || 0)})</span>
-            <span style="font-weight:700;">${toPersianDigits(rate)}٪</span>
-          </div>
-          <div class="sp-bar-track">
-            <div class="sp-bar-fill" style="width: ${rate}%;"></div>
-          </div>
-        `;
-        barsContainer.appendChild(barEl);
-      });
+      renderSpiritualReportAnalytics();
     } catch (err) {
       console.error(err);
       spiritualReportPayload = null;

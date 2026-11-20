@@ -6523,6 +6523,9 @@ body { font-size: calc(14px * var(--ui-font-scale)); }
 #spiritual-sub-report .sp-stat-value {
   font-size: calc(20px * var(--report-font-scale));
 }
+#spiritual-sub-report .sp-stat-success { color: var(--success-color); }
+#spiritual-sub-report .sp-stat-warning { color: var(--warning-color); }
+#spiritual-sub-report .sp-bar-rate { font-weight: 800; color: var(--section-accent); }
 
 #tab-reports .report-kpi strong {
   font-size: calc(23px * var(--report-font-scale));
