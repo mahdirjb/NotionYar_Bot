@@ -1,5 +1,5 @@
 // app/static/app.js
-// NotionYar Telegram Mini App v6.16.0
+// NotionYar Telegram Mini App v6.16.1
 
 (function () {
   const tg = window.Telegram?.WebApp;
@@ -703,7 +703,7 @@
         if (color) localStorage.setItem(accentKey, color);
         else localStorage.removeItem(accentKey);
       }
-      document.querySelector(".custom-accent-setting")?.classList.toggle("has-custom-color", Boolean(color));
+      document.querySelector(".theme-compact-toolbar")?.classList.toggle("has-custom-color", Boolean(color));
       return color;
     }
 
@@ -1346,30 +1346,46 @@
     else localStorage.setItem("notionyar_admin_section", "admin-overview");
   }
 
+  function activateAppearanceSection(target) {
+    const panel = document.getElementById(target);
+    if (!panel) return;
+    document.querySelectorAll("[data-appearance-section]").forEach((button) => {
+      button.classList.toggle("active", button.dataset.appearanceSection === target);
+    });
+    document.querySelectorAll(".appearance-setting-panel").forEach((section) => {
+      section.hidden = section !== panel;
+    });
+    localStorage.setItem("notionyar_appearance_section", target);
+  }
+
+  document.querySelectorAll("[data-appearance-section]").forEach((button) => {
+    button.addEventListener("click", () => {
+      activateAppearanceSection(button.dataset.appearanceSection);
+      haptic("light");
+    });
+  });
+  activateAppearanceSection(localStorage.getItem("notionyar_appearance_section") || "appearance-interface");
+
   const fontScaleInput = document.getElementById("uiFontScale");
   applyUIFontScale(localStorage.getItem(UI_FONT_SCALE_KEY) || DEFAULT_UI_FONT_SCALE);
   fontScaleInput?.addEventListener("input", () => applyUIFontScale(fontScaleInput.value));
   fontScaleInput?.addEventListener("change", () => {
-    const scale = applyUIFontScale(fontScaleInput.value, true);
-    showToast(`اندازه متن رابط روی ${toPersianDigits(scale)} درصد ذخیره شد`, "success");
+    applyUIFontScale(fontScaleInput.value, true);
   });
   document.querySelectorAll("[data-ui-font-scale]").forEach((button) => {
     button.addEventListener("click", () => {
-      const scale = applyUIFontScale(button.dataset.uiFontScale, true);
-      showToast(`اندازه متن رابط روی ${toPersianDigits(scale)} درصد تنظیم شد`, "success");
+      applyUIFontScale(button.dataset.uiFontScale, true);
     });
   });
   const reportFontScaleInput = document.getElementById("reportFontScale");
   applyReportFontScale(localStorage.getItem(REPORT_FONT_SCALE_KEY) || localStorage.getItem(UI_FONT_SCALE_KEY) || DEFAULT_REPORT_FONT_SCALE);
   reportFontScaleInput?.addEventListener("input", () => applyReportFontScale(reportFontScaleInput.value));
   reportFontScaleInput?.addEventListener("change", () => {
-    const scale = applyReportFontScale(reportFontScaleInput.value, true);
-    showToast(`اندازه متن گزارش‌ها روی ${toPersianDigits(scale)} درصد ذخیره شد`, "success");
+    applyReportFontScale(reportFontScaleInput.value, true);
   });
   document.querySelectorAll("[data-report-font-scale]").forEach((button) => {
     button.addEventListener("click", () => {
-      const scale = applyReportFontScale(button.dataset.reportFontScale, true);
-      showToast(`اندازه متن گزارش‌ها روی ${toPersianDigits(scale)} درصد تنظیم شد`, "success");
+      applyReportFontScale(button.dataset.reportFontScale, true);
     });
   });
   document.getElementById("btnResetFontScales")?.addEventListener("click", () => {
@@ -1804,10 +1820,10 @@
     if (!container || !lifeOptionsData?.groups) return;
 
     container.innerHTML = "";
-    lifeOptionsData.groups.forEach((grp, groupIndex) => {
+    lifeOptionsData.groups.forEach((grp) => {
       const groupCard = document.createElement("details");
       groupCard.className = "life-group-card";
-      groupCard.open = groupIndex === 0;
+      groupCard.open = false;
 
       const header = document.createElement("summary");
       header.className = "life-group-header";
