@@ -1,5 +1,5 @@
 // app/static/app.js
-// NotionYar Telegram Mini App v6.18.1
+// NotionYar Telegram Mini App v6.18.2
 
 (function () {
   const tg = window.Telegram?.WebApp;
@@ -929,6 +929,14 @@
     if (parts.length !== 3 || isNaN(parts[0]) || isNaN(parts[1]) || isNaN(parts[2])) return isoStr;
     const [jy, jm, jd] = gregorianToJalali(parts[0], parts[1], parts[2]);
     return `${toPersianDigits(jd)} ${PERSIAN_MONTH_NAMES[jm - 1]} ${toPersianDigits(jy)}`;
+  }
+
+  function formatIsoToPersianWeekday(isoStr) {
+    if (!isoStr) return "";
+    const clean = String(isoStr).split("T")[0].split(" ")[0].trim();
+    const date = new Date(`${clean}T12:00:00Z`);
+    if (Number.isNaN(date.getTime())) return "";
+    return new Intl.DateTimeFormat("fa-IR", { weekday: "long", timeZone: "UTC" }).format(date);
   }
 
   function updateAnalyticsCustomRangeLabels(kind) {
@@ -5167,7 +5175,7 @@
       const completed = statuses.filter((status) => status.className === "is-ada" || status.className === "is-qaza").length;
       return `
         <div class="spiritual-matrix-row" style="grid-template-columns:${columns}">
-          <span class="spiritual-matrix-date"><strong>${escapeReportText(formatIsoToJalaliDisplay(dateIso))}</strong><small>${toPersianDigits(dateIso)}</small></span>
+          <span class="spiritual-matrix-date"><strong>${escapeReportText(formatIsoToJalaliDisplay(dateIso))}</strong><small>${escapeReportText(formatIsoToPersianWeekday(dateIso))}</small></span>
           ${statuses.map((status) => `<span class="spiritual-matrix-status ${status.className}"><i></i>${status.label}</span>`).join("")}
           <span class="spiritual-matrix-total">${toPersianDigits(completed)} از ${toPersianDigits(prayerKeys.length)}</span>
         </div>`;
