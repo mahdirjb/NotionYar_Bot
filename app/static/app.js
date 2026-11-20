@@ -1,5 +1,5 @@
 // app/static/app.js
-// NotionYar Telegram Mini App v6.17.1
+// NotionYar Telegram Mini App v6.18.1
 
 (function () {
   const tg = window.Telegram?.WebApp;
@@ -25,6 +25,8 @@
   let advancedPrayerRulesState = {};
   let spiritualReportGroup = "day";
   let spiritualReportPayload = null;
+  let spiritualReportPage = 1;
+  let spiritualReportPageSize = Number(localStorage.getItem("notionyar_spiritual_report_page_size")) || 7;
   const spiritualReportPrayers = new Set(["sobh", "zohr", "asr", "maghreb", "eshsa"]);
   let lifeHistorySearchTimer = null;
   const dataCache = {
@@ -977,8 +979,8 @@
   let customSpiritualReportEndDate = null;
   let lifeHistoryView = "date";
   let lifeHistoryPage = 1;
+  let lifeHistoryPageSize = Number(localStorage.getItem("notionyar_life_history_page_size")) || 20;
   let lifeHistoryLoadPromise = null;
-  const LIFE_HISTORY_PAGE_SIZE = 60;
 
   let currentHabitDateIso = getDateFromOffset(0);
   let habitDayData = null;
@@ -1673,11 +1675,13 @@
         updateQuranDateBadge(null, isoDate);
       } else if (activeDatePickerTarget === "life_from") {
         customLifeStartDate = isoDate;
+        lifeHistoryPage = 1;
         const btn = document.getElementById("btnLifeRangeFrom");
         if (btn) btn.textContent = `📅 از ${toPersianDigits(jd)} ${PERSIAN_MONTH_NAMES[jm - 1]}`;
         renderFilteredLifeHistory();
       } else if (activeDatePickerTarget === "life_to") {
         customLifeEndDate = isoDate;
+        lifeHistoryPage = 1;
         const btn = document.getElementById("btnLifeRangeTo");
         if (btn) btn.textContent = `📅 تا ${toPersianDigits(jd)} ${PERSIAN_MONTH_NAMES[jm - 1]}`;
         renderFilteredLifeHistory();
@@ -1705,10 +1709,12 @@
         if (customHabitAnalyticsStartDate) loadHabitsAnalytics("custom");
       } else if (activeDatePickerTarget === "spiritual_report_from") {
         customSpiritualReportStartDate = isoDate;
+        spiritualReportPage = 1;
         updateAnalyticsCustomRangeLabels("spiritual");
         if (customSpiritualReportEndDate) loadSpiritualReport("custom");
       } else if (activeDatePickerTarget === "spiritual_report_to") {
         customSpiritualReportEndDate = isoDate;
+        spiritualReportPage = 1;
         updateAnalyticsCustomRangeLabels("spiritual");
         if (customSpiritualReportStartDate) loadSpiritualReport("custom");
       } else if (activeDatePickerTarget === "edit_life") {
@@ -2391,6 +2397,18 @@
       link.click();
       URL.revokeObjectURL(link.href);
     });
+
+    const pageSizeSelect = document.getElementById("lifeHistoryPageSize");
+    const allowedPageSizes = [10, 20, 50, 100];
+    if (!allowedPageSizes.includes(lifeHistoryPageSize)) lifeHistoryPageSize = 20;
+    if (pageSizeSelect) pageSizeSelect.value = String(lifeHistoryPageSize);
+    pageSizeSelect?.addEventListener("change", () => {
+      const nextSize = Number(pageSizeSelect.value);
+      lifeHistoryPageSize = allowedPageSizes.includes(nextSize) ? nextSize : 20;
+      localStorage.setItem("notionyar_life_history_page_size", String(lifeHistoryPageSize));
+      lifeHistoryPage = 1;
+      renderFilteredLifeHistory();
+    });
   }
 
   // ==========================================
@@ -2721,6 +2739,58 @@
       <div class="history-summary-item"><strong>${escapeReportText(topType?.[0] || "—")}</strong><span>${topType ? `${toPersianDigits(topType[1])} بار` : "پرتکرارترین"}</span></div>`;
   }
 
+  function isoDatePlusDays(isoDate, dayCount) {
+    const date = new Date(`${isoDate}T12:00:00Z`);
+    date.setUTCDate(date.getUTCDate() + dayCount);
+    return date.toISOString().slice(0, 10);
+  }
+
+  function renderPagedNavigation({ container, page, totalPages, totalItems, pageSize, unitLabel, onPage, scrollTarget }) {
+    if (!container) return;
+    container.hidden = totalPages <= 1;
+    if (totalPages <= 1) {
+      container.innerHTML = "";
+      return;
+    }
+    const start = (page - 1) * pageSize + 1;
+    const end = Math.min(totalItems, page * pageSize);
+    container.innerHTML = `
+      <button type="button" class="btn-step" data-page-action="prev" ${page <= 1 ? "disabled" : ""}><i data-lucide="chevron-right"></i><span>قبلی</span></button>
+      <span>${toPersianDigits(start)} تا ${toPersianDigits(end)} از ${toPersianDigits(totalItems)} ${unitLabel} · صفحه ${toPersianDigits(page)} از ${toPersianDigits(totalPages)}</span>
+      <button type="button" class="btn-step" data-page-action="next" ${page >= totalPages ? "disabled" : ""}><span>بعدی</span><i data-lucide="chevron-left"></i></button>`;
+    container.querySelector('[data-page-action="prev"]')?.addEventListener("click", () => {
+      onPage(page - 1);
+      document.getElementById(scrollTarget)?.scrollIntoView({ behavior: "smooth", block: "start" });
+    });
+    container.querySelector('[data-page-action="next"]')?.addEventListener("click", () => {
+      onPage(page + 1);
+      document.getElementById(scrollTarget)?.scrollIntoView({ behavior: "smooth", block: "start" });
+    });
+  }
+
+  function buildLifeHistoryGroups(filtered) {
+    const grouped = new Map();
+    filtered.forEach((item) => {
+      const normalizedDate = String(item.date_iso || item.date || "").split("T")[0].split(" ")[0] || "بدون تاریخ";
+      let key = normalizedDate;
+      if (lifeHistoryView === "type") key = item.type || "بدون دسته";
+      if (lifeHistoryView === "week" && normalizedDate !== "بدون تاریخ") key = persianWeekStart(normalizedDate);
+      if (!grouped.has(key)) grouped.set(key, []);
+      grouped.get(key).push(item);
+    });
+    const entries = [...grouped.entries()];
+    if (lifeHistoryView === "type") {
+      return entries.sort(([a], [b]) => String(a).localeCompare(String(b), "fa"));
+    }
+    const direction = document.getElementById("lifeHistorySort")?.value === "oldest" ? 1 : -1;
+    entries.sort(([a], [b]) => {
+      if (a === "بدون تاریخ") return 1;
+      if (b === "بدون تاریخ") return -1;
+      return String(a).localeCompare(String(b)) * direction;
+    });
+    return entries;
+  }
+
   function renderFilteredLifeHistory() {
     const list = document.getElementById("lifeHistoryList");
     if (!list) return;
@@ -2728,36 +2798,49 @@
     const filtered = getFilteredLifeHistory();
     renderLifeHistorySummary(filtered);
     const resultCount = document.getElementById("lifeHistoryResultCount");
-    if (resultCount) resultCount.textContent = `${toPersianDigits(filtered.length)} نتیجه`;
-    const totalPages = Math.max(1, Math.ceil(filtered.length / LIFE_HISTORY_PAGE_SIZE));
-    lifeHistoryPage = Math.min(Math.max(1, lifeHistoryPage), totalPages);
-    const pageItems = filtered.slice((lifeHistoryPage - 1) * LIFE_HISTORY_PAGE_SIZE, lifeHistoryPage * LIFE_HISTORY_PAGE_SIZE);
-    renderLifeHistoryPagination(totalPages, filtered.length);
 
     list.innerHTML = "";
     if (filtered.length === 0) {
+      if (resultCount) resultCount.textContent = "۰ نتیجه";
+      renderPagedNavigation({ container: document.getElementById("lifeHistoryPagination"), page: 1, totalPages: 1, totalItems: 0, pageSize: lifeHistoryPageSize, unitLabel: "مورد", onPage: () => {}, scrollTarget: "lifeHistorySummary" });
       list.innerHTML = '<div class="loading-state">موردی متناسب با فیلتر یافت نشد</div>';
       return;
     }
 
     if (lifeHistoryView === "list") {
+      const totalPages = Math.max(1, Math.ceil(filtered.length / lifeHistoryPageSize));
+      lifeHistoryPage = Math.min(Math.max(1, lifeHistoryPage), totalPages);
+      const pageItems = filtered.slice((lifeHistoryPage - 1) * lifeHistoryPageSize, lifeHistoryPage * lifeHistoryPageSize);
+      if (resultCount) resultCount.textContent = `${toPersianDigits(filtered.length)} رکورد`;
+      renderPagedNavigation({
+        container: document.getElementById("lifeHistoryPagination"), page: lifeHistoryPage, totalPages,
+        totalItems: filtered.length, pageSize: lifeHistoryPageSize, unitLabel: "رکورد",
+        onPage: (nextPage) => { lifeHistoryPage = nextPage; renderFilteredLifeHistory(); }, scrollTarget: "lifeHistorySummary",
+      });
       pageItems.forEach((item) => list.appendChild(createLifeHistoryRow(item)));
       return;
     }
 
     try {
-      const grouped = new Map();
-      pageItems.forEach((item) => {
-        const normalizedDate = String(item.date_iso || item.date || "").split("T")[0].split(" ")[0] || "بدون تاریخ";
-        const key = lifeHistoryView === "type" ? (item.type || "بدون دسته") : normalizedDate;
-        if (!grouped.has(key)) grouped.set(key, []);
-        grouped.get(key).push(item);
+      const groups = buildLifeHistoryGroups(filtered);
+      const totalPages = Math.max(1, Math.ceil(groups.length / lifeHistoryPageSize));
+      lifeHistoryPage = Math.min(Math.max(1, lifeHistoryPage), totalPages);
+      const pageGroups = groups.slice((lifeHistoryPage - 1) * lifeHistoryPageSize, lifeHistoryPage * lifeHistoryPageSize);
+      const unitLabel = lifeHistoryView === "week" ? "هفته" : lifeHistoryView === "date" ? "روز" : "گروه";
+      if (resultCount) resultCount.textContent = `${toPersianDigits(filtered.length)} رکورد · ${toPersianDigits(groups.length)} ${unitLabel}`;
+      renderPagedNavigation({
+        container: document.getElementById("lifeHistoryPagination"), page: lifeHistoryPage, totalPages,
+        totalItems: groups.length, pageSize: lifeHistoryPageSize, unitLabel,
+        onPage: (nextPage) => { lifeHistoryPage = nextPage; renderFilteredLifeHistory(); }, scrollTarget: "lifeHistorySummary",
       });
-      grouped.forEach((items, key) => {
+      pageGroups.forEach(([key, items]) => {
         const section = document.createElement("section");
         section.className = "history-group";
-        const label = lifeHistoryView === "type" ? key : (items[0]?.date || formatIsoToJalaliDisplay(key));
-        section.innerHTML = `<header><strong>${escapeReportText(toPersianDigits(label))}</strong><span>${toPersianDigits(items.length)} مورد</span></header>`;
+        let label = lifeHistoryView === "type" ? key : (items[0]?.date || formatIsoToJalaliDisplay(key));
+        if (lifeHistoryView === "week" && key !== "بدون تاریخ") {
+          label = `هفته ${formatIsoToJalaliDisplay(key)} تا ${formatIsoToJalaliDisplay(isoDatePlusDays(key, 6))}`;
+        }
+        section.innerHTML = `<header><strong>${escapeReportText(toPersianDigits(label))}</strong><span>${toPersianDigits(items.length)} ثبت</span></header>`;
         items.forEach((item) => section.appendChild(createLifeHistoryRow(item)));
         list.appendChild(section);
       });
@@ -2767,34 +2850,8 @@
     } catch (error) {
       console.error("Could not render grouped life history", error);
       list.dataset.view = "list";
-      pageItems.forEach((item) => list.appendChild(createLifeHistoryRow(item)));
+      filtered.slice(0, lifeHistoryPageSize).forEach((item) => list.appendChild(createLifeHistoryRow(item)));
     }
-  }
-
-  function renderLifeHistoryPagination(totalPages, totalItems) {
-    const pagination = document.getElementById("lifeHistoryPagination");
-    if (!pagination) return;
-    pagination.hidden = totalPages <= 1;
-    if (totalPages <= 1) {
-      pagination.innerHTML = "";
-      return;
-    }
-    const start = (lifeHistoryPage - 1) * LIFE_HISTORY_PAGE_SIZE + 1;
-    const end = Math.min(totalItems, lifeHistoryPage * LIFE_HISTORY_PAGE_SIZE);
-    pagination.innerHTML = `
-      <button type="button" class="btn-step" data-history-page="prev" ${lifeHistoryPage <= 1 ? "disabled" : ""}><i data-lucide="chevron-right"></i><span>قبلی</span></button>
-      <span>${toPersianDigits(start)} تا ${toPersianDigits(end)} از ${toPersianDigits(totalItems)} · صفحه ${toPersianDigits(lifeHistoryPage)} از ${toPersianDigits(totalPages)}</span>
-      <button type="button" class="btn-step" data-history-page="next" ${lifeHistoryPage >= totalPages ? "disabled" : ""}><span>بعدی</span><i data-lucide="chevron-left"></i></button>`;
-    pagination.querySelector('[data-history-page="prev"]')?.addEventListener("click", () => {
-      lifeHistoryPage -= 1;
-      renderFilteredLifeHistory();
-      document.getElementById("lifeHistorySummary")?.scrollIntoView({ behavior: "smooth", block: "start" });
-    });
-    pagination.querySelector('[data-history-page="next"]')?.addEventListener("click", () => {
-      lifeHistoryPage += 1;
-      renderFilteredLifeHistory();
-      document.getElementById("lifeHistorySummary")?.scrollIntoView({ behavior: "smooth", block: "start" });
-    });
   }
 
   // ==========================================
@@ -5003,7 +5060,7 @@
     return rows.reverse();
   }
 
-  function spiritualWeekStart(isoDate) {
+  function persianWeekStart(isoDate) {
     const date = new Date(`${isoDate}T12:00:00Z`);
     const daysFromSaturday = (date.getUTCDay() + 1) % 7;
     date.setUTCDate(date.getUTCDate() - daysFromSaturday);
@@ -5085,17 +5142,18 @@
     }
     const prayerKeys = selectedSpiritualPrayerKeys();
     if (!prayerKeys.length) {
+      document.getElementById("spiritualReportPagination")?.setAttribute("hidden", "");
       container.innerHTML = '<div class="report-empty">حداقل یک نماز را برای نمایش انتخاب کن.</div>';
       return;
     }
     const rawDays = new Map((report.daily_salah || []).map((day) => [String(day.date_iso || ""), day]));
     const rows = spiritualDateRange(report).map((dateIso) => ({ dateIso, day: rawDays.get(dateIso) || null }));
     if (!rows.length) {
+      document.getElementById("spiritualReportPagination")?.setAttribute("hidden", "");
       container.innerHTML = '<div class="report-empty">برای این بازه روزی پیدا نشد.</div>';
       return;
     }
     const caption = document.getElementById("spiritualTimelineCaption");
-    if (caption) caption.textContent = `${toPersianDigits(rows.length)} روز، ${toPersianDigits(prayerKeys.length)} نوع نماز`;
     const columns = `minmax(138px, 1.35fr) repeat(${prayerKeys.length}, minmax(78px, .8fr)) minmax(84px, .7fr)`;
     const header = `
       <div class="spiritual-matrix-row spiritual-matrix-head" style="grid-template-columns:${columns}">
@@ -5114,14 +5172,23 @@
           <span class="spiritual-matrix-total">${toPersianDigits(completed)} از ${toPersianDigits(prayerKeys.length)}</span>
         </div>`;
     };
+    let totalPages = 1;
+    let totalItems = rows.length;
+    let unitLabel = "روز";
     if (spiritualReportGroup === "week") {
       const weeks = new Map();
       rows.forEach((row) => {
-        const key = spiritualWeekStart(row.dateIso);
+        const key = persianWeekStart(row.dateIso);
         if (!weeks.has(key)) weeks.set(key, []);
         weeks.get(key).push(row);
       });
-      container.innerHTML = [...weeks.entries()].map(([weekStart, weekRows]) => {
+      const weekEntries = [...weeks.entries()];
+      totalItems = weekEntries.length;
+      unitLabel = "هفته";
+      totalPages = Math.max(1, Math.ceil(totalItems / spiritualReportPageSize));
+      spiritualReportPage = Math.min(Math.max(1, spiritualReportPage), totalPages);
+      const pageWeeks = weekEntries.slice((spiritualReportPage - 1) * spiritualReportPageSize, spiritualReportPage * spiritualReportPageSize);
+      container.innerHTML = pageWeeks.map(([weekStart, weekRows]) => {
         const oldest = weekRows[weekRows.length - 1]?.dateIso || weekStart;
         const newest = weekRows[0]?.dateIso || weekStart;
         return `<section class="spiritual-week-group">
@@ -5130,13 +5197,35 @@
         </section>`;
       }).join("");
     } else {
-      container.innerHTML = `<div class="spiritual-matrix-scroll">${header}${rows.map(rowMarkup).join("")}</div>`;
+      totalPages = Math.max(1, Math.ceil(rows.length / spiritualReportPageSize));
+      spiritualReportPage = Math.min(Math.max(1, spiritualReportPage), totalPages);
+      const pageRows = rows.slice((spiritualReportPage - 1) * spiritualReportPageSize, spiritualReportPage * spiritualReportPageSize);
+      container.innerHTML = `<div class="spiritual-matrix-scroll">${header}${pageRows.map(rowMarkup).join("")}</div>`;
     }
+    if (caption) caption.textContent = `${toPersianDigits(rows.length)} روز، ${toPersianDigits(prayerKeys.length)} نوع نماز · ${toPersianDigits(totalItems)} ${unitLabel}`;
+    renderPagedNavigation({
+      container: document.getElementById("spiritualReportPagination"), page: spiritualReportPage, totalPages,
+      totalItems, pageSize: spiritualReportPageSize, unitLabel,
+      onPage: (nextPage) => { spiritualReportPage = nextPage; renderSpiritualPrayerTimeline(); }, scrollTarget: "spiritualPrayerTimeline",
+    });
   }
+
+  const spiritualPageSizeSelect = document.getElementById("spiritualReportPageSize");
+  const allowedSpiritualPageSizes = [7, 14, 30, 60];
+  if (!allowedSpiritualPageSizes.includes(spiritualReportPageSize)) spiritualReportPageSize = 7;
+  if (spiritualPageSizeSelect) spiritualPageSizeSelect.value = String(spiritualReportPageSize);
+  spiritualPageSizeSelect?.addEventListener("change", () => {
+    const nextSize = Number(spiritualPageSizeSelect.value);
+    spiritualReportPageSize = allowedSpiritualPageSizes.includes(nextSize) ? nextSize : 7;
+    localStorage.setItem("notionyar_spiritual_report_page_size", String(spiritualReportPageSize));
+    spiritualReportPage = 1;
+    renderSpiritualPrayerTimeline();
+  });
 
   document.querySelectorAll("[data-sp-report-group]").forEach((button) => {
     button.addEventListener("click", () => {
       spiritualReportGroup = button.dataset.spReportGroup || "day";
+      spiritualReportPage = 1;
       document.querySelectorAll("[data-sp-report-group]").forEach((item) => item.classList.toggle("active", item === button));
       renderSpiritualPrayerTimeline();
       haptic("light");
@@ -5165,6 +5254,7 @@
       document.querySelectorAll("[data-sp-report-period]").forEach((b) => b.classList.remove("active"));
       btn.classList.add("active");
       const period = btn.getAttribute("data-sp-report-period");
+      spiritualReportPage = 1;
       const range = document.getElementById("spiritualReportCustomRange");
       if (range) range.hidden = period !== "custom";
       if (period !== "custom") loadSpiritualReport(period);
@@ -5204,6 +5294,7 @@
     } catch (err) {
       console.error(err);
       spiritualReportPayload = null;
+      document.getElementById("spiritualReportPagination")?.setAttribute("hidden", "");
       renderRetryState(summaryGrid, "خطا در بارگذاری گزارش معنوی", () => loadSpiritualReport(period));
       barsContainer.innerHTML = '<div class="report-empty">برای نمایش تفکیک نمازها دوباره تلاش کنید.</div>';
       timeline.innerHTML = '<div class="report-empty">نمای روزانه نمازها پس از دریافت دوباره گزارش نمایش داده می‌شود.</div>';

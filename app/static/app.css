@@ -5579,9 +5579,37 @@ body {
 }
 
 .history-view-row { margin: 14px 0 10px; }
-.history-view-switch { margin: 0; flex: 1; }
-.history-view-switch .seg-btn { flex: 1; }
+.history-view-switch { margin: 0; flex: 1; display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); }
+.history-view-switch .seg-btn { min-width: 0; }
 .history-result-count { color: var(--hint-color); font-size: 10px; white-space: nowrap; }
+.history-view-meta { display: flex; align-items: center; gap: 9px; }
+.page-size-control {
+  min-height: 38px;
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  padding: 4px 8px;
+  border: 1px solid var(--input-border);
+  border-radius: 7px;
+  background: var(--input-bg);
+  color: var(--hint-color);
+  font-size: calc(10px * var(--ui-font-scale));
+  font-weight: 700;
+  white-space: nowrap;
+}
+.page-size-control select {
+  min-width: 82px;
+  min-height: 28px;
+  padding: 2px 7px;
+  border: 0;
+  border-radius: 5px;
+  background: var(--card-bg);
+  color: var(--text-color);
+  font-size: calc(10px * var(--ui-font-scale));
+  font-weight: 800;
+  cursor: pointer;
+}
+.page-size-control select:focus { outline: 2px solid color-mix(in srgb, var(--section-accent) 35%, transparent); }
 
 .history-group {
   margin-bottom: 12px;
@@ -5746,7 +5774,9 @@ body {
   .history-search-row .btn-step { padding-inline: 10px; }
   .history-filter-grid { grid-template-columns: 1fr; }
   .history-view-row { align-items: stretch; flex-direction: column; }
-  .history-result-count { align-self: flex-end; }
+  .history-view-switch { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .history-view-meta { justify-content: space-between; }
+  .history-result-count { align-self: center; }
   .history-pagination span { max-width: 150px; }
   .habit-card.has-details .habit-info { min-width: 120px; }
   .habit-card.details-open .habit-inline-detail-box { align-items: stretch; flex-direction: column; }
@@ -6612,6 +6642,7 @@ body { font-size: calc(14px * var(--ui-font-scale)); }
 .spiritual-report-viewbar span { color: var(--hint-color); font-size: calc(10px * var(--report-font-scale)); }
 .spiritual-group-control { width: auto; min-width: 190px; margin: 0; }
 .spiritual-group-control .seg-btn { min-width: 0; }
+.spiritual-report-viewbar .page-size-control { flex: 0 0 auto; }
 .spiritual-prayer-filter {
   display: grid;
   grid-template-columns: repeat(5, minmax(0, 1fr));
@@ -7066,6 +7097,7 @@ body[data-palette="pulse"][data-section="admin"] { --section-accent:#008a9a; }
   #btnResetFontScales { width: 100%; }
   .spiritual-report-viewbar { align-items: stretch; flex-direction: column; }
   .spiritual-group-control { width: 100%; min-width: 0; }
+  .spiritual-report-viewbar .page-size-control { justify-content: space-between; width: 100%; }
   .spiritual-prayer-filter { grid-template-columns: repeat(3, minmax(0, 1fr)); }
   .spiritual-matrix-scroll { margin-inline: -2px; }
   .spiritual-week-group > header { align-items: flex-start; flex-direction: column; }

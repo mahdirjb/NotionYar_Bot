@@ -17,7 +17,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Vazirmatn:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="/static/app.css?v=6.17.1">
+  <link rel="stylesheet" href="/static/app.css?v=6.18.1">
 </head>
 
 <body class="auth-pending">
@@ -296,11 +296,23 @@
 
             <div class="history-view-row">
               <div class="segmented-control history-view-switch" aria-label="نحوه نمایش تاریخچه">
-                <button type="button" class="seg-btn active" data-life-history-view="date">📅 گروه‌بندی روز</button>
+                <button type="button" class="seg-btn active" data-life-history-view="date">روزانه</button>
+                <button type="button" class="seg-btn" data-life-history-view="week">هفتگی</button>
                 <button type="button" class="seg-btn" data-life-history-view="type">🌱 گروه‌بندی فعالیت</button>
                 <button type="button" class="seg-btn" data-life-history-view="list">☷ فهرست ساده</button>
               </div>
-              <span id="lifeHistoryResultCount" class="history-result-count">۰ نتیجه</span>
+              <div class="history-view-meta">
+                <span id="lifeHistoryResultCount" class="history-result-count">۰ نتیجه</span>
+                <label class="page-size-control" for="lifeHistoryPageSize">
+                  <span>هر صفحه</span>
+                  <select id="lifeHistoryPageSize" aria-label="تعداد موارد روزمرگی در هر صفحه">
+                    <option value="10">۱۰ مورد</option>
+                    <option value="20" selected>۲۰ مورد</option>
+                    <option value="50">۵۰ مورد</option>
+                    <option value="100">۱۰۰ مورد</option>
+                  </select>
+                </label>
+              </div>
             </div>
 
             <div class="timeline-list" id="lifeHistoryList">
@@ -671,6 +683,15 @@
                 <button type="button" class="seg-btn active" data-sp-report-group="day">روزانه</button>
                 <button type="button" class="seg-btn" data-sp-report-group="week">هفتگی</button>
               </div>
+              <label class="page-size-control" for="spiritualReportPageSize">
+                <span>هر صفحه</span>
+                <select id="spiritualReportPageSize" aria-label="تعداد موارد گزارش معنوی در هر صفحه">
+                  <option value="7" selected>۷ مورد</option>
+                  <option value="14">۱۴ مورد</option>
+                  <option value="30">۳۰ مورد</option>
+                  <option value="60">۶۰ مورد</option>
+                </select>
+              </label>
             </div>
             <div class="spiritual-prayer-filter" id="spiritualPrayerFilter" aria-label="فیلتر نوع نماز">
               <button type="button" class="active" data-sp-prayer="sobh" aria-pressed="true">صبح</button>
@@ -688,6 +709,7 @@
             <div id="spiritualPrayerTimeline" class="spiritual-prayer-timeline">
               <div class="loading-state">در حال آماده‌سازی نمای نمازها...</div>
             </div>
+            <div class="history-pagination" id="spiritualReportPagination" hidden></div>
 
             <!-- Report Summary Hero Cards -->
             <div class="spiritual-report-grid" id="spiritualReportSummaryGrid" style="margin-top: 14px;">
@@ -1431,6 +1453,6 @@
   </div>
 
   <script src="/static/vendor/lucide.min.js?v=1.72.0"></script>
-  <script src="/static/app.js?v=6.17.1"></script>
+  <script src="/static/app.js?v=6.18.1"></script>
 </body>
 </html>
