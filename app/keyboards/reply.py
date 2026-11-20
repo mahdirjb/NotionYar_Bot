@@ -2,7 +2,7 @@ from aiogram.types import ReplyKeyboardMarkup, KeyboardButton, WebAppInfo
 from app.config import WEBAPP_URL
 from app.services.auth_service import has_permission, PERM_VIEW_REPORTS, PERM_ADMIN
 
-BTN_MINIAPP = "📱 مینی‌اپ نوشن‌یار (ثبت سریع)"
+BTN_MINIAPP = "ثبت سریع"
 BTN_REPORTS = "📊 گزارش و کارکردها"
 BTN_HABITS = "🎯 عادات روزانه"
 BTN_LIFE_TRACKER = "🌱 لاگ روزمرگی"
