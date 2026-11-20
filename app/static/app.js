@@ -1,5 +1,5 @@
 // app/static/app.js
-// NotionYar Telegram Mini App v6.16.1
+// NotionYar Telegram Mini App v6.17.0
 
 (function () {
   const tg = window.Telegram?.WebApp;
@@ -23,12 +23,16 @@
   let advancedLifeMatch = "any";
   let advancedPrayerMatch = "any";
   let advancedPrayerRulesState = {};
+  let spiritualReportGroup = "day";
+  let spiritualReportPayload = null;
+  const spiritualReportPrayers = new Set(["sobh", "zohr", "asr", "maghreb", "eshsa"]);
   let lifeHistorySearchTimer = null;
   const dataCache = {
     lifeHistory: null,
     lifeRadar: null,
     habits: new Map(),
     spiritual: new Map(),
+    spiritualReports: new Map(),
     quranHistory: null,
     habitAnalytics: new Map(),
     reports: new Map(),
@@ -447,7 +451,7 @@
       }
       if (response.ok && isOfflineEligibleRequest(request) && !queued) {
         networkRefreshUntil = Date.now() + 10000;
-        invalidateDataCache("lifeHistory", "lifeRadar", "habits", "spiritual", "quranHistory", "habitAnalytics", "reports");
+        invalidateDataCache("lifeHistory", "lifeRadar", "habits", "spiritual", "spiritualReports", "quranHistory", "habitAnalytics", "reports");
       }
       if (isTransientNetworkStatus(response.status) && isOfflineEligibleRequest(request)) {
         offlineMutationQueued = true;
@@ -542,7 +546,7 @@
         updateSyncStatus({ online: true, count: pendingQueueCount });
         showToast(`${data.count} مورد آفلاین با موفقیت همگام شد`, "success");
         networkRefreshUntil = Date.now() + 15000;
-        invalidateDataCache("lifeHistory", "lifeRadar", "habits", "spiritual", "quranHistory", "habitAnalytics", "reports");
+        invalidateDataCache("lifeHistory", "lifeRadar", "habits", "spiritual", "spiritualReports", "quranHistory", "habitAnalytics", "reports");
         initApp();
       } else if (data.type === "SYNC_FAILED") {
         updateSyncStatus({ online: true, count: pendingQueueCount });
@@ -663,7 +667,8 @@
     const themeKey = "notionyar_theme_v4";
     const paletteKey = "notionyar_theme_palette";
     const accentKey = "notionyar_custom_accent";
-    const palettes = new Set(["balanced", "ocean", "forest", "graphite"]);
+    const palettes = new Set(["signal", "citrus", "editorial", "pulse"]);
+    const legacyPalettes = { balanced: "signal", ocean: "signal", forest: "citrus", graphite: "editorial" };
     const colorInput = document.getElementById("customAccentColor");
 
     function getInitialTheme() {
@@ -673,7 +678,8 @@
     }
 
     function applyPalette(value, persist = false) {
-      const palette = palettes.has(value) ? value : "balanced";
+      const migrated = legacyPalettes[value] || value;
+      const palette = palettes.has(migrated) ? migrated : "signal";
       document.documentElement.setAttribute("data-palette", palette);
       document.body.setAttribute("data-palette", palette);
       if (persist) localStorage.setItem(paletteKey, palette);
@@ -731,7 +737,7 @@
     }
 
     let currentTheme = getInitialTheme();
-    applyPalette(localStorage.getItem(paletteKey) || "balanced");
+    applyPalette(localStorage.getItem(paletteKey) || "signal", true);
     applyCustomAccent(localStorage.getItem(accentKey) || "");
     applyTheme(currentTheme);
 
@@ -4981,6 +4987,118 @@
   }
 
   // Spiritual Reports
+  function spiritualDateRange(report) {
+    const start = String(report?.start_date || "");
+    const end = String(report?.end_date || "");
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(start) || !/^\d{4}-\d{2}-\d{2}$/.test(end)) return [];
+    const rows = [];
+    const cursor = new Date(`${start}T12:00:00Z`);
+    const last = new Date(`${end}T12:00:00Z`);
+    while (cursor <= last && rows.length < 370) {
+      rows.push(cursor.toISOString().slice(0, 10));
+      cursor.setUTCDate(cursor.getUTCDate() + 1);
+    }
+    return rows.reverse();
+  }
+
+  function spiritualWeekStart(isoDate) {
+    const date = new Date(`${isoDate}T12:00:00Z`);
+    const daysFromSaturday = (date.getUTCDay() + 1) % 7;
+    date.setUTCDate(date.getUTCDate() - daysFromSaturday);
+    return date.toISOString().slice(0, 10);
+  }
+
+  function spiritualStatusMeta(status, hasDay) {
+    if (!hasDay) return { label: "بدون ثبت", className: "is-unlogged" };
+    if (status === "ada") return { label: "اداء", className: "is-ada" };
+    if (status === "qaza") return { label: "قضا", className: "is-qaza" };
+    return { label: "نخوانده", className: "is-none" };
+  }
+
+  function renderSpiritualPrayerTimeline() {
+    const container = document.getElementById("spiritualPrayerTimeline");
+    if (!container) return;
+    const report = spiritualReportPayload;
+    if (!report) {
+      container.innerHTML = '<div class="loading-state">در حال آماده‌سازی نمای نمازها...</div>';
+      return;
+    }
+    const prayerKeys = ["sobh", "zohr", "asr", "maghreb", "eshsa"].filter((key) => spiritualReportPrayers.has(key));
+    if (!prayerKeys.length) {
+      container.innerHTML = '<div class="report-empty">حداقل یک نماز را برای نمایش انتخاب کن.</div>';
+      return;
+    }
+    const rawDays = new Map((report.daily_salah || []).map((day) => [String(day.date_iso || ""), day]));
+    const rows = spiritualDateRange(report).map((dateIso) => ({ dateIso, day: rawDays.get(dateIso) || null }));
+    if (!rows.length) {
+      container.innerHTML = '<div class="report-empty">برای این بازه روزی پیدا نشد.</div>';
+      return;
+    }
+    const caption = document.getElementById("spiritualTimelineCaption");
+    if (caption) caption.textContent = `${toPersianDigits(rows.length)} روز، ${toPersianDigits(prayerKeys.length)} نوع نماز`;
+    const columns = `minmax(138px, 1.35fr) repeat(${prayerKeys.length}, minmax(78px, .8fr)) minmax(84px, .7fr)`;
+    const header = `
+      <div class="spiritual-matrix-row spiritual-matrix-head" style="grid-template-columns:${columns}">
+        <span>تاریخ</span>
+        ${prayerKeys.map((key) => `<span>${escapeReportText(PRAYER_DISPLAY_META[key]?.name || key)}</span>`).join("")}
+        <span>جمع</span>
+      </div>`;
+    const rowMarkup = ({ dateIso, day }) => {
+      const prayers = day?.prayers || {};
+      const statuses = prayerKeys.map((key) => spiritualStatusMeta(prayers[key]?.status || "none", Boolean(day)));
+      const completed = statuses.filter((status) => status.className === "is-ada" || status.className === "is-qaza").length;
+      return `
+        <div class="spiritual-matrix-row" style="grid-template-columns:${columns}">
+          <span class="spiritual-matrix-date"><strong>${escapeReportText(formatIsoToJalaliDisplay(dateIso))}</strong><small>${toPersianDigits(dateIso)}</small></span>
+          ${statuses.map((status) => `<span class="spiritual-matrix-status ${status.className}"><i></i>${status.label}</span>`).join("")}
+          <span class="spiritual-matrix-total">${toPersianDigits(completed)} از ${toPersianDigits(prayerKeys.length)}</span>
+        </div>`;
+    };
+    if (spiritualReportGroup === "week") {
+      const weeks = new Map();
+      rows.forEach((row) => {
+        const key = spiritualWeekStart(row.dateIso);
+        if (!weeks.has(key)) weeks.set(key, []);
+        weeks.get(key).push(row);
+      });
+      container.innerHTML = [...weeks.entries()].map(([weekStart, weekRows]) => {
+        const oldest = weekRows[weekRows.length - 1]?.dateIso || weekStart;
+        const newest = weekRows[0]?.dateIso || weekStart;
+        return `<section class="spiritual-week-group">
+          <header><strong>هفتهٔ ${escapeReportText(formatIsoToJalaliDisplay(weekStart))}</strong><span>${escapeReportText(formatIsoToJalaliDisplay(oldest))} تا ${escapeReportText(formatIsoToJalaliDisplay(newest))}</span></header>
+          <div class="spiritual-matrix-scroll">${header}${weekRows.map(rowMarkup).join("")}</div>
+        </section>`;
+      }).join("");
+    } else {
+      container.innerHTML = `<div class="spiritual-matrix-scroll">${header}${rows.map(rowMarkup).join("")}</div>`;
+    }
+  }
+
+  document.querySelectorAll("[data-sp-report-group]").forEach((button) => {
+    button.addEventListener("click", () => {
+      spiritualReportGroup = button.dataset.spReportGroup || "day";
+      document.querySelectorAll("[data-sp-report-group]").forEach((item) => item.classList.toggle("active", item === button));
+      renderSpiritualPrayerTimeline();
+      haptic("light");
+    });
+  });
+
+  document.getElementById("spiritualPrayerFilter")?.addEventListener("click", (event) => {
+    const button = event.target.closest("[data-sp-prayer]");
+    if (!button) return;
+    const key = button.dataset.spPrayer;
+    if (spiritualReportPrayers.has(key) && spiritualReportPrayers.size === 1) {
+      showToast("حداقل یک نماز باید انتخاب بماند", "warning");
+      return;
+    }
+    if (spiritualReportPrayers.has(key)) spiritualReportPrayers.delete(key);
+    else spiritualReportPrayers.add(key);
+    const active = spiritualReportPrayers.has(key);
+    button.classList.toggle("active", active);
+    button.setAttribute("aria-pressed", String(active));
+    renderSpiritualPrayerTimeline();
+  });
+
   document.querySelectorAll("[data-sp-report-period]").forEach((btn) => {
     btn.addEventListener("click", () => {
       document.querySelectorAll("[data-sp-report-period]").forEach((b) => b.classList.remove("active"));
@@ -4997,10 +5115,12 @@
   async function loadSpiritualReport(period = "7d") {
     const summaryGrid = document.getElementById("spiritualReportSummaryGrid");
     const barsContainer = document.getElementById("spiritualPrayerBarsContainer");
-    if (!summaryGrid || !barsContainer) return;
+    const timeline = document.getElementById("spiritualPrayerTimeline");
+    if (!summaryGrid || !barsContainer || !timeline) return;
 
     summaryGrid.innerHTML = '<div class="loading-state">در حال محاسبه آمار معنوی...</div>';
     barsContainer.innerHTML = '<div class="loading-state">در حال بارگذاری تفکیک نمازها...</div>';
+    timeline.innerHTML = '<div class="loading-state">در حال آماده‌سازی نمای نمازها...</div>';
 
     try {
       const query = new URLSearchParams({ period });
@@ -5008,10 +5128,17 @@
         query.set("start_date", customSpiritualReportStartDate);
         query.set("end_date", customSpiritualReportEndDate);
       }
-      const res = await fetch(`/api/spiritual/report?${query.toString()}`, { headers: getHeaders() });
-      if (!res.ok) throw new Error("خطا در بارگذاری گزارش");
-      const data = await res.json();
+      const cacheKey = query.toString();
+      let data = dataCache.spiritualReports.get(cacheKey);
+      if (!data) {
+        const res = await fetch(`/api/spiritual/report?${cacheKey}`, { headers: getHeaders() });
+        if (!res.ok) throw new Error("خطا در بارگذاری گزارش");
+        data = await res.json();
+        dataCache.spiritualReports.set(cacheKey, data);
+      }
       const rep = data.report || {};
+      spiritualReportPayload = rep;
+      renderSpiritualPrayerTimeline();
 
       summaryGrid.innerHTML = `
         <div class="sp-stat-card">
@@ -5056,8 +5183,10 @@
       });
     } catch (err) {
       console.error(err);
+      spiritualReportPayload = null;
       renderRetryState(summaryGrid, "خطا در بارگذاری گزارش معنوی", () => loadSpiritualReport(period));
       barsContainer.innerHTML = '<div class="report-empty">برای نمایش تفکیک نمازها دوباره تلاش کنید.</div>';
+      timeline.innerHTML = '<div class="report-empty">نمای روزانه نمازها پس از دریافت دوباره گزارش نمایش داده می‌شود.</div>';
     }
   }
 

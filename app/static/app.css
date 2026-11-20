@@ -6592,6 +6592,122 @@ body { font-size: calc(14px * var(--ui-font-scale)); }
   font-size: calc(16px * var(--report-font-scale));
 }
 
+/* V6.17: prayer timeline and weekly grouping in spiritual reports. */
+.spiritual-report-viewbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  margin-top: 16px;
+  padding: 12px;
+  border: 1px solid var(--card-border);
+  border-radius: 7px;
+  background: var(--subtle-surface);
+}
+.spiritual-report-viewbar > div:first-child { display: grid; gap: 3px; }
+.spiritual-report-viewbar strong { color: var(--text-color); font-size: calc(13px * var(--report-font-scale)); }
+.spiritual-report-viewbar span { color: var(--hint-color); font-size: calc(10px * var(--report-font-scale)); }
+.spiritual-group-control { width: auto; min-width: 190px; margin: 0; }
+.spiritual-group-control .seg-btn { min-width: 0; }
+.spiritual-prayer-filter {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 7px;
+  margin-top: 9px;
+}
+.spiritual-prayer-filter button {
+  min-width: 0;
+  min-height: 40px;
+  padding: 8px;
+  border: 1px solid var(--card-border);
+  border-radius: 6px;
+  background: var(--card-bg);
+  color: var(--hint-color);
+  font-size: calc(11px * var(--report-font-scale));
+  font-weight: 800;
+  cursor: pointer;
+}
+.spiritual-prayer-filter button.active {
+  border-color: color-mix(in srgb, var(--section-accent) 62%, var(--card-border));
+  background: var(--section-soft);
+  color: var(--section-accent);
+  box-shadow: inset 0 -2px 0 var(--section-accent);
+}
+.spiritual-timeline-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 16px;
+  margin: 12px 2px 8px;
+  color: var(--hint-color);
+  font-size: calc(9px * var(--report-font-scale));
+}
+.spiritual-timeline-legend span,
+.spiritual-matrix-status { display: inline-flex; align-items: center; gap: 6px; }
+.spiritual-timeline-legend i,
+.spiritual-matrix-status i {
+  width: 8px;
+  height: 8px;
+  flex: 0 0 auto;
+  border-radius: 50%;
+  background: currentColor;
+}
+.spiritual-timeline-legend .is-ada,
+.spiritual-matrix-status.is-ada { color: var(--success-color); }
+.spiritual-timeline-legend .is-qaza,
+.spiritual-matrix-status.is-qaza { color: var(--warning-color); }
+.spiritual-timeline-legend .is-none,
+.spiritual-matrix-status.is-none { color: var(--danger-color); }
+.spiritual-timeline-legend .is-unlogged,
+.spiritual-matrix-status.is-unlogged { color: var(--hint-color); }
+.spiritual-prayer-timeline { display: grid; gap: 10px; min-width: 0; }
+.spiritual-matrix-scroll {
+  max-width: 100%;
+  overflow-x: auto;
+  overscroll-behavior-inline: contain;
+  border: 1px solid var(--card-border);
+  border-radius: 7px;
+  background: var(--card-bg);
+  scrollbar-width: thin;
+}
+.spiritual-matrix-row {
+  min-width: max-content;
+  display: grid;
+  align-items: stretch;
+  border-bottom: 1px solid var(--card-border);
+}
+.spiritual-matrix-row:last-child { border-bottom: 0; }
+.spiritual-matrix-row > span {
+  min-height: 48px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 8px 10px;
+  border-inline-end: 1px solid var(--card-border);
+  font-size: calc(10px * var(--report-font-scale));
+  white-space: nowrap;
+}
+.spiritual-matrix-row > span:last-child { border-inline-end: 0; }
+.spiritual-matrix-head { position: sticky; top: 0; z-index: 1; background: var(--subtle-surface); color: var(--hint-color); font-weight: 800; }
+.spiritual-matrix-head > span { min-height: 38px; }
+.spiritual-matrix-date { align-items: flex-start !important; flex-direction: column; gap: 2px; }
+.spiritual-matrix-date strong { color: var(--text-color); font-size: calc(10px * var(--report-font-scale)); }
+.spiritual-matrix-date small { color: var(--hint-color); font-size: calc(8px * var(--report-font-scale)); direction: ltr; }
+.spiritual-matrix-status { font-weight: 800; }
+.spiritual-matrix-total { color: var(--text-color); font-weight: 900; }
+.spiritual-week-group { min-width: 0; display: grid; gap: 6px; }
+.spiritual-week-group > header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 10px 12px;
+  border-inline-start: 3px solid var(--section-accent);
+  border-radius: 4px;
+  background: var(--section-soft);
+}
+.spiritual-week-group > header strong { color: var(--text-color); font-size: calc(11px * var(--report-font-scale)); }
+.spiritual-week-group > header span { color: var(--hint-color); font-size: calc(9px * var(--report-font-scale)); }
+
 .admin-section-tabs { grid-template-columns: repeat(4, minmax(0, 1fr)); }
 .admin-section-tabs [hidden],
 .admin-section-card[hidden] { display: none !important; }
@@ -6728,8 +6844,37 @@ body { font-size: calc(14px * var(--ui-font-scale)); }
   box-shadow: inset 0 0 0 2px color-mix(in srgb, var(--section-accent) 18%, transparent);
 }
 .theme-preset strong { font-size: calc(12px * var(--ui-font-scale)); }
-.theme-preset-swatches { display: flex; gap: 4px; direction: ltr; }
-.theme-preset-swatches i { width: 22px; height: 8px; border-radius: 3px; background: var(--swatch); }
+.theme-preset small { color: var(--hint-color); font-size: calc(9px * var(--ui-font-scale)); line-height: 1.35; }
+.theme-preset-preview {
+  position: relative;
+  width: min(92px, 100%);
+  height: 34px;
+  overflow: hidden;
+  border: 1px solid color-mix(in srgb, var(--preview-text) 16%, transparent);
+  border-radius: 5px;
+  background: var(--preview-bg);
+  box-shadow: inset 0 -10px 0 var(--preview-card);
+}
+.theme-preset-preview::before {
+  content: "";
+  position: absolute;
+  inset: 6px auto auto 8px;
+  width: 36px;
+  height: 4px;
+  border-radius: 2px;
+  background: var(--preview-text);
+  box-shadow: 0 8px 0 color-mix(in srgb, var(--preview-text) 24%, transparent);
+}
+.theme-preset-preview::after {
+  content: "";
+  position: absolute;
+  inset: auto 7px 4px auto;
+  width: 13px;
+  height: 6px;
+  border-radius: 2px;
+  background: var(--preview-a);
+  box-shadow: -17px 0 0 var(--preview-b), -34px 0 0 var(--preview-c);
+}
 .theme-note {
   display: flex;
   align-items: center;
@@ -6816,6 +6961,93 @@ body[data-palette="graphite"][data-section="reports"] { --section-accent: #b7791
 body[data-palette="graphite"][data-section="admin"] { --section-accent: #457b9d; }
 body[data-palette][data-section] { --section-soft: color-mix(in srgb, var(--section-accent) 12%, var(--card-bg)); }
 
+/* V6.17: expressive palettes with complete surface, status and navigation colors. */
+html[data-palette="signal"][data-theme="light"],
+body[data-palette="signal"][data-theme="light"] {
+  --bg-color:#f4f6fa; --secondary-bg-color:#edf1f6; --card-bg:#ffffff; --card-border:#d5dbe5;
+  --text-color:#20242c; --hint-color:#667085; --input-bg:#f1f4f8; --input-border:#cbd3df;
+  --button-color:#1769e0; --link-color:#125bc4; --active-chip:#1769e0; --subtle-surface:#e9eef5;
+  --success-color:#078b7f; --warning-color:#b76b00; --danger-color:#d63e55; --info-color:#087c9c; --purple-color:#6954c6;
+  --dropdown-bg:#ffffff; --dropdown-hover:#edf2f8; --theme-chrome:#e8edf5; --theme-nav:#ffffff;
+}
+html[data-palette="signal"][data-theme="dark"],
+body[data-palette="signal"][data-theme="dark"] {
+  --bg-color:#14161b; --secondary-bg-color:#1a1e25; --card-bg:#20242b; --card-border:#3a414c;
+  --text-color:#f5f7fa; --hint-color:#a7b0bd; --input-bg:#181c22; --input-border:#434c59;
+  --button-color:#5b9cff; --link-color:#79adff; --active-chip:#5b9cff; --subtle-surface:#2a3039;
+  --success-color:#32c5b4; --warning-color:#f2ad45; --danger-color:#ff6b7f; --info-color:#48b9d0; --purple-color:#a690f5;
+  --dropdown-bg:#242931; --dropdown-hover:#303742; --theme-chrome:#1b1f25; --theme-nav:#1d2128;
+}
+html[data-palette="citrus"][data-theme="light"],
+body[data-palette="citrus"][data-theme="light"] {
+  --bg-color:#f3f7f5; --secondary-bg-color:#eaf2ee; --card-bg:#ffffff; --card-border:#cbdcd3;
+  --text-color:#18302b; --hint-color:#61756f; --input-bg:#edf5f1; --input-border:#c3d7cd;
+  --button-color:#087f5b; --link-color:#087054; --active-chip:#087f5b; --subtle-surface:#e1eee7;
+  --success-color:#0a8a5e; --warning-color:#c36712; --danger-color:#cc4350; --info-color:#147f91; --purple-color:#6750a4;
+  --dropdown-bg:#ffffff; --dropdown-hover:#e8f3ed; --theme-chrome:#e2eee8; --theme-nav:#fbfdfc;
+}
+html[data-palette="citrus"][data-theme="dark"],
+body[data-palette="citrus"][data-theme="dark"] {
+  --bg-color:#121915; --secondary-bg-color:#19231e; --card-bg:#202c26; --card-border:#3b5246;
+  --text-color:#f2faf5; --hint-color:#aac1b5; --input-bg:#17211c; --input-border:#456052;
+  --button-color:#48c796; --link-color:#70d7ad; --active-chip:#48c796; --subtle-surface:#2a3b32;
+  --success-color:#48c796; --warning-color:#f1a44e; --danger-color:#f06c78; --info-color:#54b9c8; --purple-color:#b19be0;
+  --dropdown-bg:#233129; --dropdown-hover:#304238; --theme-chrome:#19271f; --theme-nav:#1c2822;
+}
+html[data-palette="editorial"][data-theme="light"],
+body[data-palette="editorial"][data-theme="light"] {
+  --bg-color:#f4f4f2; --secondary-bg-color:#ececea; --card-bg:#ffffff; --card-border:#d3d3cf;
+  --text-color:#202020; --hint-color:#6b6b67; --input-bg:#f0f0ed; --input-border:#cdcdc8;
+  --button-color:#1d4ed8; --link-color:#1847c4; --active-chip:#1d4ed8; --subtle-surface:#e8e8e4;
+  --success-color:#0f766e; --warning-color:#b27400; --danger-color:#d64735; --info-color:#17718a; --purple-color:#7047a6;
+  --dropdown-bg:#ffffff; --dropdown-hover:#eeeeeb; --theme-chrome:#e8e8e4; --theme-nav:#ffffff;
+}
+html[data-palette="editorial"][data-theme="dark"],
+body[data-palette="editorial"][data-theme="dark"] {
+  --bg-color:#151515; --secondary-bg-color:#1d1d1c; --card-bg:#252524; --card-border:#454542;
+  --text-color:#f6f6f2; --hint-color:#b3b3ad; --input-bg:#1b1b1a; --input-border:#50504c;
+  --button-color:#6f99ff; --link-color:#86aaff; --active-chip:#6f99ff; --subtle-surface:#30302e;
+  --success-color:#42b8ad; --warning-color:#dfaa43; --danger-color:#f27867; --info-color:#5ab1c5; --purple-color:#ae8bd8;
+  --dropdown-bg:#292927; --dropdown-hover:#373734; --theme-chrome:#1e1e1d; --theme-nav:#212120;
+}
+html[data-palette="pulse"][data-theme="light"],
+body[data-palette="pulse"][data-theme="light"] {
+  --bg-color:#f7f5f8; --secondary-bg-color:#f0edf2; --card-bg:#ffffff; --card-border:#ddd4df;
+  --text-color:#27212e; --hint-color:#74687b; --input-bg:#f3eff5; --input-border:#d7ccd9;
+  --button-color:#cf3f67; --link-color:#b83259; --active-chip:#cf3f67; --subtle-surface:#eee8f0;
+  --success-color:#008a78; --warning-color:#bd6a00; --danger-color:#d73355; --info-color:#008a9a; --purple-color:#7651c5;
+  --dropdown-bg:#ffffff; --dropdown-hover:#f1ebf3; --theme-chrome:#eee8f0; --theme-nav:#ffffff;
+}
+html[data-palette="pulse"][data-theme="dark"],
+body[data-palette="pulse"][data-theme="dark"] {
+  --bg-color:#19151b; --secondary-bg-color:#221c25; --card-bg:#2a222e; --card-border:#4c3c51;
+  --text-color:#fbf5fc; --hint-color:#c1afc5; --input-bg:#201a23; --input-border:#58465e;
+  --button-color:#f06b91; --link-color:#fa89a8; --active-chip:#f06b91; --subtle-surface:#382d3c;
+  --success-color:#37bea9; --warning-color:#efa64a; --danger-color:#ff728e; --info-color:#47bac7; --purple-color:#ad8bf0;
+  --dropdown-bg:#302735; --dropdown-hover:#403446; --theme-chrome:#261e29; --theme-nav:#28212c;
+}
+
+body[data-palette="signal"][data-section="habits"] { --section-accent:#078b7f; }
+body[data-palette="signal"][data-section="life"] { --section-accent:#e34f64; }
+body[data-palette="signal"][data-section="spiritual"] { --section-accent:#5d58c7; }
+body[data-palette="signal"][data-section="reports"] { --section-accent:#b76b00; }
+body[data-palette="signal"][data-section="admin"] { --section-accent:#1769e0; }
+body[data-palette="citrus"][data-section="habits"] { --section-accent:#087f5b; }
+body[data-palette="citrus"][data-section="life"] { --section-accent:#e76822; }
+body[data-palette="citrus"][data-section="spiritual"] { --section-accent:#6750a4; }
+body[data-palette="citrus"][data-section="reports"] { --section-accent:#ad7000; }
+body[data-palette="citrus"][data-section="admin"] { --section-accent:#147f91; }
+body[data-palette="editorial"][data-section="habits"] { --section-accent:#0f766e; }
+body[data-palette="editorial"][data-section="life"] { --section-accent:#d64735; }
+body[data-palette="editorial"][data-section="spiritual"] { --section-accent:#1d4ed8; }
+body[data-palette="editorial"][data-section="reports"] { --section-accent:#b27400; }
+body[data-palette="editorial"][data-section="admin"] { --section-accent:#4b5563; }
+body[data-palette="pulse"][data-section="habits"] { --section-accent:#008a78; }
+body[data-palette="pulse"][data-section="life"] { --section-accent:#cf3f67; }
+body[data-palette="pulse"][data-section="spiritual"] { --section-accent:#7651c5; }
+body[data-palette="pulse"][data-section="reports"] { --section-accent:#bd6a00; }
+body[data-palette="pulse"][data-section="admin"] { --section-accent:#008a9a; }
+
 @media (max-width: 900px) {
   .admin-stats-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 }
@@ -6829,4 +7061,9 @@ body[data-palette][data-section] { --section-soft: color-mix(in srgb, var(--sect
   .theme-mode-control { flex: 1; }
   .theme-mode-control .seg-btn { min-width: 0; }
   #btnResetFontScales { width: 100%; }
+  .spiritual-report-viewbar { align-items: stretch; flex-direction: column; }
+  .spiritual-group-control { width: 100%; min-width: 0; }
+  .spiritual-prayer-filter { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  .spiritual-matrix-scroll { margin-inline: -2px; }
+  .spiritual-week-group > header { align-items: flex-start; flex-direction: column; }
 }

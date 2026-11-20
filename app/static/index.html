@@ -17,7 +17,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Vazirmatn:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="/static/app.css?v=6.16.1">
+  <link rel="stylesheet" href="/static/app.css?v=6.17.0">
 </head>
 
 <body class="auth-pending">
@@ -662,6 +662,33 @@
               <button type="button" class="btn-range-date-select" id="btnSpReportTo">📅 تا تاریخ</button>
             </div>
 
+            <div class="spiritual-report-viewbar" aria-label="نوع نمایش گزارش نماز">
+              <div>
+                <strong>نمای نمازها در بازه</strong>
+                <span id="spiritualTimelineCaption">هر روز و وضعیت هر نماز را یک‌جا ببین</span>
+              </div>
+              <div class="segmented-control spiritual-group-control">
+                <button type="button" class="seg-btn active" data-sp-report-group="day">روزانه</button>
+                <button type="button" class="seg-btn" data-sp-report-group="week">هفتگی</button>
+              </div>
+            </div>
+            <div class="spiritual-prayer-filter" id="spiritualPrayerFilter" aria-label="فیلتر نوع نماز">
+              <button type="button" class="active" data-sp-prayer="sobh" aria-pressed="true">صبح</button>
+              <button type="button" class="active" data-sp-prayer="zohr" aria-pressed="true">ظهر</button>
+              <button type="button" class="active" data-sp-prayer="asr" aria-pressed="true">عصر</button>
+              <button type="button" class="active" data-sp-prayer="maghreb" aria-pressed="true">مغرب</button>
+              <button type="button" class="active" data-sp-prayer="eshsa" aria-pressed="true">عشاء</button>
+            </div>
+            <div class="spiritual-timeline-legend" aria-label="راهنمای وضعیت نماز">
+              <span class="is-ada"><i></i>اداء</span>
+              <span class="is-qaza"><i></i>قضا</span>
+              <span class="is-none"><i></i>نخوانده</span>
+              <span class="is-unlogged"><i></i>بدون ثبت روز</span>
+            </div>
+            <div id="spiritualPrayerTimeline" class="spiritual-prayer-timeline">
+              <div class="loading-state">در حال آماده‌سازی نمای نمازها...</div>
+            </div>
+
             <!-- Report Summary Hero Cards -->
             <div class="spiritual-report-grid" id="spiritualReportSummaryGrid" style="margin-top: 14px;">
               <div class="loading-state">در حال محاسبه آمار معنوی...</div>
@@ -972,21 +999,25 @@
                 <button type="button" class="btn-icon" id="btnClearCustomAccent" title="بازگردانی رنگ تم" aria-label="بازگردانی رنگ تم"><i data-lucide="rotate-ccw"></i></button>
               </div>
               <div class="theme-preset-grid" role="radiogroup" aria-label="تم‌های آماده">
-                <button type="button" class="theme-preset" data-theme-palette="balanced" role="radio">
-                  <span class="theme-preset-swatches"><i style="--swatch:#087f8c"></i><i style="--swatch:#e85d75"></i><i style="--swatch:#5b5bb7"></i></span>
-                  <strong>سپیده</strong>
+                <button type="button" class="theme-preset" data-theme-palette="signal" role="radio">
+                  <span class="theme-preset-preview" style="--preview-bg:#f7f8fb;--preview-card:#ffffff;--preview-text:#20242c;--preview-a:#1769e0;--preview-b:#e34f64;--preview-c:#078b7f"></span>
+                  <strong>سیگنال</strong>
+                  <small>شفاف و پرکنتراست</small>
                 </button>
-                <button type="button" class="theme-preset" data-theme-palette="ocean" role="radio">
-                  <span class="theme-preset-swatches"><i style="--swatch:#006d77"></i><i style="--swatch:#ee6c4d"></i><i style="--swatch:#3d5a80"></i></span>
-                  <strong>دریا</strong>
+                <button type="button" class="theme-preset" data-theme-palette="citrus" role="radio">
+                  <span class="theme-preset-preview" style="--preview-bg:#f5f9f7;--preview-card:#ffffff;--preview-text:#18302b;--preview-a:#087f5b;--preview-b:#e76822;--preview-c:#6750a4"></span>
+                  <strong>مرکبات</strong>
+                  <small>سبز، نارنجی و بنفش</small>
                 </button>
-                <button type="button" class="theme-preset" data-theme-palette="forest" role="radio">
-                  <span class="theme-preset-swatches"><i style="--swatch:#2d6a4f"></i><i style="--swatch:#d1495b"></i><i style="--swatch:#7b2cbf"></i></span>
-                  <strong>باغ</strong>
+                <button type="button" class="theme-preset" data-theme-palette="editorial" role="radio">
+                  <span class="theme-preset-preview" style="--preview-bg:#f4f4f2;--preview-card:#ffffff;--preview-text:#202020;--preview-a:#1d4ed8;--preview-b:#d64735;--preview-c:#b27400"></span>
+                  <strong>ادیتوریال</strong>
+                  <small>خنثی با رنگ‌های صریح</small>
                 </button>
-                <button type="button" class="theme-preset" data-theme-palette="graphite" role="radio">
-                  <span class="theme-preset-swatches"><i style="--swatch:#343a40"></i><i style="--swatch:#e76f51"></i><i style="--swatch:#457b9d"></i></span>
-                  <strong>استودیو</strong>
+                <button type="button" class="theme-preset" data-theme-palette="pulse" role="radio">
+                  <span class="theme-preset-preview" style="--preview-bg:#f7f5fa;--preview-card:#ffffff;--preview-text:#27212e;--preview-a:#7c3aed;--preview-b:#e04870;--preview-c:#008a9a"></span>
+                  <strong>پالس</strong>
+                  <small>زنده و جسور</small>
                 </button>
               </div>
               <p class="theme-note"><i data-lucide="info"></i><span>رنگ‌چکان، رنگ دکمه‌های اصلی را جدا از پالت انتخابی تنظیم می‌کند.</span></p>
@@ -1400,6 +1431,6 @@
   </div>
 
   <script src="/static/vendor/lucide.min.js?v=1.72.0"></script>
-  <script src="/static/app.js?v=6.16.1"></script>
+  <script src="/static/app.js?v=6.17.0"></script>
 </body>
 </html>
